@@ -2,25 +2,35 @@ const Tone = window.Tone || null;
 
 /* -------------------------------------------------------------------------- */
 /* Module library and preset templates                                         */
+/*                                                                            */
+/* 这一段定义了整个应用可被实例化的“模块清单”。                               */
+/* 每个 definition 都尽量直接兼容 Tone.js 的构造参数结构，                    */
+/* 这样导出的 JSON 可以较容易复用到别的 Tone.js 项目中。                      */
 /* -------------------------------------------------------------------------- */
 
+// 12 平均律音名表，用于把键盘偏移量映射成真实音名。
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+// 虚拟键盘布局描述：
+// key 是电脑键盘按键，offset 是相对当前八度的半音偏移，
+// whiteIndex 用于计算白键/黑键的可视位置。
 const KEYBOARD_LAYOUT = [
   { key: "a", offset: 0, whiteIndex: 0, black: false },
-  { key: "w", offset: 1, whiteIndex: 0.68, black: true },
+  { key: "w", offset: 1, whiteIndex: 0, black: true },
   { key: "s", offset: 2, whiteIndex: 1, black: false },
-  { key: "e", offset: 3, whiteIndex: 1.68, black: true },
+  { key: "e", offset: 3, whiteIndex: 1, black: true },
   { key: "d", offset: 4, whiteIndex: 2, black: false },
   { key: "f", offset: 5, whiteIndex: 3, black: false },
-  { key: "t", offset: 6, whiteIndex: 3.68, black: true },
+  { key: "t", offset: 6, whiteIndex: 3, black: true },
   { key: "g", offset: 7, whiteIndex: 4, black: false },
-  { key: "y", offset: 8, whiteIndex: 4.68, black: true },
+  { key: "y", offset: 8, whiteIndex: 4, black: true },
   { key: "h", offset: 9, whiteIndex: 5, black: false },
-  { key: "u", offset: 10, whiteIndex: 5.68, black: true },
+  { key: "u", offset: 10, whiteIndex: 5, black: true },
   { key: "j", offset: 11, whiteIndex: 6, black: false },
   { key: "k", offset: 12, whiteIndex: 7, black: false },
 ];
 
+// 在多个模块间复用的波形选项，避免重复定义。
 const SHARED_WAVE_OPTIONS = [
   { label: "Sine", value: "sine" },
   { label: "Triangle", value: "triangle" },
@@ -28,113 +38,288 @@ const SHARED_WAVE_OPTIONS = [
   { label: "Square", value: "square" },
 ];
 
+const NOISE_TYPE_OPTIONS = [
+  { label: "White", value: "white" },
+  { label: "Pink", value: "pink" },
+  { label: "Brown", value: "brown" },
+];
+
+const ROOT_NOTE_OPTIONS = Array.from({ length: 6 * 12 }, (_, index) => {
+  const octave = 1 + Math.floor(index / 12);
+  const note = `${NOTE_NAMES[index % 12]}${octave}`;
+  return { label: note, value: note };
+});
+
+function createSampleDataUrl({ mode = "pluck", frequency = 220, duration = 0.28, sampleRate = 11025 } = {}) {
+  const frameCount = Math.max(1, Math.floor(duration * sampleRate));
+  const bytesPerSample = 2;
+  const dataSize = frameCount * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeString = (offset, value) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let seed = 173;
+  for (let index = 0; index < frameCount; index += 1) {
+    const t = index / sampleRate;
+    const progress = index / frameCount;
+    const decay = Math.exp(-4.5 * progress);
+    let sample = 0;
+
+    if (mode === "bell") {
+      sample =
+        Math.sin(Math.PI * 2 * frequency * t) * 0.56
+        + Math.sin(Math.PI * 2 * frequency * 2.73 * t) * 0.24
+        + Math.sin(Math.PI * 2 * frequency * 4.19 * t) * 0.12;
+      sample *= Math.exp(-3.2 * progress);
+    } else if (mode === "texture") {
+      seed = (seed * 16807) % 2147483647;
+      const noise = (seed / 2147483647) * 2 - 1;
+      sample =
+        Math.sin(Math.PI * 2 * frequency * 0.5 * t) * 0.22
+        + Math.sin(Math.PI * 2 * frequency * 1.5 * t) * 0.1
+        + noise * 0.24;
+      sample *= Math.exp(-2.4 * progress);
+    } else {
+      sample =
+        Math.sin(Math.PI * 2 * frequency * t)
+        + Math.sin(Math.PI * 2 * frequency * 2 * t) * 0.38
+        + Math.sin(Math.PI * 2 * frequency * 3.4 * t) * 0.18;
+      sample *= decay;
+    }
+
+    const clamped = Math.max(-1, Math.min(1, sample * 0.72));
+    view.setInt16(44 + index * 2, Math.round(clamped * 32767), true);
+  }
+
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return `data:audio/wav;base64,${btoa(binary)}`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Unable to read audio file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+const DEFAULT_SAMPLE_LIBRARY = {
+  pluck: createSampleDataUrl({ mode: "pluck", frequency: 196, duration: 0.24 }),
+  bell: createSampleDataUrl({ mode: "bell", frequency: 440, duration: 0.62 }),
+  texture: createSampleDataUrl({ mode: "texture", frequency: 140, duration: 0.46 }),
+};
+
+// 声源库：
+// runtime 用来描述当前 source 在 AudioEngine 中该如何实例化和触发。
+// controls 只负责 UI 层暴露哪些参数，不直接参与 Tone.js 节点创建。
 const SOURCE_LIBRARY = {
-  Synth: {
+  AMOscillator: {
     accent: "source",
-    tag: "Instrument",
-    runtime: "poly",
-    voiceClass: "Synth",
-    options: {
-      oscillator: { type: "sawtooth" },
-      envelope: { attack: 0.01, decay: 0.12, sustain: 0.72, release: 0.8 },
-      detune: 0,
-      portamento: 0.02,
-    },
+    tag: "Osc",
+    runtime: "pitchedSource",
+    voiceClass: "AMOscillator",
+    options: { type: "sawtooth", modulationType: "square", harmonicity: 1.5, detune: 0, phase: 0 },
+    ampEnvelope: { attack: 0.01, decay: 0.12, sustain: 0.84, release: 0.6 },
     controls: [
-      { path: "options.oscillator.type", kind: "select", label: "Wave", options: SHARED_WAVE_OPTIONS },
+      { path: "options.type", kind: "select", label: "Carrier", options: SHARED_WAVE_OPTIONS },
+      { path: "options.modulationType", kind: "select", label: "Mod Wave", options: SHARED_WAVE_OPTIONS },
+      { path: "options.harmonicity", kind: "range", label: "Ratio", min: 0.25, max: 8, step: 0.01, formatter: formatRatio },
+      { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
       { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
-      { path: "options.envelope.attack", kind: "range", label: "Attack", min: 0.001, max: 2, step: 0.001, formatter: formatSeconds },
-      { path: "options.envelope.release", kind: "range", label: "Release", min: 0.05, max: 4, step: 0.01, formatter: formatSeconds },
     ],
   },
-  MonoSynth: {
+  FMOscillator: {
     accent: "source",
-    tag: "Instrument",
-    runtime: "poly",
-    voiceClass: "MonoSynth",
-    options: {
-      oscillator: { type: "square" },
-      envelope: { attack: 0.02, decay: 0.16, sustain: 0.58, release: 0.8 },
-      filterEnvelope: { attack: 0.02, decay: 0.22, sustain: 0.24, release: 1.1, baseFrequency: 180, octaves: 3.4 },
-      detune: 0,
-      portamento: 0.03,
-    },
+    tag: "Osc",
+    runtime: "pitchedSource",
+    voiceClass: "FMOscillator",
+    options: { type: "sine", modulationType: "triangle", harmonicity: 1.8, modulationIndex: 4, detune: 0 },
+    ampEnvelope: { attack: 0.01, decay: 0.16, sustain: 0.78, release: 0.7 },
     controls: [
-      { path: "options.oscillator.type", kind: "select", label: "Wave", options: SHARED_WAVE_OPTIONS },
-      { path: "options.filterEnvelope.baseFrequency", kind: "range", label: "Base", min: 80, max: 2000, step: 1, formatter: formatFrequency },
-      { path: "options.envelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1.5, step: 0.001, formatter: formatSeconds },
-      { path: "options.envelope.release", kind: "range", label: "Release", min: 0.05, max: 4, step: 0.01, formatter: formatSeconds },
-    ],
-  },
-  AMSynth: {
-    accent: "source",
-    tag: "Instrument",
-    runtime: "poly",
-    voiceClass: "AMSynth",
-    options: {
-      oscillator: { type: "triangle" },
-      envelope: { attack: 0.02, decay: 0.08, sustain: 0.86, release: 1.4 },
-      modulation: { type: "square" },
-      modulationEnvelope: { attack: 0.25, decay: 0.1, sustain: 1, release: 1.2 },
-      harmonicity: 1.5,
-      detune: 0,
-    },
-    controls: [
-      { path: "options.oscillator.type", kind: "select", label: "Carrier", options: SHARED_WAVE_OPTIONS },
-      { path: "options.harmonicity", kind: "range", label: "Ratio", min: 0.25, max: 5, step: 0.01, formatter: formatRatio },
-      { path: "options.envelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1.5, step: 0.001, formatter: formatSeconds },
-      { path: "options.modulationEnvelope.release", kind: "range", label: "Mod Rel", min: 0.05, max: 4, step: 0.01, formatter: formatSeconds },
-    ],
-  },
-  DuoSynth: {
-    accent: "source",
-    tag: "Instrument",
-    runtime: "poly",
-    voiceClass: "DuoSynth",
-    options: {
-      harmonicity: 1.5,
-      vibratoAmount: 0.35,
-      vibratoRate: 4.5,
-      voice0: {
-        oscillator: { type: "sawtooth" },
-        envelope: { attack: 0.01, decay: 0.06, sustain: 0.72, release: 1.3 },
-      },
-      voice1: {
-        oscillator: { type: "square" },
-        envelope: { attack: 0.04, decay: 0.12, sustain: 0.62, release: 1.1 },
-      },
-    },
-    controls: [
-      { path: "options.voice0.oscillator.type", kind: "select", label: "Voice A", options: SHARED_WAVE_OPTIONS },
-      { path: "options.harmonicity", kind: "range", label: "Offset", min: 0.4, max: 3.5, step: 0.01, formatter: formatRatio },
-      { path: "options.vibratoAmount", kind: "range", label: "Vibrato", min: 0, max: 1, step: 0.01, formatter: formatPercent },
-      { path: "options.vibratoRate", kind: "range", label: "Rate", min: 0.1, max: 12, step: 0.1, formatter: formatHertz },
-    ],
-  },
-  FMSynth: {
-    accent: "source",
-    tag: "Instrument",
-    runtime: "poly",
-    voiceClass: "FMSynth",
-    options: {
-      oscillator: { type: "sine" },
-      envelope: { attack: 0.01, decay: 0.14, sustain: 0.5, release: 1.4 },
-      modulation: { type: "triangle" },
-      modulationEnvelope: { attack: 0.08, decay: 0.04, sustain: 1, release: 1.2 },
-      harmonicity: 1.5,
-      modulationIndex: 8,
-    },
-    controls: [
-      { path: "options.oscillator.type", kind: "select", label: "Carrier", options: SHARED_WAVE_OPTIONS },
+      { path: "options.type", kind: "select", label: "Carrier", options: SHARED_WAVE_OPTIONS },
+      { path: "options.modulationType", kind: "select", label: "Mod Wave", options: SHARED_WAVE_OPTIONS },
       { path: "options.harmonicity", kind: "range", label: "Ratio", min: 0.25, max: 8, step: 0.01, formatter: formatRatio },
       { path: "options.modulationIndex", kind: "range", label: "Index", min: 0, max: 40, step: 0.1, formatter: formatPlain },
-      { path: "options.envelope.release", kind: "range", label: "Release", min: 0.05, max: 4, step: 0.01, formatter: formatSeconds },
+      { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
+      { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
+    ],
+  },
+  FatOscillator: {
+    accent: "source",
+    tag: "Osc",
+    runtime: "pitchedSource",
+    voiceClass: "FatOscillator",
+    options: { type: "sawtooth", spread: 24, count: 3, detune: 0, phase: 0 },
+    ampEnvelope: { attack: 0.01, decay: 0.14, sustain: 0.8, release: 0.7 },
+    controls: [
+      { path: "options.type", kind: "select", label: "Wave", options: SHARED_WAVE_OPTIONS },
+      { path: "options.spread", kind: "range", label: "Spread", min: 0, max: 60, step: 1, formatter: (value) => `${Math.round(value)}deg` },
+      { path: "options.count", kind: "range", label: "Count", min: 1, max: 6, step: 1, formatter: formatPlain },
+      { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
+      { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
+    ],
+  },
+  GrainPlayer: {
+    accent: "source",
+    tag: "Osc",
+    runtime: "grainPlayer",
+    voiceClass: "GrainPlayer",
+    moduleDefaults: { rootNote: "C4", assetName: "Factory Texture" },
+    options: { url: DEFAULT_SAMPLE_LIBRARY.texture, grainSize: 0.18, overlap: 0.08, playbackRate: 1, detune: 0, loop: true, reverse: false },
+    ampEnvelope: { attack: 0.02, decay: 0.12, sustain: 0.86, release: 0.8 },
+    controls: [
+      { path: "rootNote", kind: "select", label: "Root", options: ROOT_NOTE_OPTIONS },
+      { path: "options.grainSize", kind: "range", label: "Grain", min: 0.01, max: 0.5, step: 0.001, formatter: formatSeconds },
+      { path: "options.overlap", kind: "range", label: "Overlap", min: 0.005, max: 0.3, step: 0.001, formatter: formatSeconds },
+      { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.2, max: 3, step: 0.01, formatter: formatMultiplier },
+      { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
+      { path: "options.loop", kind: "toggle", label: "Loop" },
+      { path: "options.reverse", kind: "toggle", label: "Reverse" },
+    ],
+  },
+  Noise: {
+    accent: "source",
+    tag: "Osc",
+    runtime: "noise",
+    voiceClass: "Noise",
+    options: { type: "pink", playbackRate: 1 },
+    ampEnvelope: { attack: 0.01, decay: 0.08, sustain: 0.32, release: 0.45 },
+    controls: [
+      { path: "options.type", kind: "select", label: "Color", options: NOISE_TYPE_OPTIONS },
+      { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.2, max: 4, step: 0.01, formatter: formatMultiplier },
+      { path: "ampEnvelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1, step: 0.001, formatter: formatSeconds },
+      { path: "ampEnvelope.decay", kind: "range", label: "Decay", min: 0.001, max: 2, step: 0.001, formatter: formatSeconds },
+      { path: "ampEnvelope.sustain", kind: "range", label: "Sustain", min: 0, max: 1, step: 0.01, formatter: formatPercent },
+      { path: "ampEnvelope.release", kind: "range", label: "Release", min: 0.01, max: 2, step: 0.01, formatter: formatSeconds },
+    ],
+  },
+  Oscillator: {
+    accent: "source",
+    tag: "Osc",
+    runtime: "pitchedSource",
+    voiceClass: "Oscillator",
+    options: { type: "sawtooth", detune: 0, phase: 0 },
+    ampEnvelope: { attack: 0.01, decay: 0.14, sustain: 0.84, release: 0.6 },
+    controls: [
+      { path: "options.type", kind: "select", label: "Wave", options: SHARED_WAVE_OPTIONS },
+      { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
+      { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
+      { path: "ampEnvelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1.5, step: 0.001, formatter: formatSeconds },
+      { path: "ampEnvelope.decay", kind: "range", label: "Decay", min: 0.001, max: 2, step: 0.001, formatter: formatSeconds },
+      { path: "ampEnvelope.sustain", kind: "range", label: "Sustain", min: 0, max: 1, step: 0.01, formatter: formatPercent },
+      { path: "ampEnvelope.release", kind: "range", label: "Release", min: 0.05, max: 4, step: 0.01, formatter: formatSeconds },
+    ],
+  },
+  PWMOscillator: {
+    accent: "source",
+    tag: "Osc",
+    runtime: "pitchedSource",
+    voiceClass: "PWMOscillator",
+    options: { modulationFrequency: 0.5, detune: 0, phase: 0 },
+    ampEnvelope: { attack: 0.01, decay: 0.12, sustain: 0.82, release: 0.65 },
+    controls: [
+      { path: "options.modulationFrequency", kind: "range", label: "PWM Rate", min: 0.05, max: 24, step: 0.01, formatter: formatHertz },
+      { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
+      { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
+      { path: "ampEnvelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1.5, step: 0.001, formatter: formatSeconds },
+      { path: "ampEnvelope.release", kind: "range", label: "Release", min: 0.05, max: 4, step: 0.01, formatter: formatSeconds },
+    ],
+  },
+  Player: {
+    accent: "source",
+    tag: "Osc",
+    runtime: "player",
+    voiceClass: "Player",
+    moduleDefaults: { rootNote: "C4", assetName: "Factory Pluck" },
+    options: { url: DEFAULT_SAMPLE_LIBRARY.pluck, playbackRate: 1, loop: false, reverse: false, fadeIn: 0.005, fadeOut: 0.08, loopStart: 0, loopEnd: 0 },
+    controls: [
+      { path: "rootNote", kind: "select", label: "Root", options: ROOT_NOTE_OPTIONS },
+      { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.2, max: 3, step: 0.01, formatter: formatMultiplier },
+      { path: "options.fadeIn", kind: "range", label: "Fade In", min: 0, max: 0.2, step: 0.001, formatter: formatSeconds },
+      { path: "options.fadeOut", kind: "range", label: "Fade Out", min: 0.01, max: 0.6, step: 0.001, formatter: formatSeconds },
+      { path: "options.loopStart", kind: "range", label: "Loop In", min: 0, max: 12, step: 0.01, formatter: formatSeconds },
+      { path: "options.loopEnd", kind: "range", label: "Loop Out", min: 0, max: 12, step: 0.01, formatter: formatSeconds },
+      { path: "options.loop", kind: "toggle", label: "Loop" },
+      { path: "options.reverse", kind: "toggle", label: "Reverse" },
+    ],
+  },
+  Players: {
+    accent: "source",
+    tag: "Osc",
+    runtime: "players",
+    voiceClass: "Players",
+    moduleDefaults: {
+      rootNote: "C4",
+      sampleNames: {
+        low: "Factory Pluck",
+        mid: "Factory Bell",
+        high: "Factory Texture",
+      },
+    },
+    options: {
+      urls: {
+        low: DEFAULT_SAMPLE_LIBRARY.pluck,
+        mid: DEFAULT_SAMPLE_LIBRARY.bell,
+        high: DEFAULT_SAMPLE_LIBRARY.texture,
+      },
+      playbackRate: 1,
+      loop: false,
+      reverse: false,
+      fadeIn: 0.005,
+      fadeOut: 0.08,
+    },
+    controls: [
+      { path: "rootNote", kind: "select", label: "Root", options: ROOT_NOTE_OPTIONS },
+      { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.2, max: 3, step: 0.01, formatter: formatMultiplier },
+      { path: "options.fadeIn", kind: "range", label: "Fade In", min: 0, max: 0.2, step: 0.001, formatter: formatSeconds },
+      { path: "options.fadeOut", kind: "range", label: "Fade Out", min: 0.01, max: 0.6, step: 0.001, formatter: formatSeconds },
+      { path: "options.loop", kind: "toggle", label: "Loop" },
+      { path: "options.reverse", kind: "toggle", label: "Reverse" },
+    ],
+  },
+  PulseOscillator: {
+    accent: "source",
+    tag: "Osc",
+    runtime: "pitchedSource",
+    voiceClass: "PulseOscillator",
+    options: { width: 0.22, detune: 0, phase: 0 },
+    ampEnvelope: { attack: 0.01, decay: 0.12, sustain: 0.8, release: 0.62 },
+    controls: [
+      { path: "options.width", kind: "range", label: "Width", min: 0.01, max: 0.99, step: 0.001, formatter: formatPercent },
+      { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
+      { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
+      { path: "ampEnvelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1.5, step: 0.001, formatter: formatSeconds },
+      { path: "ampEnvelope.release", kind: "range", label: "Release", min: 0.05, max: 4, step: 0.01, formatter: formatSeconds },
     ],
   },
   MembraneSynth: {
     accent: "source",
-    tag: "Instrument",
-    runtime: "poly",
+    tag: "Osc",
+    runtime: "monoTrigger",
     voiceClass: "MembraneSynth",
     options: {
       oscillator: { type: "sine" },
@@ -144,6 +329,9 @@ const SOURCE_LIBRARY = {
     },
     controls: [
       { path: "options.oscillator.type", kind: "select", label: "Wave", options: SHARED_WAVE_OPTIONS },
+      { path: "options.envelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1.5, step: 0.001, formatter: formatSeconds },
+      { path: "options.envelope.decay", kind: "range", label: "Decay", min: 0.001, max: 2, step: 0.001, formatter: formatSeconds },
+      { path: "options.envelope.sustain", kind: "range", label: "Sustain", min: 0, max: 1, step: 0.01, formatter: formatPercent },
       { path: "options.pitchDecay", kind: "range", label: "Pitch Dec", min: 0.001, max: 0.6, step: 0.001, formatter: formatSeconds },
       { path: "options.octaves", kind: "range", label: "Octaves", min: 1, max: 10, step: 0.1, formatter: formatPlain },
       { path: "options.envelope.release", kind: "range", label: "Release", min: 0.05, max: 4, step: 0.01, formatter: formatSeconds },
@@ -151,120 +339,29 @@ const SOURCE_LIBRARY = {
   },
   MetalSynth: {
     accent: "source",
-    tag: "Instrument",
-    runtime: "poly",
+    tag: "Osc",
+    runtime: "monoTrigger",
     voiceClass: "MetalSynth",
     options: {
       envelope: { attack: 0.001, decay: 0.28, release: 0.4 },
       harmonicity: 4.2,
       modulationIndex: 18,
+      octaves: 1.5,
       resonance: 2800,
     },
     controls: [
       { path: "options.harmonicity", kind: "range", label: "Ratio", min: 0.5, max: 8, step: 0.01, formatter: formatRatio },
       { path: "options.modulationIndex", kind: "range", label: "Index", min: 1, max: 60, step: 0.1, formatter: formatPlain },
+      { path: "options.octaves", kind: "range", label: "Octaves", min: 0.5, max: 4, step: 0.1, formatter: formatPlain },
       { path: "options.resonance", kind: "range", label: "Resonance", min: 50, max: 8000, step: 1, formatter: formatFrequency },
+      { path: "options.envelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1.5, step: 0.001, formatter: formatSeconds },
       { path: "options.envelope.decay", kind: "range", label: "Decay", min: 0.02, max: 2, step: 0.01, formatter: formatSeconds },
-    ],
-  },
-  PluckSynth: {
-    accent: "source",
-    tag: "Instrument",
-    runtime: "pluck",
-    voiceClass: "PluckSynth",
-    options: {
-      attackNoise: 0.8,
-      dampening: 3600,
-      resonance: 0.88,
-      release: 0.8,
-    },
-    controls: [
-      { path: "options.attackNoise", kind: "range", label: "Noise", min: 0.1, max: 8, step: 0.01, formatter: formatPlain },
-      { path: "options.dampening", kind: "range", label: "Damp", min: 400, max: 9000, step: 1, formatter: formatFrequency },
-      { path: "options.resonance", kind: "range", label: "Reson", min: 0.1, max: 1, step: 0.01, formatter: formatPercent },
-      { path: "options.release", kind: "range", label: "Release", min: 0.05, max: 4, step: 0.01, formatter: formatSeconds },
-    ],
-  },
-  NoiseSynth: {
-    accent: "source",
-    tag: "Instrument",
-    runtime: "noiseSynth",
-    voiceClass: "NoiseSynth",
-    options: {
-      noise: { type: "pink" },
-      envelope: { attack: 0.005, decay: 0.2, sustain: 0, release: 0.4 },
-    },
-    controls: [
-      {
-        path: "options.noise.type",
-        kind: "select",
-        label: "Color",
-        options: [
-          { label: "White", value: "white" },
-          { label: "Pink", value: "pink" },
-          { label: "Brown", value: "brown" },
-        ],
-      },
-      { path: "options.envelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1, step: 0.001, formatter: formatSeconds },
-      { path: "options.envelope.decay", kind: "range", label: "Decay", min: 0.01, max: 1.2, step: 0.001, formatter: formatSeconds },
       { path: "options.envelope.release", kind: "range", label: "Release", min: 0.01, max: 2, step: 0.01, formatter: formatSeconds },
-    ],
-  },
-  OmniOscillator: {
-    accent: "source",
-    tag: "Source",
-    runtime: "rawOscillator",
-    voiceClass: "OmniOscillator",
-    options: {
-      type: "sawtooth",
-      detune: 0,
-    },
-    ampEnvelope: {
-      attack: 0.01,
-      decay: 0.14,
-      sustain: 0.78,
-      release: 0.8,
-    },
-    controls: [
-      { path: "options.type", kind: "select", label: "Wave", options: SHARED_WAVE_OPTIONS },
-      { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
-      { path: "ampEnvelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1.2, step: 0.001, formatter: formatSeconds },
-      { path: "ampEnvelope.release", kind: "range", label: "Release", min: 0.05, max: 4, step: 0.01, formatter: formatSeconds },
-    ],
-  },
-  Noise: {
-    accent: "source",
-    tag: "Source",
-    runtime: "rawNoise",
-    voiceClass: "Noise",
-    options: {
-      type: "pink",
-      playbackRate: 1,
-    },
-    ampEnvelope: {
-      attack: 0.01,
-      decay: 0.08,
-      sustain: 0.24,
-      release: 0.45,
-    },
-    controls: [
-      {
-        path: "options.type",
-        kind: "select",
-        label: "Color",
-        options: [
-          { label: "White", value: "white" },
-          { label: "Pink", value: "pink" },
-          { label: "Brown", value: "brown" },
-        ],
-      },
-      { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.2, max: 4, step: 0.01, formatter: formatMultiplier },
-      { path: "ampEnvelope.attack", kind: "range", label: "Attack", min: 0.001, max: 1, step: 0.001, formatter: formatSeconds },
-      { path: "ampEnvelope.release", kind: "range", label: "Release", min: 0.01, max: 2, step: 0.01, formatter: formatSeconds },
     ],
   },
 };
 
+// 效果器库：效果器与 component 一样都会被串到主信号链上。
 const EFFECT_LIBRARY = {
   Chorus: {
     accent: "fx",
@@ -356,6 +453,7 @@ const EFFECT_LIBRARY = {
   },
 };
 
+// 组件库：相较于 effect，更偏工具型或增益结构型节点。
 const COMPONENT_LIBRARY = {
   Compressor: {
     accent: "component",
@@ -403,6 +501,7 @@ const COMPONENT_LIBRARY = {
   },
 };
 
+// 当前 UI 提供的滤波器类型列表，同时也是 Filter 模块下拉菜单的数据源。
 const FILTER_TYPES = [
   { label: "Low-pass", value: "lowpass" },
   { label: "Band-pass", value: "bandpass" },
@@ -410,6 +509,8 @@ const FILTER_TYPES = [
   { label: "Notch", value: "notch" },
 ];
 
+// 内置预设模板。
+// 这些模板先作为纯配置对象存在，真正使用时会经过 normalizePreset 标准化。
 const BUILTIN_PRESET_TEMPLATES = {
   init: {
     name: "Init Patch",
@@ -419,22 +520,22 @@ const BUILTIN_PRESET_TEMPLATES = {
     lfo: { enabled: true, type: "sine", frequency: 2.1, amount: 0.35, target: "filter.frequency" },
     sources: [
       {
-        type: "Synth",
+        type: "Oscillator",
         enabled: true,
         volume: -9,
         pan: -0.12,
         options: {
-          oscillator: { type: "sawtooth" },
-          envelope: { attack: 0.01, decay: 0.14, sustain: 0.7, release: 0.8 },
+          type: "sawtooth",
           detune: -8,
         },
+        ampEnvelope: { attack: 0.01, decay: 0.14, sustain: 0.7, release: 0.8 },
       },
       {
-        type: "OmniOscillator",
+        type: "FatOscillator",
         enabled: true,
         volume: -14,
         pan: 0.12,
-        options: { type: "triangle", detune: 6 },
+        options: { type: "triangle", count: 3, spread: 18, detune: 6 },
         ampEnvelope: { attack: 0.02, decay: 0.12, sustain: 0.62, release: 0.9 },
       },
     ],
@@ -452,31 +553,29 @@ const BUILTIN_PRESET_TEMPLATES = {
     lfo: { enabled: true, type: "triangle", frequency: 4.8, amount: 0.22, target: "filter.frequency" },
     sources: [
       {
-        type: "FMSynth",
+        type: "FMOscillator",
         enabled: true,
         volume: -6,
         pan: -0.18,
         options: {
-          oscillator: { type: "sine" },
-          modulation: { type: "square" },
+          type: "sine",
+          modulationType: "square",
           harmonicity: 2.3,
           modulationIndex: 18,
-          envelope: { attack: 0.005, decay: 0.28, sustain: 0.34, release: 2.2 },
-          modulationEnvelope: { attack: 0.05, decay: 0.08, sustain: 0.76, release: 1.4 },
         },
+        ampEnvelope: { attack: 0.005, decay: 0.28, sustain: 0.34, release: 2.2 },
       },
       {
-        type: "DuoSynth",
+        type: "AMOscillator",
         enabled: true,
         volume: -12,
         pan: 0.22,
         options: {
           harmonicity: 1.2,
-          vibratoAmount: 0.18,
-          vibratoRate: 5.8,
-          voice0: { oscillator: { type: "triangle" }, envelope: { attack: 0.02, decay: 0.1, sustain: 0.62, release: 1.4 } },
-          voice1: { oscillator: { type: "sine" }, envelope: { attack: 0.04, decay: 0.12, sustain: 0.58, release: 1.8 } },
+          type: "triangle",
+          modulationType: "sine",
         },
+        ampEnvelope: { attack: 0.02, decay: 0.1, sustain: 0.62, release: 1.4 },
       },
     ],
     components: [
@@ -497,17 +596,16 @@ const BUILTIN_PRESET_TEMPLATES = {
     lfo: { enabled: true, type: "sine", frequency: 0.42, amount: 0.58, target: "filter.frequency" },
     sources: [
       {
-        type: "AMSynth",
+        type: "AMOscillator",
         enabled: true,
         volume: -8,
         pan: -0.22,
         options: {
-          oscillator: { type: "triangle" },
-          modulation: { type: "sine" },
+          type: "triangle",
+          modulationType: "sine",
           harmonicity: 0.75,
-          envelope: { attack: 0.22, decay: 0.2, sustain: 0.92, release: 2.8 },
-          modulationEnvelope: { attack: 0.4, decay: 0.12, sustain: 0.92, release: 2.2 },
         },
+        ampEnvelope: { attack: 0.22, decay: 0.2, sustain: 0.92, release: 2.8 },
       },
       {
         type: "Noise",
@@ -548,14 +646,15 @@ const BUILTIN_PRESET_TEMPLATES = {
         },
       },
       {
-        type: "NoiseSynth",
+        type: "Noise",
         enabled: true,
         volume: -12,
         pan: 0.18,
         options: {
-          noise: { type: "brown" },
-          envelope: { attack: 0.001, decay: 0.18, sustain: 0, release: 0.16 },
+          type: "brown",
+          playbackRate: 1,
         },
+        ampEnvelope: { attack: 0.001, decay: 0.18, sustain: 0, release: 0.16 },
       },
       {
         type: "MetalSynth",
@@ -588,12 +687,14 @@ const BUILTIN_PRESET_TEMPLATES = {
 
 let moduleCounter = 1;
 
+// 生成稳定的前端模块 id，供渲染、连线和状态同步共同使用。
 function createId(prefix) {
   const id = `${prefix}-${String(moduleCounter).padStart(4, "0")}`;
   moduleCounter += 1;
   return id;
 }
 
+// 深拷贝只用于可 JSON 化的数据结构，避免直接共享对象引用。
 function deepClone(value) {
   if (value === undefined || value === null || typeof value !== "object") {
     return value;
@@ -602,10 +703,12 @@ function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+// 判断是否为普通对象，供 deepMerge / setByPath 使用。
 function isObject(value) {
   return value && typeof value === "object" && !Array.isArray(value);
 }
 
+// 深合并用于把用户导入的 preset 补成完整结构，同时保留已有字段。
 function deepMerge(base, override) {
   if (override === undefined) {
     return deepClone(base);
@@ -633,14 +736,17 @@ function deepMerge(base, override) {
   return deepClone(override);
 }
 
+// 数值钳制工具，避免 UI 和调制系统把参数推到非法范围之外。
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+// 通过 "a.b.c" 的路径读取深层字段。
 function getByPath(object, path) {
   return path.split(".").reduce((acc, key) => (acc == null ? undefined : acc[key]), object);
 }
 
+// 通过路径写入深层字段，如果中间层不存在则自动补对象。
 function setByPath(object, path, value) {
   const parts = path.split(".");
   let ref = object;
@@ -656,12 +762,14 @@ function setByPath(object, path, value) {
   });
 }
 
+// 根据基础八度和键位偏移，生成 Tone.js 可识别的音名。
 function noteFromOffset(baseOctave, offset) {
   const pitchClass = NOTE_NAMES[offset % 12];
   const octaveShift = Math.floor(offset / 12);
   return `${pitchClass}${baseOctave + octaveShift}`;
 }
 
+// 下列 formatter 统一负责把原始数值格式化成 UI 读数。
 function formatPlain(value) {
   return Number(value).toFixed(Math.abs(value) < 10 ? 2 : 1).replace(/\.0+$/, "");
 }
@@ -701,29 +809,36 @@ function formatMultiplier(value) {
   return `${Number(value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}x`;
 }
 
+// 调制目标收集器：
+// 只返回当前机架里真实存在、并且允许被调制的目标。
+// 这样 route 下拉菜单和拖线终点就会自动跟随当前模块结构变化。
 function getModulationTargets(state) {
-  const targets = [
-    {
-      label: "Filter Cutoff",
-      value: "filter.frequency",
-      stage: "filter",
-      moduleRef: "filter-core",
-      basePath: "filter.frequency",
-      min: 20,
-      max: 18000,
-      scale: (base) => Math.max(120, base * 1.35),
-    },
-    {
-      label: "Filter Resonance",
-      value: "filter.Q",
-      stage: "filter",
-      moduleRef: "filter-core",
-      basePath: "filter.Q",
-      min: 0.001,
-      max: 20,
-      scale: () => 8,
-    },
-  ];
+  const targets = [];
+
+  if (state.ui?.visibleModules?.filter !== false) {
+    targets.push(
+      {
+        label: "Filter Cutoff",
+        value: "filter.frequency",
+        stage: "filter",
+        moduleRef: "filter-core",
+        basePath: "filter.frequency",
+        min: 20,
+        max: 18000,
+        scale: (base) => Math.max(120, base * 1.35),
+      },
+      {
+        label: "Filter Resonance",
+        value: "filter.Q",
+        stage: "filter",
+        moduleRef: "filter-core",
+        basePath: "filter.Q",
+        min: 0.001,
+        max: 20,
+        scale: () => 8,
+      },
+    );
+  }
 
   state.sources.forEach((module, index) => {
     const labelPrefix = `${module.type} ${index + 1}`;
@@ -837,18 +952,22 @@ function getModulationTargets(state) {
   return targets;
 }
 
+// 通过 id 在模块数组里查找具体实例。
 function findById(list, id) {
   return list.find((entry) => entry.id === id);
 }
 
-function createSourceModule(type = "Synth") {
-  const definition = SOURCE_LIBRARY[type] || SOURCE_LIBRARY.Synth;
+// 以下工厂函数用于把 definition 转成真实模块实例。
+// 每次新增模块、切换模块类型、或补默认值时都会调用。
+function createSourceModule(type = "Oscillator") {
+  const definition = SOURCE_LIBRARY[type] || SOURCE_LIBRARY.Oscillator;
   return {
     id: createId("src"),
     type,
     enabled: true,
     volume: -8,
     pan: 0,
+    ...(definition.moduleDefaults ? deepClone(definition.moduleDefaults) : {}),
     options: deepClone(definition.options),
     ampEnvelope: definition.ampEnvelope ? deepClone(definition.ampEnvelope) : undefined,
   };
@@ -883,11 +1002,17 @@ function createModRoute(target = "filter.frequency", amount = 0.35) {
   };
 }
 
+// 顶部 “Add Module” 下拉菜单的数据源。
+// core 模块采用显隐式增删，source/component/effect 则会真正生成实例。
 function getAddableModuleOptions() {
   return [
+    { value: "core:filter", label: "Core / Filter" },
+    { value: "core:envelope", label: "Core / Amp Envelope" },
+    { value: "core:modEnvelope", label: "Core / Mod Envelope" },
+    { value: "core:lfo", label: "Core / LFO" },
     ...Object.keys(SOURCE_LIBRARY).map((type) => ({
       value: `source:${type}`,
-      label: `Instrument / ${type}`,
+      label: `OSC / ${type}`,
     })),
     ...Object.keys(COMPONENT_LIBRARY).map((type) => ({
       value: `component:${type}`,
@@ -900,8 +1025,9 @@ function getAddableModuleOptions() {
   ];
 }
 
+// normalize 系列函数负责把外部数据补足为当前编辑器能使用的完整格式。
 function normalizeSourceModule(module) {
-  const base = createSourceModule(module?.type || "Synth");
+  const base = createSourceModule(module?.type || "Oscillator");
   const merged = deepMerge(base, module || {});
   merged.id = module?.id || base.id;
   return merged;
@@ -925,19 +1051,30 @@ function createBasePreset() {
   return normalizePreset(BUILTIN_PRESET_TEMPLATES.init);
 }
 
+// 把任意导入预设、内置预设或半成品状态统一整形成稳定结构。
+// 这是整个应用的状态入口之一，尽量保证向后兼容。
 function normalizePreset(preset = {}) {
   const fallback = {
     name: "Untitled Patch",
     global: { volume: -8, octave: 4, velocity: 0.8 },
-    filter: { type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 },
-    envelope: { attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65 },
+    filter: { enabled: true, type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 },
+    envelope: { enabled: true, attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65 },
     modEnvelope: { enabled: true, attack: 0.01, decay: 0.24, sustain: 0.36, release: 0.8 },
     lfo: { enabled: true, type: "sine", frequency: 2.1, amount: 1, phase: 0 },
+    ui: {
+      visibleModules: {
+        filter: true,
+        envelope: true,
+        modEnvelope: true,
+        lfo: true,
+      },
+      cableTension: 0.78,
+    },
     modulation: {
       lfoRoutes: [createModRoute("filter.frequency", 0.45)],
       envelopeRoutes: [createModRoute("filter.frequency", 0.4)],
     },
-    sources: [createSourceModule("Synth")],
+    sources: [createSourceModule("Oscillator")],
     components: [createComponentModule("Compressor")],
     effects: [createEffectModule("Chorus")],
   };
@@ -957,6 +1094,9 @@ function normalizePreset(preset = {}) {
     : fallback.effects.map((module) => normalizeEffectModule(module));
   merged.modEnvelope = deepMerge(fallback.modEnvelope, preset.modEnvelope || {});
   merged.lfo = deepMerge(fallback.lfo, preset.lfo || {});
+  merged.filter = deepMerge(fallback.filter, preset.filter || {});
+  merged.envelope = deepMerge(fallback.envelope, preset.envelope || {});
+  merged.ui = deepMerge(fallback.ui, preset.ui || {});
   merged.modulation = deepMerge(fallback.modulation, preset.modulation || {});
   merged.modulation.lfoRoutes = Array.isArray(preset?.modulation?.lfoRoutes)
     ? preset.modulation.lfoRoutes.map((route) => ({ ...createModRoute(), ...route, id: route?.id || createId("route") }))
@@ -972,6 +1112,17 @@ function normalizePreset(preset = {}) {
   return merged;
 }
 
+// enabled 只是编辑器层的 UI 开关，不直接传给 Tone.Filter / Tone.AmplitudeEnvelope。
+function getFilterAudioState(filterState = {}) {
+  const { enabled, ...options } = filterState || {};
+  return options;
+}
+
+function getEnvelopeAudioState(envelopeState = {}) {
+  const { enabled, ...options } = envelopeState || {};
+  return options;
+}
+
 function downloadJson(filename, data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
@@ -983,6 +1134,7 @@ function downloadJson(filename, data) {
   link.remove();
 }
 
+// 安全调用 Tone 节点的 set()，避免空对象或不支持 set 的节点报错。
 function safeSet(target, options) {
   if (!target || !options) {
     return;
@@ -992,6 +1144,62 @@ function safeSet(target, options) {
   }
 }
 
+function applyPlayerLikeOptions(player, options = {}) {
+  if (!player || !options) {
+    return;
+  }
+
+  [
+    "playbackRate",
+    "fadeIn",
+    "fadeOut",
+    "loopStart",
+    "loopEnd",
+    "grainSize",
+    "overlap",
+    "detune",
+  ].forEach((key) => {
+    if (options[key] !== undefined && key in player) {
+      if (player[key] && typeof player[key] === "object" && "value" in player[key]) {
+        player[key].value = options[key];
+      } else {
+        player[key] = options[key];
+      }
+    }
+  });
+
+  ["loop", "reverse", "mute"].forEach((key) => {
+    if (options[key] !== undefined && key in player) {
+      player[key] = Boolean(options[key]);
+    }
+  });
+}
+
+function applyPlayersOptions(bank, options = {}) {
+  if (!bank || typeof bank.player !== "function") {
+    return;
+  }
+
+  ["fadeIn", "fadeOut"].forEach((key) => {
+    if (options[key] !== undefined && key in bank) {
+      bank[key] = options[key];
+    }
+  });
+  if (options.mute !== undefined && "mute" in bank) {
+    bank.mute = Boolean(options.mute);
+  }
+
+  const keys = new Set(["low", "mid", "high", ...Object.keys(options.urls || {})]);
+  keys.forEach((key) => {
+    const player = bank.player(key);
+    if (player) {
+      applyPlayerLikeOptions(player, options);
+    }
+  });
+}
+
+// 参数平滑更新封装。
+// Tone.Param 优先使用 rampTo，否则回退到直接赋值。
 function rampParam(param, value, time = 0.12) {
   if (!param) {
     return;
@@ -1009,6 +1217,8 @@ function rampParam(param, value, time = 0.12) {
 
 class AudioEngine {
   constructor() {
+    // AudioEngine 只关心“如何把 state 翻译成可发声的 Tone 节点”。
+    // 所有 DOM、渲染和交互状态都不应放在这里。
     this.ready = false;
     this.state = null;
     this.sourceRuntimes = new Map();
@@ -1034,16 +1244,15 @@ class AudioEngine {
     this.state = deepClone(state);
     this.ready = true;
 
+    // sourceBus 是所有 source 的汇总入口；
+    // filter / ampEnvelope / components / effects 会在 rebuildEffects() 中按启用状态重建串联关系。
     this.sourceBus = new Tone.Gain(1);
-    this.filter = new Tone.Filter(state.filter);
-    this.ampEnvelope = new Tone.AmplitudeEnvelope(state.envelope);
+    this.filter = new Tone.Filter(getFilterAudioState(state.filter));
+    this.ampEnvelope = new Tone.AmplitudeEnvelope(getEnvelopeAudioState(state.envelope));
+    this.ampBypass = new Tone.Gain(1);
     this.masterVolume = new Tone.Volume(state.global.volume);
     this.analyser = new Tone.Analyser("waveform", 1024);
     this.lfoStartTime = Tone.now();
-
-    this.sourceBus.connect(this.filter);
-    this.filter.connect(this.ampEnvelope);
-    this.ampEnvelope.connect(this.masterVolume);
     this.masterVolume.toDestination();
     this.masterVolume.connect(this.analyser);
 
@@ -1052,18 +1261,20 @@ class AudioEngine {
     this.startModulationLoop();
   }
 
+  // 提供给 UI 层的示波器读取入口。
   getAnalyser() {
     return this.analyser;
   }
 
   fullSync(state) {
+    // 当预设切换、导入 JSON 或大范围结构变化时，直接做一次整链路重建。
     this.state = deepClone(state);
     if (!this.ready) {
       return;
     }
 
-    safeSet(this.filter, state.filter);
-    safeSet(this.ampEnvelope, state.envelope);
+    safeSet(this.filter, getFilterAudioState(state.filter));
+    safeSet(this.ampEnvelope, getEnvelopeAudioState(state.envelope));
     rampParam(this.masterVolume.volume, state.global.volume);
     this.modEnvelopeState = { stage: "idle", velocity: 1, attackStart: 0, attackFrom: 0, decayStart: 0, releaseStart: 0, releaseFrom: 0 };
     this.silenceAll();
@@ -1081,12 +1292,14 @@ class AudioEngine {
     this.applyModulationSnapshot();
   }
 
+  // filter / envelope 的更新除了改 Tone 参数，还可能改动主链路的串接方式。
   updateFilter(filterState) {
     this.state.filter = deepClone(filterState);
     if (!this.ready) {
       return;
     }
-    safeSet(this.filter, filterState);
+    safeSet(this.filter, getFilterAudioState(filterState));
+    this.rebuildEffects();
     this.applyModulationSnapshot();
   }
 
@@ -1095,7 +1308,8 @@ class AudioEngine {
     if (!this.ready) {
       return;
     }
-    safeSet(this.ampEnvelope, envelopeState);
+    safeSet(this.ampEnvelope, getEnvelopeAudioState(envelopeState));
+    this.rebuildEffects();
   }
 
   updateModEnvelope(modEnvelopeState) {
@@ -1118,6 +1332,7 @@ class AudioEngine {
     this.applyModulationSnapshot();
   }
 
+  // source 的实例化方式差异最大，因此单独重建 source runtime 集合。
   rebuildSources() {
     if (!this.ready && !this.sourceBus) {
       return;
@@ -1134,8 +1349,11 @@ class AudioEngine {
     });
   }
 
+  // 主信号链重建器。
+  // 当前链路顺序固定为：
+  // sourceBus -> (filter?) -> (ampEnvelope or bypass) -> components* -> effects* -> masterVolume
   rebuildEffects() {
-    if (!this.masterVolume || !this.ampEnvelope) {
+    if (!this.masterVolume || !this.ampEnvelope || !this.ampBypass || !this.filter) {
       return;
     }
 
@@ -1144,9 +1362,24 @@ class AudioEngine {
     this.effectRuntimes.forEach((runtime) => runtime.dispose());
     this.effectRuntimes.clear();
 
+    this.sourceBus.disconnect();
+    this.filter.disconnect();
     this.ampEnvelope.disconnect();
+    this.ampBypass.disconnect();
 
-    let cursor = this.ampEnvelope;
+    let cursor = this.sourceBus;
+    // filter 与 amp envelope 都允许被当作“核心模块”整体移除或 bypass。
+    if (this.state.filter.enabled !== false) {
+      cursor.connect(this.filter);
+      cursor = this.filter;
+    }
+    if (this.state.envelope.enabled !== false) {
+      cursor.connect(this.ampEnvelope);
+      cursor = this.ampEnvelope;
+    } else {
+      cursor.connect(this.ampBypass);
+      cursor = this.ampBypass;
+    }
     this.state.components.forEach((module) => {
       if (!module.enabled) {
         return;
@@ -1158,6 +1391,7 @@ class AudioEngine {
       }
 
       const node = new RuntimeCtor(module.options);
+      // 某些 Tone 节点需要 start()/generate() 才会进入可用状态，统一兼容处理。
       if (typeof node.start === "function") {
         node.start();
       }
@@ -1220,6 +1454,7 @@ class AudioEngine {
     this.applyModulationSnapshot();
   }
 
+  // component / effect 当前都走整段链路重建，逻辑更稳，也便于处理顺序变化。
   updateComponent(module) {
     const existing = this.componentRuntimes.get(module.id);
     this.state.components = this.state.components.map((entry) => (entry.id === module.id ? deepClone(module) : entry));
@@ -1252,6 +1487,8 @@ class AudioEngine {
     this.applyModulationSnapshot();
   }
 
+  // 调制系统使用 requestAnimationFrame 做轻量级连续更新，
+  // 以便同时驱动 LFO 和自定义的 mod envelope。
   startModulationLoop() {
     if (this.modulationFrame) {
       cancelAnimationFrame(this.modulationFrame);
@@ -1267,6 +1504,7 @@ class AudioEngine {
     this.modulationFrame = requestAnimationFrame(tick);
   }
 
+  // 直接用数学函数生成 LFO 值，避免额外的 Tone.LFO 节点与复杂绑定管理。
   getLfoValue(time) {
     if (!this.state.lfo.enabled) {
       return 0;
@@ -1290,6 +1528,8 @@ class AudioEngine {
     return Math.sin(angle);
   }
 
+  // 手写一个包络状态机给 modulation 使用。
+  // 它和音量包络分离，因此不会受 Tone.AmplitudeEnvelope 内部状态限制。
   getModEnvelopeValue(time) {
     if (!this.state.modEnvelope.enabled) {
       return 0;
@@ -1369,6 +1609,10 @@ class AudioEngine {
   }
 
   resolveModBinding(targetId) {
+    // 把调制目标字符串解析成：
+    // 1. 当前基础值 base
+    // 2. 合法范围 min/max
+    // 3. 实际写入 Tone 参数的方法 apply()
     const targets = getModulationTargets(this.state);
     const meta = targets.find((entry) => entry.value === targetId);
     if (!meta) {
@@ -1450,6 +1694,7 @@ class AudioEngine {
     return null;
   }
 
+  // 每一帧把所有启用中的 route 累积成目标参数偏移，并应用到真实 Tone 节点上。
   applyModulationSnapshot() {
     if (!this.ready) {
       return;
@@ -1490,8 +1735,12 @@ class AudioEngine {
     this.lastModulatedTargets = targetsToRefresh;
   }
 
+  // source runtime 统一包装出：
+  // apply / triggerAttack / triggerRelease / releaseAll / dispose
+  // 让上层不用关心当前 source 到底是 oscillator、sample player 还是鼓合成器。
   createSourceRuntime(module) {
-    const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Synth;
+    const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
+    let moduleState = deepClone(module);
     const volumeNode = new Tone.Volume(module.enabled ? module.volume : -48);
     const panNode = new Tone.Panner(module.pan);
     volumeNode.connect(panNode);
@@ -1499,31 +1748,59 @@ class AudioEngine {
 
     let node;
     let auxEnvelope = null;
+    let activePlayerKey = "";
 
-    if (definition.runtime === "poly") {
-      node = new Tone.PolySynth(Tone[definition.voiceClass], module.options);
-      node.connect(volumeNode);
-    } else if (definition.runtime === "pluck") {
-      node = new Tone.PluckSynth(module.options);
-      node.connect(volumeNode);
-    } else if (definition.runtime === "noiseSynth") {
-      node = new Tone.NoiseSynth(module.options);
-      node.connect(volumeNode);
-    } else if (definition.runtime === "rawOscillator") {
-      node = new Tone.OmniOscillator(module.options);
+    const getNoteFrequency = (note) => Tone.Frequency(note).toFrequency();
+    const getPitchRatio = (note) => {
+      const root = Tone.Frequency(moduleState.rootNote || "C4").toFrequency();
+      return getNoteFrequency(note) / root;
+    };
+    const getPlayersKey = (note) => {
+      const octave = Number(String(note).replace(/[^0-9-]/g, "")) || 4;
+      if (octave <= 3) {
+        return "low";
+      }
+      if (octave >= 5) {
+        return "high";
+      }
+      return "mid";
+    };
+
+    if (definition.runtime === "pitchedSource") {
+      node = new Tone[definition.voiceClass](module.options);
       auxEnvelope = new Tone.AmplitudeEnvelope(module.ampEnvelope);
       node.connect(auxEnvelope);
       auxEnvelope.connect(volumeNode);
       node.start();
-    } else if (definition.runtime === "rawNoise") {
+    } else if (definition.runtime === "noise") {
       node = new Tone.Noise(module.options);
       auxEnvelope = new Tone.AmplitudeEnvelope(module.ampEnvelope);
       node.connect(auxEnvelope);
       auxEnvelope.connect(volumeNode);
       node.start();
-    } else {
-      node = new Tone.PolySynth(Tone.Synth, module.options);
+    } else if (definition.runtime === "grainPlayer") {
+      node = new Tone.GrainPlayer(moduleState.options);
+      auxEnvelope = new Tone.AmplitudeEnvelope(module.ampEnvelope);
+      node.connect(auxEnvelope);
+      auxEnvelope.connect(volumeNode);
+      node.start();
+    } else if (definition.runtime === "player") {
+      node = new Tone.Player(moduleState.options);
+      applyPlayerLikeOptions(node, moduleState.options);
       node.connect(volumeNode);
+    } else if (definition.runtime === "players") {
+      node = new Tone.Players(moduleState.options.urls || {});
+      applyPlayersOptions(node, moduleState.options);
+      node.connect(volumeNode);
+    } else if (definition.runtime === "monoTrigger") {
+      node = new Tone[definition.voiceClass](moduleState.options);
+      node.connect(volumeNode);
+    } else {
+      node = new Tone.Oscillator(moduleState.options);
+      auxEnvelope = new Tone.AmplitudeEnvelope(module.ampEnvelope);
+      node.connect(auxEnvelope);
+      auxEnvelope.connect(volumeNode);
+      node.start();
     }
 
     return {
@@ -1533,64 +1810,121 @@ class AudioEngine {
       panNode,
       auxEnvelope,
       apply: (nextModule) => {
-        rampParam(volumeNode.volume, nextModule.enabled ? nextModule.volume : -48);
-        rampParam(panNode.pan, nextModule.pan);
+        moduleState = deepClone(nextModule);
+        // enabled=false 不销毁节点，只把音量拉低，切换时更平滑。
+        rampParam(volumeNode.volume, moduleState.enabled ? moduleState.volume : -48);
+        rampParam(panNode.pan, moduleState.pan);
 
-        if (definition.runtime === "rawOscillator" || definition.runtime === "rawNoise") {
-          safeSet(node, nextModule.options);
-          if (auxEnvelope) {
-            safeSet(auxEnvelope, nextModule.ampEnvelope);
+        if (definition.runtime === "pitchedSource" || definition.runtime === "noise" || definition.runtime === "grainPlayer") {
+          safeSet(node, moduleState.options);
+          if (definition.runtime === "grainPlayer") {
+            applyPlayerLikeOptions(node, moduleState.options);
           }
+          if (auxEnvelope) {
+            safeSet(auxEnvelope, moduleState.ampEnvelope);
+          }
+        } else if (definition.runtime === "player") {
+          safeSet(node, moduleState.options);
+          applyPlayerLikeOptions(node, moduleState.options);
+        } else if (definition.runtime === "monoTrigger") {
+          safeSet(node, moduleState.options);
         } else {
-          safeSet(node, nextModule.options);
+          Object.entries(moduleState.options.urls || {}).forEach(([key, value]) => {
+            if (typeof node.player === "function" && node.player(key)) {
+              node.player(key).load(value);
+            }
+          });
+          applyPlayersOptions(node, moduleState.options);
         }
       },
       triggerAttack: (note, velocity) => {
-        if (!module.enabled) {
+        if (!moduleState.enabled) {
           return;
         }
 
-        if (definition.runtime === "poly") {
+        if (definition.runtime === "pitchedSource") {
+          if (node.frequency) {
+            node.frequency.rampTo(getNoteFrequency(note), 0.02);
+          }
+          auxEnvelope.triggerAttack(Tone.now(), velocity);
+        } else if (definition.runtime === "noise") {
+          auxEnvelope.triggerAttack(Tone.now(), velocity);
+        } else if (definition.runtime === "grainPlayer") {
+          if ("playbackRate" in node) {
+            node.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
+          }
+          auxEnvelope.triggerAttack(Tone.now(), velocity);
+        } else if (definition.runtime === "player") {
+          if ("playbackRate" in node) {
+            node.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
+          }
+          try {
+            node.stop(Tone.now());
+          } catch {}
+          node.start(Tone.now());
+        } else if (definition.runtime === "players") {
+          const key = getPlayersKey(note);
+          const player = typeof node.player === "function" ? node.player(key) : null;
+          if (player) {
+            activePlayerKey = key;
+            try {
+              player.stop(Tone.now());
+            } catch {}
+            if ("playbackRate" in player) {
+              player.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
+            }
+            player.start(Tone.now());
+          }
+        } else if (definition.runtime === "monoTrigger") {
           node.triggerAttack(note, Tone.now(), velocity);
-        } else if (definition.runtime === "pluck") {
-          node.triggerAttack(note, Tone.now());
-        } else if (definition.runtime === "noiseSynth") {
-          node.triggerAttack(Tone.now(), velocity);
-        } else if (definition.runtime === "rawOscillator") {
-          node.frequency.rampTo(Tone.Frequency(note).toFrequency(), 0.02);
-          auxEnvelope.triggerAttack(Tone.now(), velocity);
-        } else if (definition.runtime === "rawNoise") {
-          auxEnvelope.triggerAttack(Tone.now(), velocity);
         }
       },
       triggerRelease: (note) => {
-        if (definition.runtime === "poly") {
-          node.triggerRelease(note, Tone.now());
-        } else if (definition.runtime === "pluck") {
-          if (typeof node.triggerRelease === "function") {
-            node.triggerRelease(Tone.now());
-          }
-        } else if (definition.runtime === "noiseSynth") {
-          if (typeof node.triggerRelease === "function") {
-            node.triggerRelease(Tone.now());
-          }
-        } else if (definition.runtime === "rawOscillator" || definition.runtime === "rawNoise") {
+        if (definition.runtime === "pitchedSource" || definition.runtime === "noise" || definition.runtime === "grainPlayer") {
           auxEnvelope.triggerRelease(Tone.now());
+        } else if (definition.runtime === "player") {
+          try {
+            node.stop(Tone.now());
+          } catch {}
+        } else if (definition.runtime === "players") {
+          const player = activePlayerKey && typeof node.player === "function" ? node.player(activePlayerKey) : null;
+          if (player) {
+            try {
+              player.stop(Tone.now());
+            } catch {}
+          }
+          activePlayerKey = "";
+        } else if (definition.runtime === "monoTrigger" && typeof node.triggerRelease === "function") {
+          node.triggerRelease(note, Tone.now());
         }
       },
       releaseAll: () => {
-        if (definition.runtime === "poly") {
-          node.releaseAll(Tone.now());
-        } else if (definition.runtime === "pluck" || definition.runtime === "noiseSynth") {
+        if (definition.runtime === "pitchedSource" || definition.runtime === "noise" || definition.runtime === "grainPlayer") {
+          auxEnvelope.triggerRelease(Tone.now());
+        } else if (definition.runtime === "player") {
+          try {
+            node.stop(Tone.now());
+          } catch {}
+        } else if (definition.runtime === "players") {
+          ["low", "mid", "high"].forEach((key) => {
+            const player = typeof node.player === "function" ? node.player(key) : null;
+            if (player) {
+              try {
+                player.stop(Tone.now());
+              } catch {}
+            }
+          });
+          activePlayerKey = "";
+        } else if (definition.runtime === "monoTrigger") {
           if (typeof node.triggerRelease === "function") {
             node.triggerRelease(Tone.now());
           }
-        } else if (definition.runtime === "rawOscillator" || definition.runtime === "rawNoise") {
-          auxEnvelope.triggerRelease(Tone.now());
         }
       },
       dispose: () => {
-        node.dispose();
+        if (node && typeof node.dispose === "function") {
+          node.dispose();
+        }
         if (auxEnvelope) {
           auxEnvelope.dispose();
         }
@@ -1601,12 +1935,16 @@ class AudioEngine {
   }
 
   attack(note, velocity) {
+    // 全局音量包络和 mod envelope 只在“第一个音开始”时触发一次，
+    // 避免和多音 source 的内部包络重复冲突。
     if (!this.ready) {
       return;
     }
 
     if (!this.activeNotes.size) {
-      this.ampEnvelope.triggerAttack(Tone.now(), velocity);
+      if (this.state.envelope.enabled !== false) {
+        this.ampEnvelope.triggerAttack(Tone.now(), velocity);
+      }
       if (this.state.modEnvelope.enabled) {
         this.triggerModEnvelopeAttack(velocity);
       }
@@ -1625,7 +1963,9 @@ class AudioEngine {
     this.sourceRuntimes.forEach((runtime) => runtime.triggerRelease(note));
 
     if (!this.activeNotes.size) {
-      this.ampEnvelope.triggerRelease(Tone.now());
+      if (this.state.envelope.enabled !== false) {
+        this.ampEnvelope.triggerRelease(Tone.now());
+      }
       if (this.state.modEnvelope.enabled) {
         this.triggerModEnvelopeRelease();
       }
@@ -1638,7 +1978,9 @@ class AudioEngine {
       return;
     }
     this.sourceRuntimes.forEach((runtime) => runtime.releaseAll());
-    this.ampEnvelope.triggerRelease(Tone.now());
+    if (this.state.envelope.enabled !== false) {
+      this.ampEnvelope.triggerRelease(Tone.now());
+    }
     this.modEnvelopeState = { stage: "idle", velocity: 1, attackStart: 0, attackFrom: 0, decayStart: 0, releaseStart: 0, releaseFrom: 0 };
   }
 }
@@ -1649,6 +1991,7 @@ class AudioEngine {
 
 class ModularSynthApp {
   constructor() {
+    // state 是 UI 与音频引擎共享的唯一数据源。
     this.state = createBasePreset();
     this.engine = new AudioEngine();
     this.selectedPresetId = "init";
@@ -1657,8 +2000,13 @@ class ModularSynthApp {
     this.heldPointerNotes = new Set();
     this.activeNoteRefs = new Map();
     this.controlBindings = new Map();
+    this.filterVisualizationBinding = null;
     this.dragPatch = null;
     this.dragHoverTarget = "";
+    this.dragHoverSource = "";
+    this.cableVisuals = new Map();
+    this.patchFrame = 0;
+    this.patchScene = null;
     this.performance = {
       morphA: "init",
       morphB: "fmBell",
@@ -1677,16 +2025,20 @@ class ModularSynthApp {
 
     this.cacheElements();
     this.bindEvents();
+
+    // 应用初始化时只构建界面与动画循环，不主动启动音频上下文。
     this.renderAll();
     this.resizeScopeCanvas();
     this.drawOscilloscope();
     window.addEventListener("resize", () => {
       this.resizeScopeCanvas();
+      this.layoutModuleMasonry();
       this.drawPatchCables();
     });
   }
 
   cacheElements() {
+    // 集中缓存常用 DOM 节点，后续渲染时直接复用。
     this.elements = {
       statusText: document.getElementById("statusText"),
       statusDot: document.getElementById("statusDot"),
@@ -1711,6 +2063,7 @@ class ModularSynthApp {
   }
 
   bindEvents() {
+    // 所有可能的首次用户手势都尝试唤醒音频，兼容浏览器自动播放限制。
     const wakeAudio = () => {
       this.ensureAudioStarted();
     };
@@ -1735,6 +2088,7 @@ class ModularSynthApp {
 
       try {
         const text = await file.text();
+        // 导入文件后仍然要走 normalize，保证旧格式和缺省字段都能被兼容。
         const preset = normalizePreset(JSON.parse(text));
         const previousState = deepClone(this.state);
         this.state = preset;
@@ -1759,12 +2113,13 @@ class ModularSynthApp {
     try {
       await this.engine.start(this.state);
       this.audioBooted = true;
-      this.setStatus("Audio engine live. Play with the keyboard or the rack.", "live");
+      this.setStatus("LIVE", "live");
     } catch (error) {
-      this.setStatus(`Audio start failed: ${error.message}`, "error");
+      this.setStatus(`AUDIO START FAILED: ${error.message}`, "error");
     }
   }
 
+  // 统一更新顶部状态提示。
   setStatus(message, tone = "neutral") {
     this.elements.statusText.textContent = message;
     this.elements.statusDot.classList.remove("live", "error");
@@ -1776,20 +2131,37 @@ class ModularSynthApp {
     }
   }
 
+  // “Add Module” 下拉列表会随着核心模块的显隐动态变化。
   populateAddModuleSelect() {
     const select = this.elements.addModuleSelect;
-    if (!select || select.options.length) {
+    if (!select) {
       return;
     }
 
-    getAddableModuleOptions().forEach((option) => {
+    const previousValue = select.value;
+    select.innerHTML = "";
+
+    getAddableModuleOptions()
+      .filter((option) => {
+        if (!option.value.startsWith("core:")) {
+          return true;
+        }
+        const key = option.value.split(":")[1];
+        return this.state.ui.visibleModules[key] === false;
+      })
+      .forEach((option) => {
       const element = document.createElement("option");
       element.value = option.value;
       element.textContent = option.label;
       select.append(element);
-    });
+      });
+
+    if (previousValue && [...select.options].some((option) => option.value === previousValue)) {
+      select.value = previousValue;
+    }
   }
 
+  // 根据下拉值把模块加回机架，并同步重建音频链。
   handleAddModule() {
     const value = this.elements.addModuleSelect?.value;
     if (!value) {
@@ -1797,7 +2169,18 @@ class ModularSynthApp {
     }
 
     const [kind, type] = value.split(":");
-    if (kind === "source") {
+    if (kind === "core") {
+      this.state.ui.visibleModules[type] = true;
+      if (type === "filter") {
+        this.state.filter.enabled = true;
+      } else if (type === "envelope") {
+        this.state.envelope.enabled = true;
+      } else if (type === "modEnvelope") {
+        this.state.modEnvelope.enabled = true;
+      } else if (type === "lfo") {
+        this.state.lfo.enabled = true;
+      }
+    } else if (kind === "source") {
       this.state.sources.push(createSourceModule(type));
     } else if (kind === "component") {
       this.state.components.push(createComponentModule(type));
@@ -1812,8 +2195,11 @@ class ModularSynthApp {
     this.engine.fullSync(this.state);
   }
 
+  // 全量重渲染入口。
+  // 当前实现选择“状态驱动整段重建 DOM”，简化了复杂交互下的一致性问题。
   renderAll(previousState = null) {
     this.sanitizeModulationState();
+    this.populateAddModuleSelect();
     this.controlBindings = new Map();
     const sections = [
       ["global strip", () => this.renderGlobalStrip()],
@@ -1825,7 +2211,6 @@ class ModularSynthApp {
       ["effects", () => this.renderEffectRack()],
       ["keyboard", () => this.renderKeyboard()],
       ["transport", () => this.updateTransportInfo()],
-      ["patch cables", () => this.drawPatchCables()],
     ];
 
     for (const [label, task] of sections) {
@@ -1837,11 +2222,15 @@ class ModularSynthApp {
       }
     }
 
+    this.layoutModuleMasonry();
+    this.drawPatchCables();
+
     if (previousState) {
       this.animateControlTransition(previousState, this.state);
     }
   }
 
+  // 删除或隐藏模块后，连到失效目标的 modulation route 会在这里被清理。
   sanitizeModulationState() {
     const validTargets = new Set(getModulationTargets(this.state).map((target) => target.value));
     const sanitizeList = (routes) =>
@@ -1860,6 +2249,41 @@ class ModularSynthApp {
     }
   }
 
+  // 手工瀑布流布局：把不同高度的卡片按最短列依次摆放，减少留白。
+  layoutModuleMasonry() {
+    const container = this.elements.signalFlow;
+    if (!container) {
+      return;
+    }
+
+    const cards = [...container.querySelectorAll(".module-card")];
+    if (!cards.length) {
+      container.style.height = "0px";
+      return;
+    }
+
+    const gap = 10;
+    const containerWidth = Math.max(240, container.clientWidth);
+    const minColumnWidth = 246;
+    const columnCount = Math.max(1, Math.floor((containerWidth + gap) / (minColumnWidth + gap)));
+    const columnWidth = Math.floor((containerWidth - gap * (columnCount - 1)) / columnCount);
+    const columnHeights = new Array(columnCount).fill(0);
+
+    cards.forEach((card) => {
+      card.style.position = "absolute";
+      card.style.width = `${columnWidth}px`;
+      const shortestColumn = columnHeights.indexOf(Math.min(...columnHeights));
+      const left = shortestColumn * (columnWidth + gap);
+      const top = columnHeights[shortestColumn];
+      card.style.left = `${left}px`;
+      card.style.top = `${top}px`;
+      columnHeights[shortestColumn] += card.offsetHeight + gap;
+    });
+
+    container.style.height = `${Math.max(...columnHeights) - gap}px`;
+  }
+
+  // 右侧固定边栏：预设、导入导出、MIDI、宏控制和主音量都在这里生成。
   renderGlobalStrip() {
     if (!this.elements.presetControls || !this.elements.masterControls) {
       return;
@@ -2008,6 +2432,19 @@ class ModularSynthApp {
         formatter: formatPercent,
         onInput: (value) => this.applyMotionMacro(value),
       }),
+      this.createRangeControl({
+        label: "Cable Tension",
+        accent: "component",
+        min: 0.2,
+        max: 1,
+        step: 0.01,
+        value: this.state.ui.cableTension ?? 0.78,
+        formatter: formatPercent,
+        onInput: (value) => {
+          this.state.ui.cableTension = value;
+          this.drawPatchCables();
+        },
+      }),
     );
 
     this.elements.presetControls.append(morphCluster, macroCluster);
@@ -2033,58 +2470,46 @@ class ModularSynthApp {
     this.elements.masterControls.append(masterFader);
   }
 
+  // Source rack 负责把所有声源实例渲染成模块卡片。
   renderSourceRack() {
     if (!this.elements.sourceRack) {
       return;
     }
     this.elements.sourceRack.innerHTML = "";
     this.state.sources.forEach((module, index) => {
-      const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Synth;
+      const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
       const card = this.createModuleCard({
         accent: definition.accent,
         kicker: definition.tag,
         title: module.type,
+        titleOptions: Object.keys(SOURCE_LIBRARY).map((type) => ({ label: type, value: type })),
+        onTitleChange: (value) => {
+          const replacement = createSourceModule(value);
+          replacement.id = module.id;
+          replacement.volume = module.volume;
+          replacement.pan = module.pan;
+          replacement.enabled = module.enabled;
+          this.state.sources[index] = replacement;
+          this.selectedPresetId = "custom";
+          this.renderAll();
+          this.engine.fullSync(this.state);
+        },
         moduleRef: module.id,
+        enabled: module.enabled,
+        onToggleEnabled: () => {
+          module.enabled = !module.enabled;
+          this.selectedPresetId = "custom";
+          this.engine.updateSource(module);
+          this.renderAll();
+        },
         onRemove: () => {
           this.state.sources.splice(index, 1);
           this.selectedPresetId = "custom";
           this.renderAll();
           this.engine.fullSync(this.state);
         },
-        removable: this.state.sources.length > 1,
+        removable: true,
       });
-
-      const headGrid = document.createElement("div");
-      headGrid.className = "module-grid compact";
-      headGrid.append(
-        this.createSelectControl({
-          label: "Source Type",
-          options: Object.keys(SOURCE_LIBRARY).map((type) => ({ label: type, value: type })),
-          value: module.type,
-          onChange: (value) => {
-            const replacement = createSourceModule(value);
-            replacement.id = module.id;
-            replacement.volume = module.volume;
-            replacement.pan = module.pan;
-            replacement.enabled = module.enabled;
-            this.state.sources[index] = replacement;
-            this.selectedPresetId = "custom";
-            this.renderAll();
-            this.engine.fullSync(this.state);
-          },
-        }),
-        this.createToggleControl({
-          label: "Enabled",
-          value: module.enabled,
-          accent: definition.accent,
-          onToggle: () => {
-            module.enabled = !module.enabled;
-            this.selectedPresetId = "custom";
-            this.engine.updateSource(module);
-            this.renderAll();
-          },
-        }),
-      );
 
       const controls = document.createElement("div");
       controls.className = "module-grid";
@@ -2123,6 +2548,18 @@ class ModularSynthApp {
         }),
       );
 
+      this.getSourceSampleSlots(module).forEach((slot) => {
+        controls.append(
+          this.createAudioImportControl({
+            label: slot.label,
+            value: getByPath(module, slot.namePath) || slot.fallbackName,
+            onSelect: async (file) => {
+              await this.importSourceSample(module, index, slot, file);
+            },
+          }),
+        );
+      });
+
       definition.controls.forEach((control) => {
         const patchTarget = control.path === "options.detune" ? `source:${module.id}:detune` : null;
         controls.append(
@@ -2137,23 +2574,152 @@ class ModularSynthApp {
         );
       });
 
-      card.append(headGrid, controls);
+      card.append(controls);
       this.elements.sourceRack.append(card);
     });
   }
 
+  getSourceSampleSlots(module) {
+    if (module.type === "Player") {
+      return [
+        {
+          label: "Sample",
+          path: "options.url",
+          namePath: "assetName",
+          fallbackName: "Factory Pluck",
+        },
+      ];
+    }
+
+    if (module.type === "GrainPlayer") {
+      return [
+        {
+          label: "Sample",
+          path: "options.url",
+          namePath: "assetName",
+          fallbackName: "Factory Texture",
+        },
+      ];
+    }
+
+    if (module.type === "Players") {
+      return [
+        {
+          label: "Low Sample",
+          path: "options.urls.low",
+          namePath: "sampleNames.low",
+          fallbackName: "Factory Pluck",
+        },
+        {
+          label: "Mid Sample",
+          path: "options.urls.mid",
+          namePath: "sampleNames.mid",
+          fallbackName: "Factory Bell",
+        },
+        {
+          label: "High Sample",
+          path: "options.urls.high",
+          namePath: "sampleNames.high",
+          fallbackName: "Factory Texture",
+        },
+      ];
+    }
+
+    return [];
+  }
+
+  async importSourceSample(module, index, slot, file) {
+    const dataUrl = await readFileAsDataUrl(file);
+    setByPath(module, slot.path, dataUrl);
+    setByPath(module, slot.namePath, file.name);
+    this.state.sources[index] = normalizeSourceModule(module);
+    this.selectedPresetId = "custom";
+    this.renderAll();
+    this.engine.fullSync(this.state);
+    this.setStatus(`Loaded ${file.name} into ${module.type}.`, this.audioBooted ? "live" : "neutral");
+  }
+
+  createAudioImportControl({ label, value, onSelect }) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "control control-file";
+
+    const controlLabel = document.createElement("div");
+    controlLabel.className = "control-label";
+    const strong = document.createElement("strong");
+    strong.textContent = label;
+    controlLabel.append(strong);
+
+    const row = document.createElement("div");
+    row.className = "file-control-row";
+
+    const fileName = document.createElement("div");
+    fileName.className = "file-chip";
+    fileName.textContent = value || "Choose audio file";
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "action-button file-action";
+    trigger.textContent = "Import";
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "audio/*";
+    input.className = "file-input";
+
+    trigger.addEventListener("click", () => input.click());
+    input.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      input.value = "";
+      if (!file) {
+        return;
+      }
+      try {
+        await onSelect(file);
+      } catch (error) {
+        this.setStatus(error?.message || "Unable to import the selected audio file.", "error");
+      }
+    });
+
+    row.append(fileName, trigger, input);
+    wrapper.append(controlLabel, row);
+    return wrapper;
+  }
+
+  // Filter 属于核心模块，因此支持“隐藏模块”和“仅关闭音频处理”两层状态。
   renderFilterModule() {
     if (!this.elements.filterRack) {
       return;
     }
     this.elements.filterRack.innerHTML = "";
+    this.filterVisualizationBinding = null;
+    if (this.state.ui.visibleModules.filter === false) {
+      return;
+    }
     const card = this.createModuleCard({
       accent: "filter",
       kicker: "Component",
       title: "Filter",
       moduleRef: "filter-core",
+      enabled: this.state.filter.enabled !== false,
+      onToggleEnabled: () => {
+        this.state.filter.enabled = this.state.filter.enabled === false;
+        this.selectedPresetId = "custom";
+        this.engine.updateFilter(this.state.filter);
+        this.renderAll();
+      },
+      removable: this.state.ui.visibleModules.filter,
+      onRemove: () => {
+        this.state.ui.visibleModules.filter = false;
+        this.state.filter.enabled = false;
+        this.selectedPresetId = "custom";
+        this.renderAll();
+        this.engine.fullSync(this.state);
+      },
     });
 
+    const filterVisualization = this.createFilterVisualization(this.state.filter);
+    // 保存 update 引用，方便宏控制直接刷新可视化而不重建整个模块。
+    this.filterVisualizationBinding = filterVisualization.update;
     const headGrid = document.createElement("div");
     headGrid.className = "module-grid compact";
     headGrid.append(
@@ -2164,6 +2730,7 @@ class ModularSynthApp {
         onChange: (value) => {
           this.state.filter.type = value;
           this.selectedPresetId = "custom";
+          filterVisualization.update(this.state.filter);
           this.engine.updateFilter(this.state.filter);
         },
       }),
@@ -2179,6 +2746,7 @@ class ModularSynthApp {
         onChange: (value) => {
           this.state.filter.rolloff = Number(value);
           this.selectedPresetId = "custom";
+          filterVisualization.update(this.state.filter);
           this.engine.updateFilter(this.state.filter);
         },
       }),
@@ -2186,7 +2754,7 @@ class ModularSynthApp {
 
     const controls = document.createElement("div");
     controls.className = "module-grid";
-    card.append(this.createFilterVisualization(this.state.filter));
+    card.append(filterVisualization.element);
     controls.append(
       this.createRangeControl({
         label: "Cutoff",
@@ -2201,6 +2769,7 @@ class ModularSynthApp {
         onInput: (value) => {
           this.state.filter.frequency = value;
           this.selectedPresetId = "custom";
+          filterVisualization.update(this.state.filter);
           this.engine.updateFilter(this.state.filter);
         },
       }),
@@ -2217,6 +2786,7 @@ class ModularSynthApp {
         onInput: (value) => {
           this.state.filter.Q = value;
           this.selectedPresetId = "custom";
+          filterVisualization.update(this.state.filter);
           this.engine.updateFilter(this.state.filter);
         },
       }),
@@ -2226,22 +2796,39 @@ class ModularSynthApp {
     this.elements.filterRack.append(card);
   }
 
+  // Envelope 区同时承载音量包络和调制包络两个模块。
   renderEnvelopeModule() {
     if (!this.elements.envelopeRack) {
       return;
     }
     this.elements.envelopeRack.innerHTML = "";
-    const ampCard = this.createModuleCard({
+    if (this.state.ui.visibleModules.envelope !== false) {
+      const ampCard = this.createModuleCard({
       accent: "env",
       kicker: "Component",
       title: "Amp Envelope",
       moduleRef: "amp-envelope",
-    });
+      enabled: this.state.envelope.enabled !== false,
+      onToggleEnabled: () => {
+        this.state.envelope.enabled = this.state.envelope.enabled === false;
+        this.selectedPresetId = "custom";
+        this.engine.updateEnvelope(this.state.envelope);
+        this.renderAll();
+      },
+      removable: this.state.ui.visibleModules.envelope,
+      onRemove: () => {
+        this.state.ui.visibleModules.envelope = false;
+        this.state.envelope.enabled = false;
+        this.selectedPresetId = "custom";
+        this.renderAll();
+        this.engine.fullSync(this.state);
+      },
+      });
 
-    const controls = document.createElement("div");
-    controls.className = "module-grid";
-    ampCard.append(this.createEnvelopeVisualization(this.state.envelope, "env"));
-    ["attack", "decay", "sustain", "release"].forEach((key) => {
+      const controls = document.createElement("div");
+      controls.className = "module-grid";
+      ampCard.append(this.createEnvelopeVisualization(this.state.envelope, "env"));
+      ["attack", "decay", "sustain", "release"].forEach((key) => {
       controls.append(
         this.createRangeControl({
           label: key.charAt(0).toUpperCase() + key.slice(1),
@@ -2258,35 +2845,39 @@ class ModularSynthApp {
             this.engine.updateEnvelope(this.state.envelope);
           },
         }),
-      );
-    });
+        );
+      });
 
-    ampCard.append(controls);
-    this.elements.envelopeRack.append(ampCard);
+      ampCard.append(controls);
+      this.elements.envelopeRack.append(ampCard);
+    }
+
+    if (this.state.ui.visibleModules.modEnvelope === false) {
+      return;
+    }
 
     const modCard = this.createModuleCard({
       accent: "env",
       kicker: "Modulation",
       title: "Mod Envelope",
       moduleRef: "mod-envelope",
+      headerPatchPoint: { accent: "env", sourceKey: "envelopeRoutes" },
+      enabled: this.state.modEnvelope.enabled,
+      onToggleEnabled: () => {
+        this.state.modEnvelope.enabled = !this.state.modEnvelope.enabled;
+        this.selectedPresetId = "custom";
+        this.engine.updateModEnvelope(this.state.modEnvelope);
+        this.renderAll();
+      },
+      removable: this.state.ui.visibleModules.modEnvelope,
+      onRemove: () => {
+        this.state.ui.visibleModules.modEnvelope = false;
+        this.state.modEnvelope.enabled = false;
+        this.selectedPresetId = "custom";
+        this.renderAll();
+        this.engine.fullSync(this.state);
+      },
     });
-
-    const modHead = document.createElement("div");
-    modHead.className = "module-grid compact";
-    modHead.append(
-      this.createToggleControl({
-        label: "Enabled",
-        value: this.state.modEnvelope.enabled,
-        accent: "env",
-        onToggle: () => {
-          this.state.modEnvelope.enabled = !this.state.modEnvelope.enabled;
-          this.selectedPresetId = "custom";
-          this.engine.updateModEnvelope(this.state.modEnvelope);
-          this.renderEnvelopeModule();
-          this.drawPatchCables();
-        },
-      }),
-    );
 
     const modControls = document.createElement("div");
     modControls.className = "module-grid";
@@ -2310,37 +2901,45 @@ class ModularSynthApp {
       );
     });
 
-    modCard.append(modHead, modControls, this.renderRouteRack("envelopeRoutes", "env"));
+    modCard.append(modControls, this.renderRouteRack("envelopeRoutes", "env"));
     this.elements.envelopeRack.append(modCard);
   }
 
+  // LFO 模块既可以作为调制源，也可以被整体移除出机架。
   renderLfoModule() {
     if (!this.elements.lfoRack) {
       return;
     }
     this.elements.lfoRack.innerHTML = "";
+    if (this.state.ui.visibleModules.lfo === false) {
+      return;
+    }
     const card = this.createModuleCard({
       accent: "lfo",
       kicker: "Modulation",
       title: "LFO",
       moduleRef: "lfo-core",
+      headerPatchPoint: { accent: "lfo", sourceKey: "lfoRoutes" },
+      enabled: this.state.lfo.enabled,
+      onToggleEnabled: () => {
+        this.state.lfo.enabled = !this.state.lfo.enabled;
+        this.selectedPresetId = "custom";
+        this.engine.updateLfo(this.state.lfo);
+        this.renderAll();
+      },
+      removable: this.state.ui.visibleModules.lfo,
+      onRemove: () => {
+        this.state.ui.visibleModules.lfo = false;
+        this.state.lfo.enabled = false;
+        this.selectedPresetId = "custom";
+        this.renderAll();
+        this.engine.fullSync(this.state);
+      },
     });
 
     const headGrid = document.createElement("div");
     headGrid.className = "module-grid compact";
     headGrid.append(
-      this.createToggleControl({
-        label: "Enabled",
-        value: this.state.lfo.enabled,
-        accent: "lfo",
-        onToggle: () => {
-          this.state.lfo.enabled = !this.state.lfo.enabled;
-          this.selectedPresetId = "custom";
-          this.engine.updateLfo(this.state.lfo);
-          this.renderLfoModule();
-          this.drawPatchCables();
-        },
-      }),
       this.createSelectControl({
         label: "Wave",
         options: SHARED_WAVE_OPTIONS,
@@ -2406,6 +3005,7 @@ class ModularSynthApp {
     this.elements.lfoRack.append(card);
   }
 
+  // Component rack 用于串接压缩、增益、EQ 等工具型节点。
   renderComponentsRack() {
     if (!this.elements.componentRack) {
       return;
@@ -2417,46 +3017,33 @@ class ModularSynthApp {
         accent: definition.accent,
         kicker: definition.tag,
         title: module.type,
+        titleOptions: Object.keys(COMPONENT_LIBRARY).map((type) => ({ label: type, value: type })),
+        onTitleChange: (value) => {
+          const replacement = createComponentModule(value);
+          replacement.id = module.id;
+          replacement.enabled = module.enabled;
+          this.state.components[index] = replacement;
+          this.selectedPresetId = "custom";
+          this.renderAll();
+          this.engine.fullSync(this.state);
+        },
         moduleRef: module.id,
+        enabled: module.enabled,
+        onToggleEnabled: () => {
+          module.enabled = !module.enabled;
+          this.selectedPresetId = "custom";
+          this.state.components[index] = module;
+          this.engine.fullSync(this.state);
+          this.renderAll();
+        },
         onRemove: () => {
           this.state.components.splice(index, 1);
           this.selectedPresetId = "custom";
           this.renderAll();
           this.engine.fullSync(this.state);
         },
-        removable: this.state.components.length > 0,
+        removable: true,
       });
-
-      const headGrid = document.createElement("div");
-      headGrid.className = "module-grid compact";
-      headGrid.append(
-        this.createSelectControl({
-          label: "Component Type",
-          options: Object.keys(COMPONENT_LIBRARY).map((type) => ({ label: type, value: type })),
-          value: module.type,
-          onChange: (value) => {
-            const replacement = createComponentModule(value);
-            replacement.id = module.id;
-            replacement.enabled = module.enabled;
-            this.state.components[index] = replacement;
-            this.selectedPresetId = "custom";
-            this.renderAll();
-            this.engine.fullSync(this.state);
-          },
-        }),
-        this.createToggleControl({
-          label: "Enabled",
-          value: module.enabled,
-          accent: definition.accent,
-          onToggle: () => {
-            module.enabled = !module.enabled;
-            this.selectedPresetId = "custom";
-            this.state.components[index] = module;
-            this.engine.fullSync(this.state);
-            this.renderAll();
-          },
-        }),
-      );
 
       const controls = document.createElement("div");
       controls.className = "module-grid";
@@ -2483,11 +3070,12 @@ class ModularSynthApp {
         );
       });
 
-      card.append(headGrid, controls);
+      card.append(controls);
       this.elements.componentRack.append(card);
     });
   }
 
+  // Effect rack 用于串接带 wet/feedback 等空间与调制效果。
   renderEffectRack() {
     if (!this.elements.effectRack) {
       return;
@@ -2499,46 +3087,33 @@ class ModularSynthApp {
         accent: definition.accent,
         kicker: definition.tag,
         title: module.type,
+        titleOptions: Object.keys(EFFECT_LIBRARY).map((type) => ({ label: type, value: type })),
+        onTitleChange: (value) => {
+          const replacement = createEffectModule(value);
+          replacement.id = module.id;
+          replacement.enabled = module.enabled;
+          this.state.effects[index] = replacement;
+          this.selectedPresetId = "custom";
+          this.renderAll();
+          this.engine.fullSync(this.state);
+        },
         moduleRef: module.id,
+        enabled: module.enabled,
+        onToggleEnabled: () => {
+          module.enabled = !module.enabled;
+          this.selectedPresetId = "custom";
+          this.state.effects[index] = module;
+          this.engine.fullSync(this.state);
+          this.renderAll();
+        },
         onRemove: () => {
           this.state.effects.splice(index, 1);
           this.selectedPresetId = "custom";
           this.renderAll();
           this.engine.fullSync(this.state);
         },
-        removable: this.state.effects.length > 0,
+        removable: true,
       });
-
-      const headGrid = document.createElement("div");
-      headGrid.className = "module-grid compact";
-      headGrid.append(
-        this.createSelectControl({
-          label: "Effect Type",
-          options: Object.keys(EFFECT_LIBRARY).map((type) => ({ label: type, value: type })),
-          value: module.type,
-          onChange: (value) => {
-            const replacement = createEffectModule(value);
-            replacement.id = module.id;
-            replacement.enabled = module.enabled;
-            this.state.effects[index] = replacement;
-            this.selectedPresetId = "custom";
-            this.renderAll();
-            this.engine.fullSync(this.state);
-          },
-        }),
-        this.createToggleControl({
-          label: "Enabled",
-          value: module.enabled,
-          accent: definition.accent,
-          onToggle: () => {
-            module.enabled = !module.enabled;
-            this.selectedPresetId = "custom";
-            this.state.effects[index] = module;
-            this.engine.fullSync(this.state);
-            this.renderAll();
-          },
-        }),
-      );
 
       const controls = document.createElement("div");
       controls.className = "module-grid";
@@ -2564,20 +3139,26 @@ class ModularSynthApp {
         );
       });
 
-      card.append(headGrid, controls);
+      card.append(controls);
       this.elements.effectRack.append(card);
     });
   }
 
+  // 虚拟键盘根据当前八度和屏幕宽度实时重建。
   renderKeyboard() {
     if (!this.elements.keyboard) {
       return;
     }
     this.elements.keyboard.innerHTML = "";
 
-    const whiteKeyWidth = 84;
-    const keyboardWidth = whiteKeyWidth * 8 + 28;
+    const compactLayout = window.innerWidth < 940;
+    const whiteKeyWidth = compactLayout ? 68 : 72;
+    const blackKeyWidth = compactLayout ? 42 : 46;
+    const keyboardPadding = 10;
+    const keyboardWidth = whiteKeyWidth * 8 + keyboardPadding * 2;
     this.elements.keyboard.style.width = `${keyboardWidth}px`;
+    this.elements.keyboard.style.setProperty("--white-key-width", `${whiteKeyWidth}px`);
+    this.elements.keyboard.style.setProperty("--black-key-width", `${blackKeyWidth}px`);
 
     KEYBOARD_LAYOUT.forEach((entry) => {
       const note = noteFromOffset(this.state.global.octave, entry.offset);
@@ -2586,7 +3167,10 @@ class ModularSynthApp {
       key.className = entry.black ? "black-key" : "white-key";
       key.dataset.note = note;
       key.dataset.key = entry.key;
-      key.style.left = `${14 + entry.whiteIndex * whiteKeyWidth - (entry.black ? 28 : 0)}px`;
+      const left = entry.black
+        ? keyboardPadding + (entry.whiteIndex + 1) * whiteKeyWidth - blackKeyWidth / 2
+        : keyboardPadding + entry.whiteIndex * whiteKeyWidth;
+      key.style.left = `${left}px`;
 
       const cap = document.createElement("div");
       cap.className = "key-cap";
@@ -2628,6 +3212,7 @@ class ModularSynthApp {
     });
   }
 
+  // 按定义表把模块参数翻译为 select / range 控件。
   renderModuleControl(module, control, onCommit, accent, bindingPath = null, patchTarget = null) {
     const path = control.path;
     const value = getByPath(module, path);
@@ -2639,6 +3224,19 @@ class ModularSynthApp {
         value,
         accent,
         onChange: (nextValue) => {
+          setByPath(module, path, nextValue);
+          this.selectedPresetId = "custom";
+          onCommit();
+        },
+      });
+    }
+
+    if (control.kind === "toggle") {
+      return this.createToggleControl({
+        label: control.label,
+        accent,
+        value: Boolean(value),
+        onToggle: (nextValue) => {
           setByPath(module, path, nextValue);
           this.selectedPresetId = "custom";
           onCommit();
@@ -2664,6 +3262,7 @@ class ModularSynthApp {
     });
   }
 
+  // 渲染 LFO / Mod Envelope 的路由列表，同时提供拖线句柄。
   renderRouteRack(routeKey, accent) {
     const wrapper = document.createElement("div");
     wrapper.className = "route-rack";
@@ -2685,12 +3284,6 @@ class ModularSynthApp {
           label: `Route ${index + 1}`,
           options: routeOptions,
           value: route.target,
-          patchPoint: {
-            accent,
-            routeKey,
-            routeId: route.id,
-            routeIndex: index,
-          },
           onChange: (value) => {
             route.target = value;
             this.selectedPresetId = "custom";
@@ -2750,7 +3343,20 @@ class ModularSynthApp {
     return wrapper;
   }
 
-  createModuleCard({ accent, kicker, title, onRemove = null, removable = false, moduleRef = null }) {
+  createModuleCard({
+    accent,
+    kicker,
+    title,
+    titleOptions = null,
+    onTitleChange = null,
+    onRemove = null,
+    removable = false,
+    moduleRef = null,
+    enabled = true,
+    onToggleEnabled = null,
+    headerPatchPoint = null,
+  }) {
+    // 所有模块卡片共享同一个骨架结构，避免不同模块出现不同的头部交互模式。
     const card = document.createElement("section");
     card.className = "module-card";
     card.dataset.accent = accent;
@@ -2762,20 +3368,28 @@ class ModularSynthApp {
     head.className = "module-head";
 
     const titleBlock = document.createElement("div");
-    const tag = document.createElement("span");
-    tag.className = "module-tag";
-    tag.textContent = kicker;
-    const titleNode = document.createElement("h3");
-    titleNode.textContent = title;
-    titleBlock.append(tag, titleNode);
+    titleBlock.className = "module-title-row";
+    if (titleOptions && onTitleChange) {
+      titleBlock.append(this.createTitleSelect({ accent, title, options: titleOptions, value: title, onChange: onTitleChange }));
+    } else {
+      const titleNode = document.createElement("h3");
+      titleNode.textContent = title;
+      titleBlock.append(titleNode);
+    }
+    if (headerPatchPoint) {
+      titleBlock.append(this.createPatchPoint(headerPatchPoint));
+    }
 
     const actions = document.createElement("div");
     actions.className = "module-actions";
+    if (onToggleEnabled) {
+      actions.append(this.createModuleSwitch({ enabled, accent, onToggle: onToggleEnabled }));
+    }
     if (removable && onRemove) {
       const removeButton = document.createElement("button");
       removeButton.type = "button";
-      removeButton.className = "pill-button destructive-button";
-      removeButton.textContent = "Remove";
+      removeButton.className = "module-remove";
+      removeButton.textContent = "×";
       removeButton.addEventListener("click", onRemove);
       actions.append(removeButton);
     }
@@ -2786,12 +3400,45 @@ class ModularSynthApp {
     return card;
   }
 
+  createTitleSelect({ accent, title, value, options, onChange }) {
+    // 模块标题右侧的小箭头实际上是一个轻量下拉，不额外占一整行表单空间。
+    const wrap = document.createElement("label");
+    wrap.className = "module-title-select";
+    wrap.style.setProperty("--accent", `var(--${accent})`);
+
+    const select = document.createElement("select");
+    select.className = "module-title-input";
+    options.forEach((option) => {
+      const element = document.createElement("option");
+      element.value = option.value;
+      element.textContent = option.label;
+      select.append(element);
+    });
+    select.value = value;
+    select.setAttribute("aria-label", title);
+    select.addEventListener("change", (event) => onChange(event.target.value));
+    wrap.append(select);
+    return wrap;
+  }
+
+  createModuleSwitch({ enabled, accent, onToggle }) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `module-switch ${enabled ? "is-on" : ""}`;
+    button.style.setProperty("--accent", `var(--${accent})`);
+    button.setAttribute("aria-label", enabled ? "Disable module" : "Enable module");
+    button.addEventListener("click", onToggle);
+    return button;
+  }
+
+  // 某个参数是否已被任何调制源连接，用于参数标题后 patch 点的高亮。
   isTargetPatched(targetValue) {
     return [...(this.state.modulation?.lfoRoutes || []), ...(this.state.modulation?.envelopeRoutes || [])]
       .some((route) => route.enabled !== false && route.target === targetValue);
   }
 
-  createPatchPoint({ accent, targetId = null, routeKey = null, routeId = null, routeIndex = 0 }) {
+  // patch point 可以表示参数输入端，也可以表示调制源输出端。
+  createPatchPoint({ accent, targetId = null, sourceKey = null }) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "patch-point";
@@ -2807,21 +3454,17 @@ class ModularSynthApp {
       }
     }
 
-    if (routeId) {
-      button.dataset.routeHandle = routeId;
-      button.dataset.routeKey = routeKey;
-      if (this.dragPatch?.routeId === routeId) {
-        button.classList.add("is-active");
+    if (sourceKey) {
+      button.dataset.modSource = sourceKey;
+      if (this.dragHoverSource === sourceKey) {
+        button.classList.add("is-hover");
       }
-      button.addEventListener("pointerdown", (event) => {
-        event.preventDefault();
-        this.beginPatchDrag(event, routeKey, routeId, accent, routeIndex);
-      });
     }
 
     return button;
   }
 
+  // Envelope 可视化是抽象的 ADSR 轮廓图，不追求精确时间比例，只强调形状关系。
   createEnvelopeVisualization(envelopeState, accent = "env") {
     const wrap = document.createElement("div");
     wrap.className = "module-visual envelope-visual";
@@ -2868,6 +3511,8 @@ class ModularSynthApp {
     return wrap;
   }
 
+  // Filter 可视化使用几何近似来表达滤波器响应趋势。
+  // 核心关注点是：type、cutoff、Q、slope 的相对变化能被直观看到。
   createFilterVisualization(filterState) {
     const wrap = document.createElement("div");
     wrap.className = "module-visual filter-visual";
@@ -2876,78 +3521,153 @@ class ModularSynthApp {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 220 90");
 
-    const type = filterState.type || "lowpass";
-    const cutoffNorm = clamp((Math.log10(Math.max(20, filterState.frequency)) - Math.log10(20)) / (Math.log10(12000) - Math.log10(20)), 0, 1);
-    const resonance = clamp(Number(filterState.Q || 0.5) / 12, 0, 1);
-    const cutoffX = 42 + cutoffNorm * 142;
-    const bumpX = cutoffX + 10;
-    const baseY = 62;
-    const floorY = 80;
-    const peakY = baseY - resonance * 28;
-    let points;
+    const left = 8;
+    const right = 212;
+    const top = 14;
+    const floor = 78;
+    const plateau = 50;
+    const clampX = (value) => clamp(value, left, right);
 
-    if (type === "highpass") {
-      points = [
-        [16, floorY],
-        [cutoffX - 22, floorY],
-        [cutoffX, peakY],
-        [cutoffX + 24, baseY],
-        [204, baseY],
-      ];
-    } else if (type === "bandpass") {
-      points = [
-        [16, floorY],
-        [cutoffX - 34, floorY],
-        [cutoffX, peakY],
-        [cutoffX + 34, floorY],
-        [204, floorY],
-      ];
-    } else if (type === "notch") {
-      points = [
-        [16, baseY],
-        [cutoffX - 26, baseY],
-        [cutoffX, floorY],
-        [cutoffX + 26, baseY],
-        [204, baseY],
-      ];
-    } else {
-      points = [
-        [16, baseY],
-        [cutoffX - 30, baseY],
-        [bumpX, peakY],
-        [cutoffX + 28, floorY],
-        [204, floorY],
-      ];
-    }
+    const grid = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    grid.setAttribute("d", `M ${left} 72 H ${right} M ${left} 52 H ${right} M ${left} 32 H ${right}`);
+    grid.setAttribute("fill", "none");
+    grid.setAttribute("stroke", "currentColor");
+    grid.setAttribute("stroke-opacity", "0.12");
+    grid.setAttribute("stroke-width", "1");
 
     const area = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const linePath = `M ${points[0][0]} ${points[0][1]} C ${points[1][0]} ${points[1][1]}, ${points[2][0]} ${points[2][1]}, ${points[3][0]} ${points[3][1]} S ${points[4][0]} ${points[4][1]}, ${points[4][0]} ${points[4][1]}`;
-    area.setAttribute("d", `${linePath} L 204 84 L 16 84 Z`);
     area.setAttribute("fill", "currentColor");
-    area.setAttribute("opacity", "0.9");
+    area.setAttribute("opacity", "0.18");
 
     const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    line.setAttribute("d", linePath);
     line.setAttribute("fill", "none");
     line.setAttribute("stroke", "currentColor");
-    line.setAttribute("stroke-width", "2.4");
+    line.setAttribute("stroke-width", "2.2");
+    line.setAttribute("stroke-linecap", "round");
+    line.setAttribute("stroke-linejoin", "round");
 
-    svg.append(area, line);
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    marker.setAttribute("r", "3.6");
+    marker.setAttribute("fill", "currentColor");
+
+    const markerRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    markerRing.setAttribute("r", "6.2");
+    markerRing.setAttribute("fill", "none");
+    markerRing.setAttribute("stroke", "currentColor");
+    markerRing.setAttribute("stroke-opacity", "0.24");
+    markerRing.setAttribute("stroke-width", "1.4");
+
+    const slopeLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    slopeLabel.setAttribute("x", String(right));
+    slopeLabel.setAttribute("y", "16");
+    slopeLabel.setAttribute("text-anchor", "end");
+    slopeLabel.setAttribute("font-size", "9");
+    slopeLabel.setAttribute("fill", "currentColor");
+    slopeLabel.setAttribute("opacity", "0.62");
+
+    const update = (nextState) => {
+      // cutoff 按对数频率归一化，这样低频区域不会被视觉上压得过窄。
+      const type = nextState.type || "lowpass";
+      const cutoffNorm = clamp(
+        (Math.log10(Math.max(20, Number(nextState.frequency || 20))) - Math.log10(20)) / (Math.log10(12000) - Math.log10(20)),
+        0,
+        1,
+      );
+      const resonance = clamp(Number(nextState.Q || 0.5) / 16, 0, 1);
+      const slopeStrength = clamp(Math.abs(Number(nextState.rolloff || -24)) / 96, 0.12, 1);
+      const cutoffX = left + cutoffNorm * (right - left);
+      const shoulder = 42 - slopeStrength * 24;
+      const bumpHeight = resonance * 18;
+      const availableLeft = Math.max(0, cutoffX - left);
+      const availableRight = Math.max(0, right - cutoffX);
+
+      let path;
+      let fillPath;
+      let markerX = cutoffX;
+      let markerY = plateau;
+
+      if (type === "highpass") {
+        const riseStart = clampX(cutoffX - Math.min(shoulder, availableLeft));
+        const riseEnd = clampX(cutoffX + Math.min(shoulder * 0.42, availableRight));
+        const control1X = clampX(cutoffX - Math.min(shoulder * 0.18, availableLeft * 0.55));
+        const control2X = clampX(cutoffX - Math.min(shoulder * 0.06, availableLeft * 0.18));
+        markerY = plateau - bumpHeight;
+        path = [
+          `M ${left} ${floor}`,
+          `L ${Math.max(left + 6, riseStart)} ${floor}`,
+          `C ${control1X} ${floor}, ${control2X} ${markerY}, ${cutoffX} ${markerY}`,
+          `L ${riseEnd} ${plateau}`,
+          `L ${right} ${plateau}`,
+        ].join(" ");
+        fillPath = `${path} L ${right} ${floor + 4} L ${left} ${floor + 4} Z`;
+      } else if (type === "bandpass") {
+        const bandWidth = Math.max(8, Math.min(36 - slopeStrength * 18, availableLeft * 0.92, availableRight * 0.92));
+        const peakY = top + (1 - resonance) * 8;
+        markerY = peakY;
+        path = [
+          `M ${left} ${floor}`,
+          `L ${clampX(cutoffX - bandWidth)} ${floor}`,
+          `C ${clampX(cutoffX - bandWidth * 0.36)} ${floor}, ${clampX(cutoffX - bandWidth * 0.14)} ${peakY}, ${cutoffX} ${peakY}`,
+          `L ${clampX(cutoffX + bandWidth)} ${floor}`,
+          `L ${right} ${floor}`,
+        ].join(" ");
+        fillPath = `${path} L ${right} ${floor + 4} L ${left} ${floor + 4} Z`;
+      } else if (type === "notch") {
+        const notchWidth = Math.max(7, Math.min(28 - slopeStrength * 12, availableLeft * 0.88, availableRight * 0.88));
+        const notchDepth = 10 + slopeStrength * 16 + resonance * 10;
+        markerY = Math.min(floor, plateau + notchDepth);
+        path = [
+          `M ${left} ${plateau}`,
+          `L ${clampX(cutoffX - notchWidth)} ${plateau}`,
+          `C ${clampX(cutoffX - notchWidth * 0.28)} ${plateau}, ${clampX(cutoffX - notchWidth * 0.08)} ${markerY}, ${cutoffX} ${markerY}`,
+          `L ${clampX(cutoffX + notchWidth)} ${plateau}`,
+          `L ${right} ${plateau}`,
+        ].join(" ");
+        fillPath = `${path} L ${right} ${floor + 4} L ${left} ${floor + 4} Z`;
+      } else {
+        // 默认分支按 low-pass 绘制。
+        const dropStart = clampX(cutoffX - Math.min(shoulder * 0.32, availableLeft));
+        const dropEnd = clampX(cutoffX + Math.min(shoulder, availableRight));
+        const control1X = clampX(cutoffX - Math.min(shoulder * 0.12, availableLeft * 0.5));
+        const control2X = clampX(cutoffX - Math.min(shoulder * 0.02, availableLeft * 0.14));
+        markerY = plateau - bumpHeight;
+        path = [
+          `M ${left} ${plateau}`,
+          `L ${Math.max(left + 6, dropStart)} ${plateau}`,
+          `C ${control1X} ${plateau}, ${control2X} ${markerY}, ${cutoffX} ${markerY}`,
+          `L ${dropEnd} ${floor}`,
+          `L ${right} ${floor}`,
+        ].join(" ");
+        fillPath = `${path} L ${right} ${floor + 4} L ${left} ${floor + 4} Z`;
+      }
+
+      line.setAttribute("d", path);
+      area.setAttribute("d", fillPath);
+      marker.setAttribute("cx", String(markerX));
+      marker.setAttribute("cy", String(markerY));
+      markerRing.setAttribute("cx", String(markerX));
+      markerRing.setAttribute("cy", String(markerY));
+      slopeLabel.textContent = `${nextState.rolloff} dB`;
+      wrap.style.opacity = nextState.enabled === false ? "0.42" : "1";
+    };
+
+    svg.append(grid, area, line, markerRing, marker, slopeLabel);
     wrap.append(svg);
-    return wrap;
+    update(filterState);
+    return { element: wrap, update };
   }
 
-  beginPatchDrag(event, routeKey, routeId, accent, routeIndex) {
-    const sourceRef = routeKey === "lfoRoutes" ? "lfo-core" : "mod-envelope";
+  // 开始拖线时只记录临时状态，不立刻修改实际 route。
+  beginPatchDrag(event, routeKey, routeId, accent, endType = "target") {
     const color = accent === "lfo" ? "rgba(61, 127, 184, 0.92)" : "rgba(192, 160, 62, 0.92)";
     this.dragPatch = {
       routeKey,
       routeId,
-      sourceRef,
       color,
-      routeIndex,
+      endType,
       point: this.getRelativePatchPoint(event.clientX, event.clientY),
     };
+    this.updatePatchHoverState();
     this.drawPatchCables();
   }
 
@@ -2963,9 +3683,28 @@ class ModularSynthApp {
     };
   }
 
+  // 找到鼠标当前经过的可连接参数目标。
   findHoveredPatchTarget(clientX, clientY) {
     const element = document.elementFromPoint(clientX, clientY);
     return element?.closest?.("[data-mod-target]") || null;
+  }
+
+  findHoveredPatchSource(clientX, clientY) {
+    const element = document.elementFromPoint(clientX, clientY);
+    return element?.closest?.("[data-mod-source]") || null;
+  }
+
+  updatePatchHoverState() {
+    const container = this.elements.signalFlow;
+    if (!container) {
+      return;
+    }
+    container
+      .querySelectorAll("[data-mod-target]")
+      .forEach((element) => element.classList.toggle("is-hover", element.dataset.modTarget === this.dragHoverTarget));
+    container
+      .querySelectorAll("[data-mod-source]")
+      .forEach((element) => element.classList.toggle("is-hover", element.dataset.modSource === this.dragHoverSource));
   }
 
   onPatchDragMove(event) {
@@ -2973,37 +3712,68 @@ class ModularSynthApp {
       return;
     }
     this.dragPatch.point = this.getRelativePatchPoint(event.clientX, event.clientY);
-    const hoveredTarget = this.findHoveredPatchTarget(event.clientX, event.clientY);
-    const nextHoverTarget = hoveredTarget?.dataset.modTarget || "";
-    if (nextHoverTarget !== this.dragHoverTarget) {
-      this.dragHoverTarget = nextHoverTarget;
-      this.renderAll();
-      return;
+    if (this.dragPatch.endType === "target") {
+      const hoveredTarget = this.findHoveredPatchTarget(event.clientX, event.clientY);
+      const nextHoverTarget = hoveredTarget?.dataset.modTarget || "";
+      if (nextHoverTarget !== this.dragHoverTarget) {
+        this.dragHoverTarget = nextHoverTarget;
+        this.updatePatchHoverState();
+      }
+    } else {
+      const hoveredSource = this.findHoveredPatchSource(event.clientX, event.clientY);
+      const nextHoverSource = hoveredSource?.dataset.modSource || "";
+      if (nextHoverSource !== this.dragHoverSource) {
+        this.dragHoverSource = nextHoverSource;
+        this.updatePatchHoverState();
+      }
     }
     this.drawPatchCables();
   }
 
   onPatchDragEnd(event) {
+    // 只有在松手时命中合法 patch target，才真正改写 route.target。
     if (!this.dragPatch) {
       return;
     }
 
-    const hoveredTarget = this.findHoveredPatchTarget(event.clientX, event.clientY);
-    if (hoveredTarget?.dataset.modTarget) {
-      const route = findById(this.state.modulation[this.dragPatch.routeKey], this.dragPatch.routeId);
-      if (route) {
-        route.target = hoveredTarget.dataset.modTarget;
-        this.selectedPresetId = "custom";
-        this.engine.updateModulation(this.state.modulation);
+    let routeChanged = false;
+    if (this.dragPatch.endType === "target") {
+      const hoveredTarget = this.findHoveredPatchTarget(event.clientX, event.clientY);
+      if (hoveredTarget?.dataset.modTarget) {
+        const route = findById(this.state.modulation[this.dragPatch.routeKey], this.dragPatch.routeId);
+        if (route && route.target !== hoveredTarget.dataset.modTarget) {
+          route.target = hoveredTarget.dataset.modTarget;
+          routeChanged = true;
+        }
       }
+    } else {
+      const hoveredSource = this.findHoveredPatchSource(event.clientX, event.clientY);
+      const nextRouteKey = hoveredSource?.dataset.modSource || "";
+      if (nextRouteKey && nextRouteKey !== this.dragPatch.routeKey) {
+        const list = this.state.modulation[this.dragPatch.routeKey] || [];
+        const routeIndex = list.findIndex((route) => route.id === this.dragPatch.routeId);
+        if (routeIndex >= 0) {
+          const [route] = list.splice(routeIndex, 1);
+          this.state.modulation[nextRouteKey].push(route);
+          routeChanged = true;
+        }
+      }
+    }
+
+    if (routeChanged) {
+      this.selectedPresetId = "custom";
+      this.engine.updateModulation(this.state.modulation);
     }
 
     this.dragPatch = null;
     this.dragHoverTarget = "";
+    this.dragHoverSource = "";
+    this.updatePatchHoverState();
     this.renderAll();
   }
 
   createSelectControl({ label, options, value, onChange, patchPoint = null }) {
+    // Select 控件也可以携带 patch point，因此标题和控件本体拆成两层结构。
     const wrapper = document.createElement("label");
     wrapper.className = "control";
 
@@ -3048,13 +3818,24 @@ class ModularSynthApp {
     button.type = "button";
     button.className = `pill-button ${value ? "is-on" : ""}`;
     button.style.setProperty("--accent", `var(--${accent})`);
-    button.textContent = value ? "On" : "Off";
-    button.addEventListener("click", onToggle);
+    const syncState = (nextValue) => {
+      button.classList.toggle("is-on", nextValue);
+      button.textContent = nextValue ? "On" : "Off";
+    };
+
+    syncState(Boolean(value));
+    button.addEventListener("click", () => {
+      const nextValue = !button.classList.contains("is-on");
+      syncState(nextValue);
+      onToggle(nextValue);
+    });
 
     wrapper.append(controlLabel, button);
     return wrapper;
   }
 
+  // Range 控件支持 slider / knob / fader 三种可视变体，
+  // 并统一写入 controlBindings，供预设切换动画和宏控制回写 UI。
   createRangeControl({ label, value, min, max, step, formatter, onInput, accent = "source", variant = "slider", path = null, eventName = "input", patchPoint = null }) {
     const wrapper = document.createElement("label");
     wrapper.className = `control control-${variant}`;
@@ -3135,6 +3916,7 @@ class ModularSynthApp {
   }
 
   async applyBuiltinPreset(presetId) {
+    // 内置预设加载与导入 JSON 一样，都走完整的状态替换与重渲染流程。
     const template = BUILTIN_PRESET_TEMPLATES[presetId];
     if (!template) {
       return;
@@ -3146,9 +3928,10 @@ class ModularSynthApp {
     this.resetPerformanceControls();
     this.renderAll(previousState);
     this.engine.fullSync(this.state);
-    this.setStatus(`Loaded preset: ${this.state.name}.`, this.audioBooted ? "live" : "neutral");
+    this.setStatus(`LOADED PRESET: ${this.state.name}.`, this.audioBooted ? "live" : "neutral");
   }
 
+  // 当逻辑层直接改了 state，需要把当前已经挂在页面上的控件视觉值同步回来。
   syncControlsFromState() {
     this.controlBindings.forEach((binding, path) => {
       const value = getByPath(this.state, path);
@@ -3158,6 +3941,7 @@ class ModularSynthApp {
     });
   }
 
+  // 预设切换和 morph 时，对数值控件做一次短暂过渡，避免界面瞬间跳变。
   animateControlTransition(fromState, toState) {
     const animations = [];
 
@@ -3201,6 +3985,9 @@ class ModularSynthApp {
     this.performance.motion = 0.5;
   }
 
+  // 预设混合器：
+  // 数值字段线性插值，布尔/字符串按 morph 所在半区择一，
+  // 模块列表则尽量保留顺序并为结果生成新的临时 id。
   blendPresets(aId, bId, morph) {
     const presetA = normalizePreset(BUILTIN_PRESET_TEMPLATES[aId]);
     const presetB = normalizePreset(BUILTIN_PRESET_TEMPLATES[bId]);
@@ -3328,6 +4115,7 @@ class ModularSynthApp {
     this.setStatus(`Morph ${Math.round(this.performance.morph * 100)}% between presets.`, this.audioBooted ? "live" : "neutral");
   }
 
+  // Brightness 宏优先映射到滤波器亮度感最强的两个参数：cutoff 与 Q。
   applyBrightnessMacro(value) {
     const delta = value - this.performance.brightness;
     this.performance.brightness = value;
@@ -3336,10 +4124,12 @@ class ModularSynthApp {
     this.state.filter.frequency = clamp(this.state.filter.frequency * Math.pow(2, delta * 2.4), 40, 12000);
     this.state.filter.Q = clamp(this.state.filter.Q + delta * 5, 0.001, 20);
 
+    this.filterVisualizationBinding?.(this.state.filter);
     this.engine.updateFilter(this.state.filter);
     this.syncControlsFromState();
   }
 
+  // Motion 宏优先映射到 LFO 速度/深度以及可感知明显的 effect wet / feedback。
   applyMotionMacro(value) {
     const delta = value - this.performance.motion;
     this.performance.motion = value;
@@ -3363,6 +4153,7 @@ class ModularSynthApp {
     this.syncControlsFromState();
   }
 
+  // 随机化在保持当前机架结构不变的前提下，给各模块参数和连线路由重新赋值。
   randomizeCurrentPatch() {
     const randomChoice = (list) => list[Math.floor(Math.random() * list.length)];
     const randomRange = (min, max, step = 0.01) => {
@@ -3417,7 +4208,7 @@ class ModularSynthApp {
     this.state.sources.forEach((module) => {
       module.volume = randomRange(-18, -4, 0.1);
       module.pan = randomRange(-0.45, 0.45, 0.01);
-      applyDefinitionRandomness(module, SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Synth);
+      applyDefinitionRandomness(module, SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator);
     });
 
     this.state.components.forEach((module) => applyDefinitionRandomness(module, COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.Compressor));
@@ -3434,6 +4225,7 @@ class ModularSynthApp {
     this.setStatus("Randomized the current patch.", this.audioBooted ? "live" : "neutral");
   }
 
+  // Web MIDI 接入入口。
   async requestMidiAccess() {
     if (!this.midi.supported) {
       this.midi.status = "Web MIDI unsupported";
@@ -3459,6 +4251,7 @@ class ModularSynthApp {
     }
   }
 
+  // 刷新当前可用的 MIDI 输入设备列表，并尽量保留已有选择。
   refreshMidiInputs() {
     if (!this.midi.access) {
       this.midi.inputs = [];
@@ -3494,6 +4287,7 @@ class ModularSynthApp {
   }
 
   async handleMidiMessage(event) {
+    // 当前只处理音符开/关消息，控制器映射可以后续继续扩展。
     const [status, data1, data2] = event.data;
     const command = status & 0xf0;
     const note = Tone.Frequency(data1, "midi").toNote();
@@ -3518,6 +4312,8 @@ class ModularSynthApp {
     }
   }
 
+  // 电脑键盘映射：
+  // A-K 演奏音高，Z/X 调整八度，C/V 调整默认力度。
   async onKeyDown(event) {
     const targetTag = event.target?.tagName;
     if (targetTag === "INPUT" || targetTag === "SELECT" || event.repeat) {
@@ -3578,6 +4374,7 @@ class ModularSynthApp {
     this.updateKeyboardKeyState(key, false);
   }
 
+  // activeNoteRefs 是简单的引用计数器，用来处理多输入源重复按住同一个音的情况。
   pressNote(note, velocity = this.state.global.velocity) {
     const count = this.activeNoteRefs.get(note) || 0;
     this.activeNoteRefs.set(note, count + 1);
@@ -3605,6 +4402,8 @@ class ModularSynthApp {
   }
 
   drawPatchCables() {
+    // 所有连线都会根据当前 DOM 位置重算，但真正绘制时会经过一层弹簧插值，
+    // 这样模块重排和拖线时看起来更像一根有张力的线缆。
     const svg = this.elements.patchCables;
     const container = this.elements.signalFlow;
     if (!svg || !container) {
@@ -3614,33 +4413,6 @@ class ModularSynthApp {
     const containerRect = container.getBoundingClientRect();
     const width = Math.round(container.scrollWidth || containerRect.width);
     const height = Math.round(container.scrollHeight || containerRect.height);
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    svg.innerHTML = "";
-
-    const createPath = (d, stroke, dashed = false, widthValue = 3, opacity = 0.7) => {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", d);
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", stroke);
-      path.setAttribute("stroke-width", String(widthValue));
-      path.setAttribute("stroke-linecap", "round");
-      path.setAttribute("stroke-linejoin", "round");
-      path.setAttribute("opacity", String(opacity));
-      if (dashed) {
-        path.setAttribute("stroke-dasharray", "7 9");
-      }
-      svg.append(path);
-    };
-
-    const createSocket = (x, y, fill, radius = 4.5) => {
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      dot.setAttribute("cx", String(x));
-      dot.setAttribute("cy", String(y));
-      dot.setAttribute("r", String(radius));
-      dot.setAttribute("fill", fill);
-      dot.setAttribute("opacity", "0.92");
-      svg.append(dot);
-    };
 
     const escapeSelector = (value) => {
       if (window.CSS?.escape) {
@@ -3649,26 +4421,14 @@ class ModularSynthApp {
       return String(value).replace(/["\\]/g, "\\$&");
     };
 
-    const anchorModule = (moduleRef, side = "right", verticalBias = 0.5) => {
-      const node = container.querySelector(`[data-module-ref="${escapeSelector(moduleRef)}"]`);
+    const anchorSource = (sourceKey) => {
+      const node = container.querySelector(`[data-mod-source="${escapeSelector(sourceKey)}"]`);
       if (!node) {
         return null;
       }
       const rect = node.getBoundingClientRect();
       return {
-        x: side === "right" ? rect.right - containerRect.left : rect.left - containerRect.left,
-        y: rect.top - containerRect.top + rect.height * verticalBias,
-      };
-    };
-
-    const anchorRouteHandle = (routeId) => {
-      const node = container.querySelector(`[data-route-handle="${escapeSelector(routeId)}"]`);
-      if (!node) {
-        return null;
-      }
-      const rect = node.getBoundingClientRect();
-      return {
-        x: rect.right - containerRect.left,
+        x: rect.left - containerRect.left + rect.width * 0.5,
         y: rect.top - containerRect.top + rect.height * 0.5,
       };
     };
@@ -3685,73 +4445,189 @@ class ModularSynthApp {
       };
     };
 
-    const drawCable = (from, to, color, widthValue, opacity, dashed = true) => {
-      const direction = to.x >= from.x ? 1 : -1;
-      const horizontalDistance = Math.max(42, Math.abs(to.x - from.x));
-      const controlOffset = horizontalDistance * 0.28;
-      const arcHeight = Math.max(22, Math.min(110, horizontalDistance * 0.18));
-      const controlY = Math.min(from.y, to.y) - arcHeight;
-      createPath(
-        `M ${from.x} ${from.y} C ${from.x + direction * controlOffset} ${controlY}, ${to.x - direction * controlOffset} ${controlY}, ${to.x} ${to.y}`,
-        color,
-        dashed,
-        widthValue,
-        opacity,
-      );
-    };
-
     const modulationTargets = new Map(getModulationTargets(this.state).map((target) => [target.value, target]));
     const routes = [
       ...(this.state.modulation?.lfoRoutes || []).map((route) => ({
         ...route,
+        accent: "lfo",
         color: "rgba(61, 127, 184, 0.92)",
-        sourceRef: "lfo-core",
+        sourceKey: "lfoRoutes",
         sourceEnabled: this.state.lfo.enabled,
       })),
       ...(this.state.modulation?.envelopeRoutes || []).map((route) => ({
         ...route,
+        accent: "env",
         color: "rgba(192, 160, 62, 0.92)",
-        sourceRef: "mod-envelope",
+        sourceKey: "envelopeRoutes",
         sourceEnabled: this.state.modEnvelope.enabled,
       })),
     ];
 
-    routes.forEach((route, index) => {
-      if (route.enabled === false) {
-        return;
+    this.patchScene = {
+      width,
+      height,
+      routes: routes
+        .filter((route) => route.enabled !== false && modulationTargets.has(route.target))
+        .map((route) => ({
+          id: route.id,
+          routeKey: route.sourceKey,
+          accent: route.accent,
+          color: route.color,
+          sourceEnabled: route.sourceEnabled,
+          from: anchorSource(route.sourceKey),
+          to: anchorTarget(route.target),
+        }))
+        .filter((route) => route.from && route.to),
+      drag: null,
+    };
+
+    if (this.dragPatch) {
+      const activeRoute = routes.find((route) => route.id === this.dragPatch.routeId);
+      if (activeRoute) {
+        const fixedFrom = anchorSource(activeRoute.sourceKey);
+        const fixedTo = anchorTarget(activeRoute.target);
+        if (fixedFrom && fixedTo) {
+          this.patchScene.drag = {
+            id: activeRoute.id,
+            routeKey: activeRoute.sourceKey,
+            accent: activeRoute.accent,
+            color: activeRoute.color,
+            sourceEnabled: activeRoute.sourceEnabled,
+            from: this.dragPatch.endType === "source" ? this.dragPatch.point : fixedFrom,
+            to: this.dragPatch.endType === "target" ? this.dragPatch.point : fixedTo,
+          };
+        }
       }
-      const targetMeta = modulationTargets.get(route.target);
-      if (!targetMeta) {
-        return;
+    }
+
+    if (!this.patchFrame) {
+      this.animatePatchCables();
+    }
+  }
+
+  stepCableAnchor(anchorState, target, spring, damping) {
+    const dx = target.x - anchorState.x;
+    const dy = target.y - anchorState.y;
+    anchorState.vx = (anchorState.vx + dx * spring) * damping;
+    anchorState.vy = (anchorState.vy + dy * spring) * damping;
+    anchorState.x += anchorState.vx;
+    anchorState.y += anchorState.vy;
+
+    const settled = Math.abs(dx) < 0.2 && Math.abs(dy) < 0.2 && Math.abs(anchorState.vx) < 0.2 && Math.abs(anchorState.vy) < 0.2;
+    if (settled) {
+      anchorState.x = target.x;
+      anchorState.y = target.y;
+      anchorState.vx = 0;
+      anchorState.vy = 0;
+    }
+    return !settled;
+  }
+
+  animatePatchCables() {
+    const svg = this.elements.patchCables;
+    const scene = this.patchScene;
+    if (!svg || !scene) {
+      this.patchFrame = 0;
+      return;
+    }
+
+    this.patchFrame = 0;
+    svg.setAttribute("viewBox", `0 0 ${scene.width} ${scene.height}`);
+    svg.innerHTML = "";
+
+    const tension = clamp(Number(this.state.ui?.cableTension ?? 0.78), 0.2, 1);
+    const spring = 0.06 + tension * 0.24;
+    const damping = 0.72 + tension * 0.18;
+    let shouldContinue = Boolean(this.dragPatch);
+    const activeKeys = new Set();
+
+    const createLine = (from, to, stroke, opacity) => {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", `M ${from.x} ${from.y} L ${to.x} ${to.y}`);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", stroke);
+      path.setAttribute("stroke-width", "2.4");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("opacity", String(opacity));
+      svg.append(path);
+    };
+
+    const createSocket = (point, fill, meta = null) => {
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", String(point.x));
+      dot.setAttribute("cy", String(point.y));
+      dot.setAttribute("r", "5");
+      dot.setAttribute("fill", fill);
+      dot.setAttribute("opacity", "0.34");
+      if (meta) {
+        dot.setAttribute("class", "cable-socket is-interactive");
+        dot.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.beginPatchDrag(event, meta.routeKey, meta.routeId, meta.accent, meta.endType);
+        });
+      }
+      svg.append(dot);
+    };
+
+    const renderCable = (route, interactive = true) => {
+      activeKeys.add(route.id);
+      const visual = this.cableVisuals.get(route.id) || {
+        from: { x: route.from.x, y: route.from.y, vx: 0, vy: 0 },
+        to: { x: route.to.x, y: route.to.y, vx: 0, vy: 0 },
+      };
+      const movingFrom = this.stepCableAnchor(visual.from, route.from, spring, damping);
+      const movingTo = this.stepCableAnchor(visual.to, route.to, spring, damping);
+      this.cableVisuals.set(route.id, visual);
+      if (movingFrom || movingTo) {
+        shouldContinue = true;
       }
 
-      const from = anchorRouteHandle(route.id) || anchorModule(route.sourceRef, "right", 0.35 + (index % 4) * 0.12);
-      const to = anchorTarget(targetMeta.value);
-      if (!from || !to) {
+      const opacity = route.sourceEnabled ? 0.46 : 0.18;
+      createLine(visual.from, visual.to, route.color, opacity);
+      if (interactive) {
+        createSocket(visual.from, route.color, {
+          routeKey: route.routeKey,
+          routeId: route.id,
+          accent: route.accent,
+          endType: "source",
+        });
+        createSocket(visual.to, route.color, {
+          routeKey: route.routeKey,
+          routeId: route.id,
+          accent: route.accent,
+          endType: "target",
+        });
+      } else {
+        createSocket(visual.from, route.color);
+        createSocket(visual.to, route.color);
+      }
+    };
+
+    scene.routes.forEach((route) => {
+      if (scene.drag?.id === route.id) {
         return;
       }
-
-      const widthValue = 2 + Math.abs(Number(route.amount || 0)) * 2.6;
-      const opacity = route.sourceEnabled ? 0.78 : 0.28;
-      drawCable(from, to, route.color, widthValue, opacity, true);
-      createSocket(from.x, from.y, route.color, 4);
-      createSocket(to.x, to.y, route.color, 3.5);
+      renderCable(route, true);
     });
 
-    if (this.dragPatch?.point) {
-      const from =
-        anchorRouteHandle(this.dragPatch.routeId)
-        || anchorModule(this.dragPatch.sourceRef, "right", 0.4 + (this.dragPatch.routeIndex % 4) * 0.1);
-      const to = this.dragPatch.point;
-      if (from && to) {
-        drawCable(from, to, this.dragPatch.color, 2.6, 0.95, true);
-        createSocket(from.x, from.y, this.dragPatch.color, 4.5);
-        createSocket(to.x, to.y, this.dragPatch.color, 4);
+    if (scene.drag) {
+      renderCable(scene.drag, false);
+    }
+
+    this.cableVisuals.forEach((_value, key) => {
+      if (!activeKeys.has(key)) {
+        this.cableVisuals.delete(key);
       }
+    });
+
+    if (shouldContinue) {
+      this.patchFrame = requestAnimationFrame(() => this.animatePatchCables());
     }
   }
 
   resizeScopeCanvas() {
+    // 把 canvas 的实际像素尺寸同步到 CSS 尺寸 * DPR，避免高分屏模糊。
     const canvas = this.elements.oscilloscope;
     if (!canvas || !this.scopeContext) {
       return;
@@ -3764,6 +4640,7 @@ class ModularSynthApp {
   }
 
   drawOscilloscope() {
+    // 示例波器持续重绘；当音频尚未启动时则显示占位提示文本。
     requestAnimationFrame(() => this.drawOscilloscope());
 
     const canvas = this.elements.oscilloscope;
@@ -3775,10 +4652,10 @@ class ModularSynthApp {
     const height = canvas.clientHeight;
 
     context.clearRect(0, 0, width, height);
-    context.fillStyle = "#12161d";
+    context.fillStyle = "#f5f7fb";
     context.fillRect(0, 0, width, height);
 
-    context.strokeStyle = "rgba(255,255,255,0.06)";
+    context.strokeStyle = "rgba(42, 36, 27, 0.08)";
     context.lineWidth = 1;
     for (let x = 0; x <= width; x += width / 12) {
       context.beginPath();
@@ -3793,7 +4670,7 @@ class ModularSynthApp {
       context.stroke();
     }
 
-    context.strokeStyle = "rgba(83, 159, 255, 0.22)";
+    context.strokeStyle = "rgba(61, 127, 184, 0.22)";
     context.beginPath();
     context.moveTo(0, height / 2);
     context.lineTo(width, height / 2);
@@ -3801,14 +4678,14 @@ class ModularSynthApp {
 
     const analyser = this.engine.getAnalyser();
     if (!analyser || !this.audioBooted) {
-      context.fillStyle = "rgba(236, 229, 214, 0.72)";
+      context.fillStyle = "rgba(114, 103, 87, 0.78)";
       context.font = '500 16px "IBM Plex Sans"';
       context.fillText("Waveform will appear after the first interaction.", 24, 34);
       return;
     }
 
     const waveform = analyser.getValue();
-    context.strokeStyle = "#89f0cf";
+    context.strokeStyle = "#2e8ea7";
     context.lineWidth = 2;
     context.beginPath();
 
@@ -3828,6 +4705,7 @@ class ModularSynthApp {
 
 window.addEventListener("DOMContentLoaded", () => {
   try {
+    // 页面加载完成后创建应用实例，音频仍然等待第一次真实交互再启动。
     const app = new ModularSynthApp();
     if (!Tone) {
       app.setStatus("Tone.js failed to load. The UI is available, but audio is disabled until the CDN script loads.", "error");

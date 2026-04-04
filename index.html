@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <!--
+      页面基础元信息。
+      这里仅负责加载字体、样式表和脚本资源，所有 UI 结构与交互逻辑都分别在 body / app.js 中完成。
+    -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tone.js Modular Synth Playground</title>
@@ -13,7 +17,12 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <!--
+      整个合成器应用的外层壳。
+      主工作区放在左侧，固定的全局控制边栏放在右侧。
+    -->
     <div class="page-shell">
+      <!-- 顶部只保留标题和运行状态，尽量维持类似模块化机架的极简结构。 -->
       <header class="topbar">
         <div class="title-block">
           <h1>Modular Synth Rack</h1>
@@ -21,13 +30,17 @@
         </div>
         <div class="status-card">
           <span class="status-dot" id="statusDot"></span>
-          <span id="statusText">Standby. Touch any control to arm audio.</span>
+          <span id="statusText">STANDBY</span>
         </div>
       </header>
 
       <div class="workspace-layout">
         <main class="workspace-main">
           <div class="signal-flow-shell">
+            <!--
+              机架工具条。
+              当前只保留“添加模块”入口，避免引入复杂菜单层级。
+            -->
             <div class="canvas-toolbar">
               <div class="canvas-toolbar-controls">
                 <label class="toolbar-field" for="addModuleSelect">
@@ -37,6 +50,12 @@
                 <button class="action-button" id="addModuleBtn" type="button">Add To Rack</button>
               </div>
             </div>
+
+            <!--
+              核心模块区域。
+              实际布局已经不再依赖 stage 做视觉分组，但这些容器 id 仍然作为 JS 的渲染挂载点保留。
+              patch-cables SVG 覆盖在最上层，用于渲染调制连线。
+            -->
             <section class="signal-flow">
               <svg id="patchCables" class="patch-cables" aria-hidden="true"></svg>
 
@@ -102,6 +121,10 @@
             </section>
           </div>
 
+          <!--
+            底部表现层区域：
+            左边是示波器，右边是虚拟键盘，分别承担输出观察和演奏输入。
+          -->
           <section class="bottom-row">
             <div class="panel scope-panel">
               <div class="panel-header">
@@ -133,6 +156,10 @@
           </section>
         </main>
 
+        <!--
+          固定在右侧的全局控制边栏。
+          这里承载预设、导入导出、宏控制、MIDI、主音量等不属于单个模块的参数。
+        -->
         <aside class="global-strip global-sidebar">
           <div class="global-block" id="presetControls"></div>
           <div class="global-block volume-block" id="masterControls"></div>
@@ -140,8 +167,10 @@
       </div>
     </div>
 
+    <!-- 用于导入预设 JSON 的隐藏 input，由按钮触发点击。 -->
     <input id="presetFileInput" type="file" accept=".json,application/json" hidden />
 
+    <!-- Tone.js 负责底层音频节点，app.js 负责状态、渲染和交互。 -->
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js"></script>
     <script src="./app.js"></script>
   </body>

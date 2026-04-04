@@ -1,3 +1,4 @@
+/* 全局设计令牌：颜色、圆角、过渡时间都在这里统一定义，便于整站风格同步调整。 */
 :root {
   --bg: #ebe4d6;
   --bg-deep: #ddd3c1;
@@ -23,6 +24,7 @@
   --transition: 180ms ease;
 }
 
+/* 统一盒模型，减少复杂布局中的尺寸计算偏差。 */
 * {
   box-sizing: border-box;
 }
@@ -39,6 +41,7 @@ body {
   background: #eff0f5;
 }
 
+/* 历史装饰入口已弃用，显式关闭避免与新设计冲突。 */
 body::before {
   display: none;
 }
@@ -49,13 +52,15 @@ select {
   font: inherit;
 }
 
+/* 页面为“主内容 + 固定右侧边栏”预留空间。 */
 .page-shell {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 12px 296px 22px 10px;
+  padding: 12px 160px 22px 10px;
 }
 
+/* 当前主布局由绝对定位的瀑布流卡片驱动，这里仅保留块级上下文。 */
 .workspace-layout {
   display: block;
 }
@@ -72,6 +77,7 @@ select {
   padding-bottom: 8px;
 }
 
+/* 顶栏保持信息密度低，只承载标题和状态。 */
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -80,6 +86,7 @@ select {
   margin-bottom: 10px;
 }
 
+/* 小型题注用于 stage / panel 的次级标签。 */
 .eyebrow,
 .stage-kicker {
   margin: 0;
@@ -111,6 +118,7 @@ select {
   font-size: 0.8rem;
 }
 
+/* 卡片类元素统一关闭毛玻璃，保持当前扁平化方向。 */
 .status-card,
 .panel,
 .module-card {
@@ -150,6 +158,7 @@ select {
   box-shadow: 0 0 0 5px rgba(206, 93, 87, 0.16);
 }
 
+/* 右侧全局边栏固定在视口右边，不随主内容滚动。 */
 .global-strip {
   position: fixed;
   top: 0;
@@ -158,7 +167,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 270px;
+  width: 150px;
   height: 100vh;
   padding: 12px 12px 16px;
   min-width: 0;
@@ -166,6 +175,7 @@ select {
   overflow-y: auto;
 }
 
+/* 边栏作为页面一级层，而非漂浮卡片。 */
 .global-sidebar {
   border-left: 1px solid #dedfe7;
   background: rgba(245, 246, 250, 0.98);
@@ -174,12 +184,14 @@ select {
   -webkit-backdrop-filter: none;
 }
 
+/* 所有面板使用统一的白底与细边框。 */
 .panel {
   background: #ffffff;
   border: 1px solid #e2e3eb;
   box-shadow: none;
 }
 
+/* 全局边栏内部的区块纵向排列。 */
 .global-block {
   display: flex;
   flex-direction: column;
@@ -208,6 +220,7 @@ select {
   margin-bottom: 8px;
 }
 
+/* 添加模块工具条与机架顶部控件。 */
 .canvas-toolbar-copy h2 {
   margin: 4px 0 0;
   font-family: "IBM Plex Sans", sans-serif;
@@ -239,15 +252,13 @@ select {
 
 .signal-flow {
   position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  align-content: flex-start;
+  display: block;
   gap: 10px;
   min-width: 0;
   padding: 2px 0 8px;
 }
 
+/* 连线 SVG 覆盖在模块卡片上方，指针事件仍然交给下面的实际控件。 */
 .patch-cables {
   position: absolute;
   inset: 0;
@@ -258,6 +269,16 @@ select {
   z-index: 12;
 }
 
+.cable-socket.is-interactive {
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.cable-socket.is-interactive:active {
+  cursor: grabbing;
+}
+
+/* stage 仅保留语义容器，视觉分组已取消。 */
 .stage {
   display: contents;
 }
@@ -303,6 +324,7 @@ select {
   z-index: 1;
 }
 
+/* 每种模块只通过 accent 变量切换颜色，不复制整套样式。 */
 .module-card[data-accent="source"] {
   --accent: var(--source);
 }
@@ -335,6 +357,13 @@ select {
   flex-wrap: wrap;
 }
 
+.module-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .module-head > div:first-child {
   min-width: 0;
   flex: 1 1 120px;
@@ -359,6 +388,105 @@ select {
   flex-wrap: wrap;
 }
 
+/* 标题本身也可作为模块类型切换入口。 */
+.module-title-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+.module-title-input {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--accent, #1a1d6d);
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.15;
+  padding: 0 16px 0 0;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.module-title-select::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-65%) rotate(45deg);
+  color: var(--accent, #1a1d6d);
+  pointer-events: none;
+}
+
+.module-switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border: 1px solid #c9cfdd;
+  border-radius: 0;
+  background: #e4e7ef;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+
+.module-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  transition: transform var(--transition);
+}
+
+.module-switch.is-on {
+  background: color-mix(in srgb, var(--accent, #1a1d6d) 74%, white);
+  border-color: color-mix(in srgb, var(--accent, #1a1d6d) 52%, white);
+}
+
+.module-switch.is-on::after {
+  transform: translateX(12px);
+}
+
+.module-switch:hover,
+.module-switch:focus-visible {
+  border-color: #b8bfd1;
+}
+
+.module-remove {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #d54f5a;
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.module-remove:hover,
+.module-remove:focus-visible {
+  background: #c94650;
+}
+
+/* 用于 ADSR / filter 等轻量级可视化。 */
 .module-visual {
   width: 100%;
   height: 84px;
@@ -413,6 +541,7 @@ select {
   grid-template-columns: 1fr;
 }
 
+/* 所有控制都采用“标签 + 读数 + 控件本体”的一致结构。 */
 .control {
   display: flex;
   flex-direction: column;
@@ -452,6 +581,42 @@ select {
   color: #181d6b;
 }
 
+.control-file {
+  gap: 6px;
+}
+
+.file-control-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+
+.file-chip {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid #e0e2eb;
+  background: #fbfcff;
+  color: #5f6880;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-action {
+  flex: 0 0 auto;
+  min-width: 56px;
+  padding-inline: 10px;
+}
+
+.file-input {
+  display: none;
+}
+
 .patch-point {
   width: 10px;
   height: 10px;
@@ -464,6 +629,10 @@ select {
   color: var(--accent, var(--ink));
   box-shadow: 0 0 0 3px #ffffff;
   cursor: crosshair;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    opacity 140ms ease;
 }
 
 .patch-point.is-patched,
@@ -473,6 +642,7 @@ select {
   box-shadow: 0 0 0 3px #ffffff, 0 0 0 1px currentColor;
 }
 
+/* 旋钮采用较轻的立体感，和整体扁平化界面保持平衡。 */
 .control-knob .knob-shell {
   position: relative;
   display: grid;
@@ -544,7 +714,7 @@ select {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 2px 0 0;
+  padding: 2px 0 3px;
   border-radius: 0;
   background: transparent;
   border: 0;
@@ -599,6 +769,7 @@ select {
   transform: rotate(-90deg);
 }
 
+/* select / button 共享同一套基础交互状态。 */
 .select-input,
 .pill-button,
 .action-button {
@@ -734,64 +905,74 @@ select {
 
 .bottom-row {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 10px;
-  margin-top: 10px;
+  grid-template-columns: 1.12fr 0.88fr;
+  gap: 12px;
+  margin-top: 12px;
 }
 
+/* 示波器与键盘位于底部表现区域，共享 panel 语义。 */
 .scope-panel,
 .keyboard-panel {
-  padding: 12px;
+  padding: 10px 10px 12px;
   border-radius: 0;
 }
 
+/* 示波器外壳改成浅色面板，真实波形由 canvas 动态绘制。 */
 #oscilloscope {
   width: 100%;
-  height: 280px;
+  height: 264px;
   display: block;
-  margin-top: 12px;
+  margin-top: 10px;
   border-radius: 0;
-  background:
-    linear-gradient(180deg, rgba(24, 27, 33, 0.96), rgba(13, 15, 20, 0.98)),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    inset 0 16px 40px rgba(86, 115, 157, 0.08);
+  border: 1px solid #e2e6ef;
+  background: linear-gradient(180deg, #fbfcfe 0%, #f2f5fb 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
+/* 键盘提示胶囊，与模块参数标签共用轻量化语言。 */
 .key-hint {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   justify-content: flex-end;
   color: var(--muted);
-  font-size: 0.84rem;
+  font-size: 0.72rem;
 }
 
 .key-hint span {
-  padding: 8px 10px;
+  padding: 5px 8px;
   border-radius: 999px;
-  background: rgba(255, 252, 247, 0.72);
-  border: 1px solid rgba(41, 33, 21, 0.08);
+  background: #f7f8fb;
+  border: 1px solid #e3e6ee;
+  color: #767d92;
 }
 
 .keyboard-shell {
-  margin-top: 12px;
-  padding: 12px;
+  margin-top: 10px;
+  padding: 10px;
   border-radius: 0;
-  background: #f8f8fb;
-  border: 1px solid #e2e3eb;
+  background: #f5f6fa;
+  border: 1px solid #e2e5ed;
 }
 
+/* 键盘本体保留横向滚动能力，方便小屏幕下完整显示。 */
 .virtual-keyboard {
+  --white-key-width: 72px;
+  --black-key-width: 46px;
   position: relative;
-  min-height: 220px;
-  border-radius: 22px;
-  padding: 14px;
-  background: linear-gradient(180deg, rgba(217, 208, 193, 0.9), rgba(197, 187, 170, 0.9));
+  min-height: 186px;
+  padding: 10px;
+  border: 1px solid #d9dde7;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(240, 243, 250, 0.96)),
+    linear-gradient(180deg, rgba(47, 159, 149, 0.05), rgba(61, 127, 184, 0.04));
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #c5cada #edf0f6;
 }
 
+/* 黑白键都以“平面化控制块”而不是拟物钢琴键为目标。 */
 .white-key,
 .black-key {
   position: absolute;
@@ -799,48 +980,46 @@ select {
   cursor: pointer;
   transition:
     transform var(--transition),
+    border-color var(--transition),
     box-shadow var(--transition),
-    background var(--transition);
+    background var(--transition),
+    color var(--transition);
 }
 
 .white-key {
-  top: 14px;
-  width: 84px;
-  height: 178px;
-  padding: 10px;
-  border-radius: 0 0 18px 18px;
-  background: linear-gradient(180deg, #ffffff, var(--white-key));
-  border: 1px solid rgba(41, 33, 21, 0.12);
-  box-shadow:
-    inset 0 -12px 18px rgba(0, 0, 0, 0.06),
-    0 10px 18px rgba(0, 0, 0, 0.1);
+  top: 10px;
+  width: var(--white-key-width);
+  height: 152px;
+  padding: 8px 8px 10px;
+  border-radius: 0;
+  background: #fffdf9;
+  border: 1px solid #d7dce7;
+  box-shadow: inset 0 -8px 0 rgba(230, 233, 240, 0.7);
 }
 
 .black-key {
-  top: 14px;
-  width: 56px;
-  height: 112px;
-  padding: 10px 8px;
-  border-radius: 0 0 14px 14px;
-  background: linear-gradient(180deg, #393945, var(--black-key));
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    inset 0 -10px 16px rgba(0, 0, 0, 0.22),
-    0 10px 18px rgba(0, 0, 0, 0.28);
+  top: 10px;
+  width: var(--black-key-width);
+  height: 92px;
+  padding: 7px 6px 8px;
+  border-radius: 0;
+  background: #2f333c;
+  color: #f3f6fb;
+  border: 1px solid #272b33;
+  box-shadow: inset 0 -8px 0 rgba(21, 25, 31, 0.28);
   z-index: 2;
 }
 
 .white-key.active {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--source) 10%, white),
-    color-mix(in srgb, var(--source) 20%, white)
-  );
+  background: color-mix(in srgb, var(--source) 12%, white);
+  border-color: color-mix(in srgb, var(--source) 32%, white);
+  color: color-mix(in srgb, var(--source) 72%, #243346);
+  box-shadow: inset 0 0 0 1px rgba(47, 159, 149, 0.12);
 }
 
 .black-key.active {
-  background: linear-gradient(180deg, #4d7c90, #305766);
+  background: color-mix(in srgb, var(--source) 36%, #28313c);
+  border-color: color-mix(in srgb, var(--source) 46%, #1f2832);
 }
 
 .white-key.active,
@@ -850,6 +1029,16 @@ select {
   transform: translateY(2px);
 }
 
+.white-key:hover {
+  background: #ffffff;
+  border-color: #bcc6d8;
+}
+
+.black-key:hover {
+  background: #39414f;
+  border-color: #313847;
+}
+
 .key-cap {
   display: flex;
   flex-direction: column;
@@ -857,23 +1046,34 @@ select {
   height: 100%;
 }
 
+/* 键位映射标签用于提示 PC 键盘绑定。 */
 .key-bind {
   display: inline-flex;
   width: fit-content;
-  padding: 4px 8px;
+  padding: 3px 6px;
   border-radius: 999px;
-  font-size: 0.76rem;
+  font-size: 0.64rem;
   font-weight: 700;
-  background: rgba(41, 33, 21, 0.08);
+  line-height: 1;
+  letter-spacing: 0.06em;
+  background: #f0f2f7;
+  color: #667089;
 }
 
 .black-key .key-bind {
   background: rgba(255, 255, 255, 0.12);
+  color: #edf3ff;
 }
 
 .key-note {
-  font-size: 0.94rem;
+  font-size: 0.78rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #2d3140;
+}
+
+.black-key .key-note {
+  color: #f8fbff;
 }
 
 .helper-row {
@@ -886,20 +1086,14 @@ select {
 }
 
 @media (max-width: 1320px) {
-  .page-shell {
-    padding-right: 252px;
-  }
-
-  .global-strip {
-    width: 228px;
-  }
-
+  /* 较窄宽度下，示波器与键盘上下堆叠。 */
   .bottom-row {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 940px) {
+  /* 移动端取消固定侧边栏，改为自然文档流。 */
   .page-shell {
     width: 100%;
     padding: 18px 18px 32px;
@@ -922,8 +1116,22 @@ select {
     -webkit-backdrop-filter: none;
   }
 
+  /* 小屏下让提示从右对齐改为左对齐，更容易浏览。 */
   .key-hint {
     justify-content: flex-start;
+  }
+
+  /* 键盘尺寸再缩一档，避免横向超出过多。 */
+  .virtual-keyboard {
+    min-height: 176px;
+  }
+
+  .white-key {
+    width: var(--white-key-width);
+  }
+
+  .black-key {
+    width: var(--black-key-width);
   }
 
   .canvas-toolbar-controls {
