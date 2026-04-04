@@ -3789,12 +3789,13 @@ class ModularSynthApp {
   }
 
   onPatchDragEnd(event) {
-    // 只有在松手时命中合法 patch target，才真正改写 route.target。
     if (!this.dragPatch) {
       return;
     }
 
     let routeChanged = false;
+    let routeDeleted = false;
+
     if (this.dragPatch.endType === "target") {
       const hoveredTarget = this.findHoveredPatchTarget(event.clientX, event.clientY);
       if (hoveredTarget?.dataset.modTarget) {
@@ -3802,6 +3803,13 @@ class ModularSynthApp {
         if (route && route.target !== hoveredTarget.dataset.modTarget) {
           route.target = hoveredTarget.dataset.modTarget;
           routeChanged = true;
+        }
+      } else {
+        const list = this.state.modulation[this.dragPatch.routeKey] || [];
+        const routeIndex = list.findIndex((route) => route.id === this.dragPatch.routeId);
+        if (routeIndex >= 0) {
+          list.splice(routeIndex, 1);
+          routeDeleted = true;
         }
       }
     } else {
@@ -3815,10 +3823,17 @@ class ModularSynthApp {
           this.state.modulation[nextRouteKey].push(route);
           routeChanged = true;
         }
+      } else {
+        const list = this.state.modulation[this.dragPatch.routeKey] || [];
+        const routeIndex = list.findIndex((route) => route.id === this.dragPatch.routeId);
+        if (routeIndex >= 0) {
+          list.splice(routeIndex, 1);
+          routeDeleted = true;
+        }
       }
     }
 
-    if (routeChanged) {
+    if (routeChanged || routeDeleted) {
       this.selectedPresetId = "custom";
       this.engine.updateModulation(this.state.modulation);
     }
@@ -4593,15 +4608,27 @@ class ModularSynthApp {
     svg.setAttribute("viewBox", `0 0 ${scene.width} ${scene.height}`);
     svg.innerHTML = "";
 
-    const tension = clamp(Number(this.state.ui?.cableTension ?? 0.78), 0.2, 1);
-    const spring = 0.06 + tension * 0.24;
-    const damping = 0.72 + tension * 0.18;
+    const tension = clamp(Number(this.state.ui?.cableTension ?? 0.78), 0, 1);
+    const sagAmount = (1 - tension) * 80;
     let shouldContinue = Boolean(this.dragPatch);
     const activeKeys = new Set();
 
-    const createLine = (from, to, stroke, opacity) => {
+    const createCablePath = (from, to, stroke, opacity) => {
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", `M ${from.x} ${from.y} L ${to.x} ${to.y}`);
+      
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      const midX = (from.x + to.x) / 2;
+      const midY = (from.y + to.y) / 2;
+      
+      const sag = sagAmount * Math.min(1, distance / 200);
+      const controlY = midY + sag;
+      
+      const pathD = `M ${from.x} ${from.y} Q ${midX} ${controlY} ${to.x} ${to.y}`;
+      
+      path.setAttribute("d", pathD);
       path.setAttribute("fill", "none");
       path.setAttribute("stroke", stroke);
       path.setAttribute("stroke-width", "2.4");
@@ -4634,6 +4661,9 @@ class ModularSynthApp {
         from: { x: route.from.x, y: route.from.y, vx: 0, vy: 0 },
         to: { x: route.to.x, y: route.to.y, vx: 0, vy: 0 },
       };
+      
+      const spring = 0.15;
+      const damping = 0.85;
       const movingFrom = this.stepCableAnchor(visual.from, route.from, spring, damping);
       const movingTo = this.stepCableAnchor(visual.to, route.to, spring, damping);
       this.cableVisuals.set(route.id, visual);
@@ -4642,7 +4672,7 @@ class ModularSynthApp {
       }
 
       const opacity = route.sourceEnabled ? 0.46 : 0.18;
-      createLine(visual.from, visual.to, route.color, opacity);
+      createCablePath(visual.from, visual.to, route.color, opacity);
       if (interactive) {
         createSocket(visual.from, route.color, {
           routeKey: route.routeKey,
