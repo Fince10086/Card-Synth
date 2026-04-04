@@ -625,21 +625,24 @@ select {
   border: 0;
   outline: none;
   border-radius: 999px;
-  background: currentColor;
-  color: var(--accent, var(--ink));
-  box-shadow: 0 0 0 3px #ffffff;
+  background: #a0a0a0;
+  box-shadow: 0 0 0 4px rgba(160, 160, 160, 0.18);
   cursor: crosshair;
   transition:
     transform 140ms ease,
     box-shadow 140ms ease,
-    opacity 140ms ease;
+    opacity 140ms ease,
+    background 140ms ease;
 }
 
-.patch-point.is-patched,
+.patch-point.is-patched {
+  background: var(--accent, var(--ink));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, var(--ink)) 18%, transparent);
+}
+
 .patch-point.is-active,
 .patch-point.is-hover {
   transform: scale(1.08);
-  box-shadow: 0 0 0 3px #ffffff, 0 0 0 1px currentColor;
 }
 
 /* 旋钮采用较轻的立体感，和整体扁平化界面保持平衡。 */

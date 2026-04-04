@@ -812,6 +812,56 @@ function formatMultiplier(value) {
 // 调制目标收集器：
 // 只返回当前机架里真实存在、并且允许被调制的目标。
 // 这样 route 下拉菜单和拖线终点就会自动跟随当前模块结构变化。
+const MODULATABLE_PARAM_CONFIG = {
+  "options.harmonicity": { label: "Ratio", min: 0.25, max: 8, scale: () => 2 },
+  "options.phase": { label: "Phase", min: 0, max: 360, scale: () => 90 },
+  "options.detune": { label: "Detune", min: -1200, max: 1200, scale: () => 420 },
+  "options.modulationIndex": { label: "Index", min: 0, max: 60, scale: () => 15 },
+  "options.spread": { label: "Spread", min: 0, max: 60, scale: () => 20 },
+  "options.count": { label: "Count", min: 1, max: 6, scale: () => 2 },
+  "options.grainSize": { label: "Grain", min: 0.01, max: 0.5, scale: () => 0.15 },
+  "options.overlap": { label: "Overlap", min: 0.005, max: 0.3, scale: () => 0.08 },
+  "options.playbackRate": { label: "Rate", min: 0.2, max: 4, scale: () => 1 },
+  "options.width": { label: "Width", min: 0.01, max: 0.99, scale: () => 0.3 },
+  "options.modulationFrequency": { label: "PWM Rate", min: 0.05, max: 24, scale: () => 6 },
+  "options.fadeIn": { label: "Fade In", min: 0, max: 0.2, scale: () => 0.05 },
+  "options.fadeOut": { label: "Fade Out", min: 0.01, max: 0.6, scale: () => 0.15 },
+  "options.loopStart": { label: "Loop In", min: 0, max: 12, scale: () => 3 },
+  "options.loopEnd": { label: "Loop Out", min: 0, max: 12, scale: () => 3 },
+  "options.pitchDecay": { label: "Pitch Dec", min: 0.001, max: 0.6, scale: () => 0.15 },
+  "options.octaves": { label: "Octaves", min: 0.5, max: 10, scale: () => 2 },
+  "options.resonance": { label: "Resonance", min: 50, max: 8000, scale: () => 1500 },
+  "ampEnvelope.attack": { label: "Attack", min: 0.001, max: 1.5, scale: () => 0.3 },
+  "ampEnvelope.decay": { label: "Decay", min: 0.001, max: 2, scale: () => 0.4 },
+  "ampEnvelope.sustain": { label: "Sustain", min: 0, max: 1, scale: () => 0.3 },
+  "ampEnvelope.release": { label: "Release", min: 0.01, max: 4, scale: () => 1 },
+  "options.envelope.attack": { label: "Attack", min: 0.001, max: 1.5, scale: () => 0.3 },
+  "options.envelope.decay": { label: "Decay", min: 0.001, max: 2, scale: () => 0.4 },
+  "options.envelope.sustain": { label: "Sustain", min: 0, max: 1, scale: () => 0.3 },
+  "options.envelope.release": { label: "Release", min: 0.01, max: 4, scale: () => 1 },
+  "options.frequency": { label: "Rate", min: 0.05, max: 18, scale: () => 4 },
+  "options.depth": { label: "Depth", min: 0, max: 1, scale: () => 0.35 },
+  "options.wet": { label: "Wet", min: 0, max: 1, scale: () => 0.35 },
+  "options.delayTime": { label: "Delay", min: 0.01, max: 0.9, scale: () => 0.25 },
+  "options.feedback": { label: "Feedback", min: 0, max: 0.95, scale: () => 0.35 },
+  "options.decay": { label: "Decay", min: 0.3, max: 12, scale: () => 3 },
+  "options.preDelay": { label: "Pre", min: 0, max: 0.25, scale: () => 0.06 },
+  "options.distortion": { label: "Drive", min: 0, max: 1, scale: () => 0.35 },
+  "options.bits": { label: "Bits", min: 1, max: 8, scale: () => 2 },
+  "options.threshold": { label: "Thresh", min: -60, max: 0, scale: () => 18 },
+  "options.ratio": { label: "Ratio", min: 1, max: 20, scale: () => 6 },
+  "options.attack": { label: "Attack", min: 0.001, max: 0.5, scale: () => 0.1 },
+  "options.release": { label: "Release", min: 0.01, max: 1, scale: () => 0.25 },
+  "options.gain": { label: "Gain", min: 0, max: 2, scale: () => 0.6 },
+  "options.pan": { label: "Pan", min: -1, max: 1, scale: () => 0.5 },
+  "options.volume": { label: "Volume", min: -24, max: 12, scale: () => 8 },
+  "options.low": { label: "Low", min: -24, max: 24, scale: () => 8 },
+  "options.mid": { label: "Mid", min: -24, max: 24, scale: () => 8 },
+  "options.high": { label: "High", min: -24, max: 24, scale: () => 8 },
+  "options.lowFrequency": { label: "Lo Freq", min: 80, max: 1200, scale: () => 300 },
+  "options.highFrequency": { label: "Hi Freq", min: 1200, max: 8000, scale: () => 2000 },
+};
+
 function getModulationTargets(state) {
   const targets = [];
 
@@ -865,86 +915,75 @@ function getModulationTargets(state) {
       },
     );
 
-    if (typeof module.options?.detune === "number") {
-      targets.push({
-        label: `${labelPrefix} Detune`,
-        value: `source:${module.id}:detune`,
-        stage: "sources",
-        moduleRef: module.id,
-        basePath: `sources.${module.id}.options.detune`,
-        min: -1200,
-        max: 1200,
-        scale: () => 420,
+    const definition = SOURCE_LIBRARY[module.type];
+    if (definition?.controls) {
+      definition.controls.forEach((control) => {
+        if (control.kind === "range") {
+          const config = MODULATABLE_PARAM_CONFIG[control.path];
+          if (config) {
+            const targetId = `source:${module.id}:${control.path}`;
+            targets.push({
+              label: `${labelPrefix} ${config.label}`,
+              value: targetId,
+              stage: "sources",
+              moduleRef: module.id,
+              basePath: `sources.${module.id}.${control.path}`,
+              min: control.min,
+              max: control.max,
+              scale: config.scale,
+            });
+          }
+        }
       });
     }
   });
 
   state.components.forEach((module, index) => {
     const labelPrefix = `${module.type} ${index + 1}`;
-    if (module.type === "Gain" && typeof module.options?.gain === "number") {
-      targets.push({
-        label: `${labelPrefix} Level`,
-        value: `component:${module.id}:gain`,
-        stage: "components",
-        moduleRef: module.id,
-        basePath: `components.${module.id}.options.gain`,
-        min: 0,
-        max: 2,
-        scale: () => 0.8,
+    const definition = COMPONENT_LIBRARY[module.type];
+    if (definition?.controls) {
+      definition.controls.forEach((control) => {
+        if (control.kind === "range") {
+          const config = MODULATABLE_PARAM_CONFIG[control.path];
+          if (config) {
+            const targetId = `component:${module.id}:${control.path.replace("options.", "")}`;
+            targets.push({
+              label: `${labelPrefix} ${config.label}`,
+              value: targetId,
+              stage: "components",
+              moduleRef: module.id,
+              basePath: `components.${module.id}.${control.path}`,
+              min: control.min,
+              max: control.max,
+              scale: config.scale,
+            });
+          }
+        }
       });
-    }
-
-    if (module.type === "PanVol") {
-      targets.push(
-        {
-          label: `${labelPrefix} Pan`,
-          value: `component:${module.id}:pan`,
-          stage: "components",
-          moduleRef: module.id,
-          basePath: `components.${module.id}.options.pan`,
-          min: -1,
-          max: 1,
-          scale: () => 1,
-        },
-        {
-          label: `${labelPrefix} Volume`,
-          value: `component:${module.id}:volume`,
-          stage: "components",
-          moduleRef: module.id,
-          basePath: `components.${module.id}.options.volume`,
-          min: -24,
-          max: 12,
-          scale: () => 10,
-        },
-      );
     }
   });
 
   state.effects.forEach((module, index) => {
     const labelPrefix = `${module.type} ${index + 1}`;
-    if (typeof module.options?.wet === "number") {
-      targets.push({
-        label: `${labelPrefix} Wet`,
-        value: `effect:${module.id}:wet`,
-        stage: "effects",
-        moduleRef: module.id,
-        basePath: `effects.${module.id}.options.wet`,
-        min: 0,
-        max: 1,
-        scale: () => 0.7,
-      });
-    }
-
-    if (typeof module.options?.feedback === "number") {
-      targets.push({
-        label: `${labelPrefix} Feedback`,
-        value: `effect:${module.id}:feedback`,
-        stage: "effects",
-        moduleRef: module.id,
-        basePath: `effects.${module.id}.options.feedback`,
-        min: 0,
-        max: 0.95,
-        scale: () => 0.4,
+    const definition = EFFECT_LIBRARY[module.type];
+    if (definition?.controls) {
+      definition.controls.forEach((control) => {
+        if (control.kind === "range") {
+          const config = MODULATABLE_PARAM_CONFIG[control.path];
+          if (config) {
+            const targetId = `effect:${module.id}:${control.path.replace("options.", "")}`;
+            targets.push({
+              label: `${labelPrefix} ${config.label}`,
+              value: targetId,
+              stage: "effects",
+              moduleRef: module.id,
+              basePath: `effects.${module.id}.${control.path}`,
+              min: control.min,
+              max: control.max,
+              scale: config.scale,
+            });
+          }
+        }
       });
     }
   });
@@ -1609,10 +1648,6 @@ class AudioEngine {
   }
 
   resolveModBinding(targetId) {
-    // 把调制目标字符串解析成：
-    // 1. 当前基础值 base
-    // 2. 合法范围 min/max
-    // 3. 实际写入 Tone 参数的方法 apply()
     const targets = getModulationTargets(this.state);
     const meta = targets.find((entry) => entry.value === targetId);
     if (!meta) {
@@ -1635,7 +1670,8 @@ class AudioEngine {
       };
     }
 
-    const [group, moduleId, prop] = targetId.split(":");
+    const [group, moduleId, ...pathParts] = targetId.split(":");
+    const prop = pathParts.join(":");
 
     if (group === "source") {
       const module = findById(this.state.sources, moduleId);
@@ -1650,8 +1686,16 @@ class AudioEngine {
       if (prop === "pan") {
         return { ...meta, base: Number(module.pan), apply: (value) => rampParam(runtime.panNode.pan, value, 0.03) };
       }
-      if (prop === "detune" && runtime.node?.detune) {
-        return { ...meta, base: Number(module.options.detune || 0), apply: (value) => rampParam(runtime.node.detune, value, 0.03) };
+
+      const paramPath = prop;
+      if (paramPath.startsWith("options.") || paramPath.startsWith("ampEnvelope.") || paramPath.startsWith("options.envelope.")) {
+        const baseValue = getByPath(module, paramPath);
+        if (typeof baseValue === "number") {
+          const toneParam = this.resolveToneParam(runtime.node, paramPath);
+          if (toneParam) {
+            return { ...meta, base: Number(baseValue), apply: (value) => rampParam(toneParam, value, 0.03) };
+          }
+        }
       }
       return null;
     }
@@ -1663,14 +1707,13 @@ class AudioEngine {
         return null;
       }
 
-      if (prop === "gain" && runtime.gain) {
-        return { ...meta, base: Number(module.options.gain), apply: (value) => rampParam(runtime.gain, value, 0.03) };
-      }
-      if (prop === "pan" && runtime.pan) {
-        return { ...meta, base: Number(module.options.pan), apply: (value) => rampParam(runtime.pan, value, 0.03) };
-      }
-      if (prop === "volume" && runtime.volume) {
-        return { ...meta, base: Number(module.options.volume), apply: (value) => rampParam(runtime.volume, value, 0.03) };
+      const paramPath = `options.${prop}`;
+      const baseValue = getByPath(module, paramPath);
+      if (typeof baseValue === "number") {
+        const toneParam = this.resolveToneParam(runtime, paramPath);
+        if (toneParam) {
+          return { ...meta, base: Number(baseValue), apply: (value) => rampParam(toneParam, value, 0.03) };
+        }
       }
       return null;
     }
@@ -1682,15 +1725,36 @@ class AudioEngine {
         return null;
       }
 
-      if (prop === "wet" && runtime.wet) {
-        return { ...meta, base: Number(module.options.wet), apply: (value) => rampParam(runtime.wet, value, 0.03) };
-      }
-      if (prop === "feedback" && runtime.feedback) {
-        return { ...meta, base: Number(module.options.feedback), apply: (value) => rampParam(runtime.feedback, value, 0.03) };
+      const paramPath = `options.${prop}`;
+      const baseValue = getByPath(module, paramPath);
+      if (typeof baseValue === "number") {
+        const toneParam = this.resolveToneParam(runtime, paramPath);
+        if (toneParam) {
+          return { ...meta, base: Number(baseValue), apply: (value) => rampParam(toneParam, value, 0.03) };
+        }
       }
       return null;
     }
 
+    return null;
+  }
+
+  resolveToneParam(node, path) {
+    if (!node) return null;
+    const parts = path.split(".");
+    let current = node;
+    for (let i = 0; i < parts.length; i++) {
+      if (current == null) return null;
+      const part = parts[i];
+      if (i === parts.length - 1) {
+        const param = current[part];
+        if (param && typeof param.setValueAtTime === "function") {
+          return param;
+        }
+        return null;
+      }
+      current = current[part];
+    }
     return null;
   }
 
@@ -2561,7 +2625,10 @@ class ModularSynthApp {
       });
 
       definition.controls.forEach((control) => {
-        const patchTarget = control.path === "options.detune" ? `source:${module.id}:detune` : null;
+        let patchTarget = null;
+        if (control.kind === "range") {
+          patchTarget = `source:${module.id}:${control.path}`;
+        }
         controls.append(
           this.renderModuleControl(
             module,
@@ -3049,14 +3116,8 @@ class ModularSynthApp {
       controls.className = "module-grid";
       definition.controls.forEach((control) => {
         let patchTarget = null;
-        if (module.type === "Gain" && control.path === "options.gain") {
-          patchTarget = `component:${module.id}:gain`;
-        }
-        if (module.type === "PanVol" && control.path === "options.pan") {
-          patchTarget = `component:${module.id}:pan`;
-        }
-        if (module.type === "PanVol" && control.path === "options.volume") {
-          patchTarget = `component:${module.id}:volume`;
+        if (control.kind === "range") {
+          patchTarget = `component:${module.id}:${control.path.replace("options.", "")}`;
         }
         controls.append(
           this.renderModuleControl(
@@ -3119,11 +3180,8 @@ class ModularSynthApp {
       controls.className = "module-grid";
       definition.controls.forEach((control) => {
         let patchTarget = null;
-        if (control.path === "options.wet") {
-          patchTarget = `effect:${module.id}:wet`;
-        }
-        if (control.path === "options.feedback") {
-          patchTarget = `effect:${module.id}:feedback`;
+        if (control.kind === "range") {
+          patchTarget = `effect:${module.id}:${control.path.replace("options.", "")}`;
         }
         controls.append(
           this.renderModuleControl(
