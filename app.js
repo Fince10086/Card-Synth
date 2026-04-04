@@ -410,12 +410,6 @@ const FILTER_TYPES = [
   { label: "Notch", value: "notch" },
 ];
 
-const LFO_TARGETS = [
-  { label: "Filter Cutoff", value: "filter.frequency" },
-  { label: "Filter Q", value: "filter.Q" },
-  { label: "Master Volume", value: "master.volume" },
-];
-
 const BUILTIN_PRESET_TEMPLATES = {
   init: {
     name: "Init Patch",
@@ -707,6 +701,146 @@ function formatMultiplier(value) {
   return `${Number(value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}x`;
 }
 
+function getModulationTargets(state) {
+  const targets = [
+    {
+      label: "Filter Cutoff",
+      value: "filter.frequency",
+      stage: "filter",
+      moduleRef: "filter-core",
+      basePath: "filter.frequency",
+      min: 20,
+      max: 18000,
+      scale: (base) => Math.max(120, base * 1.35),
+    },
+    {
+      label: "Filter Resonance",
+      value: "filter.Q",
+      stage: "filter",
+      moduleRef: "filter-core",
+      basePath: "filter.Q",
+      min: 0.001,
+      max: 20,
+      scale: () => 8,
+    },
+  ];
+
+  state.sources.forEach((module, index) => {
+    const labelPrefix = `${module.type} ${index + 1}`;
+    targets.push(
+      {
+        label: `${labelPrefix} Level`,
+        value: `source:${module.id}:volume`,
+        stage: "sources",
+        moduleRef: module.id,
+        basePath: `sources.${module.id}.volume`,
+        min: -36,
+        max: 6,
+        scale: () => 14,
+      },
+      {
+        label: `${labelPrefix} Pan`,
+        value: `source:${module.id}:pan`,
+        stage: "sources",
+        moduleRef: module.id,
+        basePath: `sources.${module.id}.pan`,
+        min: -1,
+        max: 1,
+        scale: () => 1,
+      },
+    );
+
+    if (typeof module.options?.detune === "number") {
+      targets.push({
+        label: `${labelPrefix} Detune`,
+        value: `source:${module.id}:detune`,
+        stage: "sources",
+        moduleRef: module.id,
+        basePath: `sources.${module.id}.options.detune`,
+        min: -1200,
+        max: 1200,
+        scale: () => 420,
+      });
+    }
+  });
+
+  state.components.forEach((module, index) => {
+    const labelPrefix = `${module.type} ${index + 1}`;
+    if (module.type === "Gain" && typeof module.options?.gain === "number") {
+      targets.push({
+        label: `${labelPrefix} Level`,
+        value: `component:${module.id}:gain`,
+        stage: "components",
+        moduleRef: module.id,
+        basePath: `components.${module.id}.options.gain`,
+        min: 0,
+        max: 2,
+        scale: () => 0.8,
+      });
+    }
+
+    if (module.type === "PanVol") {
+      targets.push(
+        {
+          label: `${labelPrefix} Pan`,
+          value: `component:${module.id}:pan`,
+          stage: "components",
+          moduleRef: module.id,
+          basePath: `components.${module.id}.options.pan`,
+          min: -1,
+          max: 1,
+          scale: () => 1,
+        },
+        {
+          label: `${labelPrefix} Volume`,
+          value: `component:${module.id}:volume`,
+          stage: "components",
+          moduleRef: module.id,
+          basePath: `components.${module.id}.options.volume`,
+          min: -24,
+          max: 12,
+          scale: () => 10,
+        },
+      );
+    }
+  });
+
+  state.effects.forEach((module, index) => {
+    const labelPrefix = `${module.type} ${index + 1}`;
+    if (typeof module.options?.wet === "number") {
+      targets.push({
+        label: `${labelPrefix} Wet`,
+        value: `effect:${module.id}:wet`,
+        stage: "effects",
+        moduleRef: module.id,
+        basePath: `effects.${module.id}.options.wet`,
+        min: 0,
+        max: 1,
+        scale: () => 0.7,
+      });
+    }
+
+    if (typeof module.options?.feedback === "number") {
+      targets.push({
+        label: `${labelPrefix} Feedback`,
+        value: `effect:${module.id}:feedback`,
+        stage: "effects",
+        moduleRef: module.id,
+        basePath: `effects.${module.id}.options.feedback`,
+        min: 0,
+        max: 0.95,
+        scale: () => 0.4,
+      });
+    }
+  });
+
+  return targets;
+}
+
+function findById(list, id) {
+  return list.find((entry) => entry.id === id);
+}
+
 function createSourceModule(type = "Synth") {
   const definition = SOURCE_LIBRARY[type] || SOURCE_LIBRARY.Synth;
   return {
@@ -740,6 +874,32 @@ function createComponentModule(type = "Compressor") {
   };
 }
 
+function createModRoute(target = "filter.frequency", amount = 0.35) {
+  return {
+    id: createId("route"),
+    target,
+    amount,
+    enabled: true,
+  };
+}
+
+function getAddableModuleOptions() {
+  return [
+    ...Object.keys(SOURCE_LIBRARY).map((type) => ({
+      value: `source:${type}`,
+      label: `Instrument / ${type}`,
+    })),
+    ...Object.keys(COMPONENT_LIBRARY).map((type) => ({
+      value: `component:${type}`,
+      label: `Component / ${type}`,
+    })),
+    ...Object.keys(EFFECT_LIBRARY).map((type) => ({
+      value: `effect:${type}`,
+      label: `Effect / ${type}`,
+    })),
+  ];
+}
+
 function normalizeSourceModule(module) {
   const base = createSourceModule(module?.type || "Synth");
   const merged = deepMerge(base, module || {});
@@ -771,13 +931,21 @@ function normalizePreset(preset = {}) {
     global: { volume: -8, octave: 4, velocity: 0.8 },
     filter: { type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 },
     envelope: { attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65 },
-    lfo: { enabled: true, type: "sine", frequency: 2.1, amount: 0.35, target: "filter.frequency" },
+    modEnvelope: { enabled: true, attack: 0.01, decay: 0.24, sustain: 0.36, release: 0.8 },
+    lfo: { enabled: true, type: "sine", frequency: 2.1, amount: 1, phase: 0 },
+    modulation: {
+      lfoRoutes: [createModRoute("filter.frequency", 0.45)],
+      envelopeRoutes: [createModRoute("filter.frequency", 0.4)],
+    },
     sources: [createSourceModule("Synth")],
     components: [createComponentModule("Compressor")],
     effects: [createEffectModule("Chorus")],
   };
 
   const merged = deepMerge(fallback, preset);
+  const legacyLfoTarget = preset?.lfo?.target;
+  const legacyLfoAmount = typeof preset?.lfo?.amount === "number" ? preset.lfo.amount : 0.35;
+
   merged.sources = Array.isArray(preset.sources)
     ? preset.sources.map((module) => normalizeSourceModule(module))
     : fallback.sources.map((module) => normalizeSourceModule(module));
@@ -787,6 +955,17 @@ function normalizePreset(preset = {}) {
   merged.effects = Array.isArray(preset.effects)
     ? preset.effects.map((module) => normalizeEffectModule(module))
     : fallback.effects.map((module) => normalizeEffectModule(module));
+  merged.modEnvelope = deepMerge(fallback.modEnvelope, preset.modEnvelope || {});
+  merged.lfo = deepMerge(fallback.lfo, preset.lfo || {});
+  merged.modulation = deepMerge(fallback.modulation, preset.modulation || {});
+  merged.modulation.lfoRoutes = Array.isArray(preset?.modulation?.lfoRoutes)
+    ? preset.modulation.lfoRoutes.map((route) => ({ ...createModRoute(), ...route, id: route?.id || createId("route") }))
+    : legacyLfoTarget
+      ? [{ ...createModRoute(legacyLfoTarget, legacyLfoAmount), enabled: merged.lfo.enabled }]
+      : fallback.modulation.lfoRoutes.map((route) => ({ ...route, id: createId("route") }));
+  merged.modulation.envelopeRoutes = Array.isArray(preset?.modulation?.envelopeRoutes)
+    ? preset.modulation.envelopeRoutes.map((route) => ({ ...createModRoute(), ...route, id: route?.id || createId("route") }))
+    : fallback.modulation.envelopeRoutes.map((route) => ({ ...route, id: createId("route") }));
   merged.global.octave = clamp(Number(merged.global.octave || 4), 1, 7);
   merged.global.velocity = clamp(Number(merged.global.velocity || 0.8), 0.1, 1);
   merged.global.volume = clamp(Number(merged.global.volume || -8), -36, 6);
@@ -836,8 +1015,10 @@ class AudioEngine {
     this.componentRuntimes = new Map();
     this.effectRuntimes = new Map();
     this.activeNotes = new Set();
-    this.lfo = null;
-    this.lfoTarget = null;
+    this.modulationFrame = null;
+    this.lfoStartTime = 0;
+    this.lastModulatedTargets = new Set();
+    this.modEnvelopeState = { stage: "idle", velocity: 1, attackStart: 0, attackFrom: 0, decayStart: 0, releaseStart: 0, releaseFrom: 0 };
   }
 
   async start(state) {
@@ -858,6 +1039,7 @@ class AudioEngine {
     this.ampEnvelope = new Tone.AmplitudeEnvelope(state.envelope);
     this.masterVolume = new Tone.Volume(state.global.volume);
     this.analyser = new Tone.Analyser("waveform", 1024);
+    this.lfoStartTime = Tone.now();
 
     this.sourceBus.connect(this.filter);
     this.filter.connect(this.ampEnvelope);
@@ -867,7 +1049,7 @@ class AudioEngine {
 
     this.rebuildEffects();
     this.rebuildSources();
-    this.rebuildLfo();
+    this.startModulationLoop();
   }
 
   getAnalyser() {
@@ -883,11 +1065,11 @@ class AudioEngine {
     safeSet(this.filter, state.filter);
     safeSet(this.ampEnvelope, state.envelope);
     rampParam(this.masterVolume.volume, state.global.volume);
+    this.modEnvelopeState = { stage: "idle", velocity: 1, attackStart: 0, attackFrom: 0, decayStart: 0, releaseStart: 0, releaseFrom: 0 };
     this.silenceAll();
     this.rebuildEffects();
     this.rebuildSources();
-    this.refreshLfoRange();
-    this.rebuildLfo();
+    this.applyModulationSnapshot();
   }
 
   updateGlobal(globalState) {
@@ -896,7 +1078,7 @@ class AudioEngine {
       return;
     }
     rampParam(this.masterVolume.volume, globalState.volume);
-    this.refreshLfoRange();
+    this.applyModulationSnapshot();
   }
 
   updateFilter(filterState) {
@@ -905,7 +1087,7 @@ class AudioEngine {
       return;
     }
     safeSet(this.filter, filterState);
-    this.refreshLfoRange();
+    this.applyModulationSnapshot();
   }
 
   updateEnvelope(envelopeState) {
@@ -916,12 +1098,24 @@ class AudioEngine {
     safeSet(this.ampEnvelope, envelopeState);
   }
 
+  updateModEnvelope(modEnvelopeState) {
+    this.state.modEnvelope = deepClone(modEnvelopeState);
+  }
+
   updateLfo(lfoState) {
     this.state.lfo = deepClone(lfoState);
     if (!this.ready) {
       return;
     }
-    this.rebuildLfo();
+    this.applyModulationSnapshot();
+  }
+
+  updateModulation(modulationState) {
+    this.state.modulation = deepClone(modulationState);
+    if (!this.ready) {
+      return;
+    }
+    this.applyModulationSnapshot();
   }
 
   rebuildSources() {
@@ -1023,6 +1217,7 @@ class AudioEngine {
     }
 
     existing.apply(module);
+    this.applyModulationSnapshot();
   }
 
   updateComponent(module) {
@@ -1038,6 +1233,7 @@ class AudioEngine {
     }
 
     this.rebuildEffects();
+    this.applyModulationSnapshot();
   }
 
   updateEffect(module) {
@@ -1053,85 +1249,245 @@ class AudioEngine {
     }
 
     this.rebuildEffects();
+    this.applyModulationSnapshot();
   }
 
-  rebuildLfo() {
-    if (this.lfo) {
-      this.lfo.disconnect();
-      this.lfo.dispose();
-      this.lfo = null;
-      this.lfoTarget = null;
+  startModulationLoop() {
+    if (this.modulationFrame) {
+      cancelAnimationFrame(this.modulationFrame);
     }
 
-    if (!this.ready || !this.state.lfo.enabled) {
-      return;
-    }
+    const tick = () => {
+      if (this.ready) {
+        this.applyModulationSnapshot();
+      }
+      this.modulationFrame = requestAnimationFrame(tick);
+    };
 
-    const target = this.resolveLfoTarget(this.state.lfo.target);
-    if (!target) {
-      return;
-    }
-
-    this.lfo = new Tone.LFO({
-      type: this.state.lfo.type,
-      frequency: this.state.lfo.frequency,
-      min: target.min,
-      max: target.max,
-    });
-    this.lfo.connect(target.param);
-    this.lfo.start();
-    this.lfoTarget = target.param;
+    this.modulationFrame = requestAnimationFrame(tick);
   }
 
-  refreshLfoRange() {
-    if (!this.lfo || !this.state.lfo.enabled) {
-      return;
-    }
-    const target = this.resolveLfoTarget(this.state.lfo.target);
-    if (!target || target.param !== this.lfoTarget) {
-      this.rebuildLfo();
-      return;
+  getLfoValue(time) {
+    if (!this.state.lfo.enabled) {
+      return 0;
     }
 
-    this.lfo.type = this.state.lfo.type;
-    rampParam(this.lfo.frequency, this.state.lfo.frequency);
-    this.lfo.min = target.min;
-    this.lfo.max = target.max;
+    const phase = ((this.state.lfo.phase || 0) / 360) * Math.PI * 2;
+    const t = (time - this.lfoStartTime) * Number(this.state.lfo.frequency || 0);
+    const cycle = t % 1;
+    const angle = cycle * Math.PI * 2 + phase;
+    const type = this.state.lfo.type || "sine";
+
+    if (type === "triangle") {
+      return 1 - 4 * Math.abs(Math.round(cycle - 0.25) - (cycle - 0.25));
+    }
+    if (type === "square") {
+      return Math.sin(angle) >= 0 ? 1 : -1;
+    }
+    if (type === "sawtooth") {
+      return 2 * cycle - 1;
+    }
+    return Math.sin(angle);
   }
 
-  resolveLfoTarget(targetName) {
-    const amount = clamp(Number(this.state.lfo.amount || 0), 0, 1);
-    if (targetName === "filter.frequency") {
-      const center = Number(this.state.filter.frequency || 800);
-      const span = Math.max(20, center * amount * 0.95);
+  getModEnvelopeValue(time) {
+    if (!this.state.modEnvelope.enabled) {
+      return 0;
+    }
+
+    const envelope = this.state.modEnvelope;
+    const attack = Math.max(0.0001, Number(envelope.attack || 0.0001));
+    const decay = Math.max(0.0001, Number(envelope.decay || 0.0001));
+    const release = Math.max(0.0001, Number(envelope.release || 0.0001));
+    const peak = clamp(Number(this.modEnvelopeState.velocity || 1), 0, 1);
+    const sustainLevel = clamp(Number(envelope.sustain || 0), 0, 1) * peak;
+
+    while (true) {
+      if (this.modEnvelopeState.stage === "idle") {
+        return 0;
+      }
+
+      if (this.modEnvelopeState.stage === "attack") {
+        const elapsed = time - this.modEnvelopeState.attackStart;
+        if (elapsed < attack) {
+          const progress = clamp(elapsed / attack, 0, 1);
+          return this.modEnvelopeState.attackFrom + (peak - this.modEnvelopeState.attackFrom) * progress;
+        }
+        this.modEnvelopeState.stage = "decay";
+        this.modEnvelopeState.decayStart = this.modEnvelopeState.attackStart + attack;
+        continue;
+      }
+
+      if (this.modEnvelopeState.stage === "decay") {
+        const elapsed = time - this.modEnvelopeState.decayStart;
+        if (elapsed < decay) {
+          const progress = clamp(elapsed / decay, 0, 1);
+          return peak + (sustainLevel - peak) * progress;
+        }
+        this.modEnvelopeState.stage = "sustain";
+        continue;
+      }
+
+      if (this.modEnvelopeState.stage === "sustain") {
+        return sustainLevel;
+      }
+
+      if (this.modEnvelopeState.stage === "release") {
+        const elapsed = time - this.modEnvelopeState.releaseStart;
+        if (elapsed < release) {
+          const progress = clamp(elapsed / release, 0, 1);
+          return this.modEnvelopeState.releaseFrom * (1 - progress);
+        }
+        this.modEnvelopeState.stage = "idle";
+        return 0;
+      }
+    }
+  }
+
+  triggerModEnvelopeAttack(velocity = 1) {
+    const now = Tone.now();
+    const currentValue = this.getModEnvelopeValue(now);
+    this.modEnvelopeState = {
+      stage: "attack",
+      velocity: clamp(velocity, 0.05, 1),
+      attackStart: now,
+      attackFrom: currentValue,
+      decayStart: now,
+      releaseStart: now,
+      releaseFrom: currentValue,
+    };
+  }
+
+  triggerModEnvelopeRelease() {
+    const now = Tone.now();
+    this.modEnvelopeState = {
+      ...this.modEnvelopeState,
+      stage: "release",
+      releaseStart: now,
+      releaseFrom: this.getModEnvelopeValue(now),
+    };
+  }
+
+  resolveModBinding(targetId) {
+    const targets = getModulationTargets(this.state);
+    const meta = targets.find((entry) => entry.value === targetId);
+    if (!meta) {
+      return null;
+    }
+
+    if (targetId === "filter.frequency") {
       return {
-        param: this.filter.frequency,
-        min: clamp(center - span, 20, 18000),
-        max: clamp(center + span, 20, 18000),
+        ...meta,
+        base: Number(this.state.filter.frequency),
+        apply: (value) => rampParam(this.filter.frequency, value, 0.03),
       };
     }
 
-    if (targetName === "filter.Q") {
-      const center = Number(this.state.filter.Q || 1);
-      const span = Math.max(0.2, center * (amount * 2));
+    if (targetId === "filter.Q") {
       return {
-        param: this.filter.Q,
-        min: clamp(center - span, 0.001, 20),
-        max: clamp(center + span, 0.001, 20),
+        ...meta,
+        base: Number(this.state.filter.Q),
+        apply: (value) => rampParam(this.filter.Q, value, 0.03),
       };
     }
 
-    if (targetName === "master.volume") {
-      const center = Number(this.state.global.volume || -8);
-      const span = amount * 18;
-      return {
-        param: this.masterVolume.volume,
-        min: clamp(center - span, -36, 6),
-        max: clamp(center + span, -36, 6),
-      };
+    const [group, moduleId, prop] = targetId.split(":");
+
+    if (group === "source") {
+      const module = findById(this.state.sources, moduleId);
+      const runtime = this.sourceRuntimes.get(moduleId);
+      if (!module || !runtime) {
+        return null;
+      }
+
+      if (prop === "volume") {
+        return { ...meta, base: Number(module.volume), apply: (value) => rampParam(runtime.volumeNode.volume, value, 0.03) };
+      }
+      if (prop === "pan") {
+        return { ...meta, base: Number(module.pan), apply: (value) => rampParam(runtime.panNode.pan, value, 0.03) };
+      }
+      if (prop === "detune" && runtime.node?.detune) {
+        return { ...meta, base: Number(module.options.detune || 0), apply: (value) => rampParam(runtime.node.detune, value, 0.03) };
+      }
+      return null;
+    }
+
+    if (group === "component") {
+      const module = findById(this.state.components, moduleId);
+      const runtime = this.componentRuntimes.get(moduleId)?.node;
+      if (!module || !runtime) {
+        return null;
+      }
+
+      if (prop === "gain" && runtime.gain) {
+        return { ...meta, base: Number(module.options.gain), apply: (value) => rampParam(runtime.gain, value, 0.03) };
+      }
+      if (prop === "pan" && runtime.pan) {
+        return { ...meta, base: Number(module.options.pan), apply: (value) => rampParam(runtime.pan, value, 0.03) };
+      }
+      if (prop === "volume" && runtime.volume) {
+        return { ...meta, base: Number(module.options.volume), apply: (value) => rampParam(runtime.volume, value, 0.03) };
+      }
+      return null;
+    }
+
+    if (group === "effect") {
+      const module = findById(this.state.effects, moduleId);
+      const runtime = this.effectRuntimes.get(moduleId)?.node;
+      if (!module || !runtime) {
+        return null;
+      }
+
+      if (prop === "wet" && runtime.wet) {
+        return { ...meta, base: Number(module.options.wet), apply: (value) => rampParam(runtime.wet, value, 0.03) };
+      }
+      if (prop === "feedback" && runtime.feedback) {
+        return { ...meta, base: Number(module.options.feedback), apply: (value) => rampParam(runtime.feedback, value, 0.03) };
+      }
+      return null;
     }
 
     return null;
+  }
+
+  applyModulationSnapshot() {
+    if (!this.ready) {
+      return;
+    }
+
+    const now = Tone.now();
+    const lfoSignal = this.getLfoValue(now) * clamp(Number(this.state.lfo.amount ?? 1), 0, 1);
+    const envelopeSignal = this.getModEnvelopeValue(now);
+    const activeRoutes = [
+      ...(this.state.modulation?.lfoRoutes || []).map((route) => ({ ...route, source: "lfo", signal: lfoSignal })),
+      ...(this.state.modulation?.envelopeRoutes || []).map((route) => ({ ...route, source: "envelope", signal: envelopeSignal })),
+    ].filter((route) => route.enabled !== false);
+
+    const accumulator = new Map();
+    const targetsToRefresh = new Set([...this.lastModulatedTargets, ...activeRoutes.map((route) => route.target)]);
+
+    activeRoutes.forEach((route) => {
+      const binding = this.resolveModBinding(route.target);
+      if (!binding) {
+        return;
+      }
+
+      const current = accumulator.get(route.target) || { binding, delta: 0 };
+      current.delta += Number(route.amount || 0) * Number(route.signal || 0) * binding.scale(binding.base);
+      accumulator.set(route.target, current);
+    });
+
+    targetsToRefresh.forEach((targetId) => {
+      const entry = accumulator.get(targetId);
+      const binding = entry?.binding || this.resolveModBinding(targetId);
+      if (!binding) {
+        return;
+      }
+      const nextValue = clamp(binding.base + (entry?.delta || 0), binding.min, binding.max);
+      binding.apply(nextValue);
+    });
+
+    this.lastModulatedTargets = targetsToRefresh;
   }
 
   createSourceRuntime(module) {
@@ -1251,6 +1607,9 @@ class AudioEngine {
 
     if (!this.activeNotes.size) {
       this.ampEnvelope.triggerAttack(Tone.now(), velocity);
+      if (this.state.modEnvelope.enabled) {
+        this.triggerModEnvelopeAttack(velocity);
+      }
     }
 
     this.activeNotes.add(note);
@@ -1267,6 +1626,9 @@ class AudioEngine {
 
     if (!this.activeNotes.size) {
       this.ampEnvelope.triggerRelease(Tone.now());
+      if (this.state.modEnvelope.enabled) {
+        this.triggerModEnvelopeRelease();
+      }
     }
   }
 
@@ -1277,6 +1639,7 @@ class AudioEngine {
     }
     this.sourceRuntimes.forEach((runtime) => runtime.releaseAll());
     this.ampEnvelope.triggerRelease(Tone.now());
+    this.modEnvelopeState = { stage: "idle", velocity: 1, attackStart: 0, attackFrom: 0, decayStart: 0, releaseStart: 0, releaseFrom: 0 };
   }
 }
 
@@ -1294,6 +1657,8 @@ class ModularSynthApp {
     this.heldPointerNotes = new Set();
     this.activeNoteRefs = new Map();
     this.controlBindings = new Map();
+    this.dragPatch = null;
+    this.dragHoverTarget = "";
     this.performance = {
       morphA: "init",
       morphB: "fmBell",
@@ -1333,9 +1698,8 @@ class ModularSynthApp {
       lfoRack: document.getElementById("lfoRack"),
       componentRack: document.getElementById("componentRack"),
       effectRack: document.getElementById("effectRack"),
-      addSourceBtn: document.getElementById("addSourceBtn"),
-      addComponentBtn: document.getElementById("addComponentBtn"),
-      addEffectBtn: document.getElementById("addEffectBtn"),
+      addModuleSelect: document.getElementById("addModuleSelect"),
+      addModuleBtn: document.getElementById("addModuleBtn"),
       keyboard: document.getElementById("virtualKeyboard"),
       oscilloscope: document.getElementById("oscilloscope"),
       presetFileInput: document.getElementById("presetFileInput"),
@@ -1353,30 +1717,15 @@ class ModularSynthApp {
 
     document.addEventListener("pointerdown", wakeAudio, { passive: true });
     document.addEventListener("keydown", wakeAudio);
+    document.addEventListener("pointermove", (event) => this.onPatchDragMove(event));
+    document.addEventListener("pointerup", (event) => this.onPatchDragEnd(event));
+    document.addEventListener("pointercancel", (event) => this.onPatchDragEnd(event));
 
     window.addEventListener("keydown", (event) => this.onKeyDown(event));
     window.addEventListener("keyup", (event) => this.onKeyUp(event));
 
-    this.elements.addSourceBtn?.addEventListener("click", () => {
-      this.state.sources.push(createSourceModule("Synth"));
-      this.selectedPresetId = "custom";
-      this.renderAll();
-      this.engine.fullSync(this.state);
-    });
-
-    this.elements.addEffectBtn?.addEventListener("click", () => {
-      this.state.effects.push(createEffectModule("Chorus"));
-      this.selectedPresetId = "custom";
-      this.renderAll();
-      this.engine.fullSync(this.state);
-    });
-
-    this.elements.addComponentBtn?.addEventListener("click", () => {
-      this.state.components.push(createComponentModule("Compressor"));
-      this.selectedPresetId = "custom";
-      this.renderAll();
-      this.engine.fullSync(this.state);
-    });
+    this.populateAddModuleSelect();
+    this.elements.addModuleBtn?.addEventListener("click", () => this.handleAddModule());
 
     this.elements.presetFileInput?.addEventListener("change", async (event) => {
       const file = event.target.files?.[0];
@@ -1427,7 +1776,44 @@ class ModularSynthApp {
     }
   }
 
+  populateAddModuleSelect() {
+    const select = this.elements.addModuleSelect;
+    if (!select || select.options.length) {
+      return;
+    }
+
+    getAddableModuleOptions().forEach((option) => {
+      const element = document.createElement("option");
+      element.value = option.value;
+      element.textContent = option.label;
+      select.append(element);
+    });
+  }
+
+  handleAddModule() {
+    const value = this.elements.addModuleSelect?.value;
+    if (!value) {
+      return;
+    }
+
+    const [kind, type] = value.split(":");
+    if (kind === "source") {
+      this.state.sources.push(createSourceModule(type));
+    } else if (kind === "component") {
+      this.state.components.push(createComponentModule(type));
+    } else if (kind === "effect") {
+      this.state.effects.push(createEffectModule(type));
+    } else {
+      return;
+    }
+
+    this.selectedPresetId = "custom";
+    this.renderAll();
+    this.engine.fullSync(this.state);
+  }
+
   renderAll(previousState = null) {
+    this.sanitizeModulationState();
     this.controlBindings = new Map();
     const sections = [
       ["global strip", () => this.renderGlobalStrip()],
@@ -1453,6 +1839,24 @@ class ModularSynthApp {
 
     if (previousState) {
       this.animateControlTransition(previousState, this.state);
+    }
+  }
+
+  sanitizeModulationState() {
+    const validTargets = new Set(getModulationTargets(this.state).map((target) => target.value));
+    const sanitizeList = (routes) =>
+      (routes || [])
+        .filter((route) => route && validTargets.has(route.target))
+        .map((route) => ({ ...route, id: route.id || createId("route") }));
+
+    this.state.modulation.lfoRoutes = sanitizeList(this.state.modulation?.lfoRoutes);
+    this.state.modulation.envelopeRoutes = sanitizeList(this.state.modulation?.envelopeRoutes);
+
+    if (!this.state.modulation.lfoRoutes.length) {
+      const firstTarget = getModulationTargets(this.state)[0]?.value;
+      if (firstTarget) {
+        this.state.modulation.lfoRoutes.push(createModRoute(firstTarget, 0.45));
+      }
     }
   }
 
@@ -1640,6 +2044,7 @@ class ModularSynthApp {
         accent: definition.accent,
         kicker: definition.tag,
         title: module.type,
+        moduleRef: module.id,
         onRemove: () => {
           this.state.sources.splice(index, 1);
           this.selectedPresetId = "custom";
@@ -1692,6 +2097,7 @@ class ModularSynthApp {
           step: 0.1,
           value: module.volume,
           path: `sources.${index}.volume`,
+          patchPoint: { accent: definition.accent, targetId: `source:${module.id}:volume` },
           formatter: formatDb,
           onInput: (value) => {
             module.volume = value;
@@ -1707,6 +2113,7 @@ class ModularSynthApp {
           step: 0.01,
           value: module.pan,
           path: `sources.${index}.pan`,
+          patchPoint: { accent: definition.accent, targetId: `source:${module.id}:pan` },
           formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}`,
           onInput: (value) => {
             module.pan = value;
@@ -1717,6 +2124,7 @@ class ModularSynthApp {
       );
 
       definition.controls.forEach((control) => {
+        const patchTarget = control.path === "options.detune" ? `source:${module.id}:detune` : null;
         controls.append(
           this.renderModuleControl(
             module,
@@ -1724,6 +2132,7 @@ class ModularSynthApp {
             () => this.engine.updateSource(module),
             definition.accent,
             `sources.${index}.${control.path}`,
+            patchTarget,
           ),
         );
       });
@@ -1741,7 +2150,8 @@ class ModularSynthApp {
     const card = this.createModuleCard({
       accent: "filter",
       kicker: "Component",
-      title: "Tone.Filter",
+      title: "Filter",
+      moduleRef: "filter-core",
     });
 
     const headGrid = document.createElement("div");
@@ -1776,6 +2186,7 @@ class ModularSynthApp {
 
     const controls = document.createElement("div");
     controls.className = "module-grid";
+    card.append(this.createFilterVisualization(this.state.filter));
     controls.append(
       this.createRangeControl({
         label: "Cutoff",
@@ -1785,6 +2196,7 @@ class ModularSynthApp {
         step: 1,
         value: this.state.filter.frequency,
         path: "filter.frequency",
+        patchPoint: { accent: "filter", targetId: "filter.frequency" },
         formatter: formatFrequency,
         onInput: (value) => {
           this.state.filter.frequency = value;
@@ -1800,6 +2212,7 @@ class ModularSynthApp {
         step: 0.001,
         value: this.state.filter.Q,
         path: "filter.Q",
+        patchPoint: { accent: "filter", targetId: "filter.Q" },
         formatter: formatPlain,
         onInput: (value) => {
           this.state.filter.Q = value;
@@ -1818,14 +2231,16 @@ class ModularSynthApp {
       return;
     }
     this.elements.envelopeRack.innerHTML = "";
-    const card = this.createModuleCard({
+    const ampCard = this.createModuleCard({
       accent: "env",
       kicker: "Component",
-      title: "AmplitudeEnvelope",
+      title: "Amp Envelope",
+      moduleRef: "amp-envelope",
     });
 
     const controls = document.createElement("div");
     controls.className = "module-grid";
+    ampCard.append(this.createEnvelopeVisualization(this.state.envelope, "env"));
     ["attack", "decay", "sustain", "release"].forEach((key) => {
       controls.append(
         this.createRangeControl({
@@ -1846,8 +2261,57 @@ class ModularSynthApp {
       );
     });
 
-    card.append(controls);
-    this.elements.envelopeRack.append(card);
+    ampCard.append(controls);
+    this.elements.envelopeRack.append(ampCard);
+
+    const modCard = this.createModuleCard({
+      accent: "env",
+      kicker: "Modulation",
+      title: "Mod Envelope",
+      moduleRef: "mod-envelope",
+    });
+
+    const modHead = document.createElement("div");
+    modHead.className = "module-grid compact";
+    modHead.append(
+      this.createToggleControl({
+        label: "Enabled",
+        value: this.state.modEnvelope.enabled,
+        accent: "env",
+        onToggle: () => {
+          this.state.modEnvelope.enabled = !this.state.modEnvelope.enabled;
+          this.selectedPresetId = "custom";
+          this.engine.updateModEnvelope(this.state.modEnvelope);
+          this.renderEnvelopeModule();
+          this.drawPatchCables();
+        },
+      }),
+    );
+
+    const modControls = document.createElement("div");
+    modControls.className = "module-grid";
+    modCard.append(this.createEnvelopeVisualization(this.state.modEnvelope, "env"));
+    ["attack", "decay", "sustain", "release"].forEach((key) => {
+      modControls.append(
+        this.createRangeControl({
+          label: key.charAt(0).toUpperCase() + key.slice(1),
+          accent: "env",
+          min: key === "sustain" ? 0 : 0.001,
+          max: key === "sustain" ? 1 : 4,
+          step: key === "sustain" ? 0.01 : 0.001,
+          value: this.state.modEnvelope[key],
+          formatter: key === "sustain" ? formatPercent : formatSeconds,
+          onInput: (value) => {
+            this.state.modEnvelope[key] = value;
+            this.selectedPresetId = "custom";
+            this.engine.updateModEnvelope(this.state.modEnvelope);
+          },
+        }),
+      );
+    });
+
+    modCard.append(modHead, modControls, this.renderRouteRack("envelopeRoutes", "env"));
+    this.elements.envelopeRack.append(modCard);
   }
 
   renderLfoModule() {
@@ -1858,7 +2322,8 @@ class ModularSynthApp {
     const card = this.createModuleCard({
       accent: "lfo",
       kicker: "Modulation",
-      title: "Tone.LFO",
+      title: "LFO",
+      moduleRef: "lfo-core",
     });
 
     const headGrid = document.createElement("div");
@@ -1873,16 +2338,7 @@ class ModularSynthApp {
           this.selectedPresetId = "custom";
           this.engine.updateLfo(this.state.lfo);
           this.renderLfoModule();
-        },
-      }),
-      this.createSelectControl({
-        label: "Target",
-        options: LFO_TARGETS,
-        value: this.state.lfo.target,
-        onChange: (value) => {
-          this.state.lfo.target = value;
-          this.selectedPresetId = "custom";
-          this.engine.updateLfo(this.state.lfo);
+          this.drawPatchCables();
         },
       }),
       this.createSelectControl({
@@ -1916,7 +2372,7 @@ class ModularSynthApp {
         },
       }),
       this.createRangeControl({
-        label: "Amount",
+        label: "Depth",
         accent: "lfo",
         min: 0,
         max: 1,
@@ -1930,9 +2386,23 @@ class ModularSynthApp {
           this.engine.updateLfo(this.state.lfo);
         },
       }),
+      this.createRangeControl({
+        label: "Phase",
+        accent: "lfo",
+        min: 0,
+        max: 360,
+        step: 1,
+        value: this.state.lfo.phase || 0,
+        formatter: (value) => `${Math.round(value)}deg`,
+        onInput: (value) => {
+          this.state.lfo.phase = value;
+          this.selectedPresetId = "custom";
+          this.engine.updateLfo(this.state.lfo);
+        },
+      }),
     );
 
-    card.append(headGrid, controls);
+    card.append(headGrid, controls, this.renderRouteRack("lfoRoutes", "lfo"));
     this.elements.lfoRack.append(card);
   }
 
@@ -1947,6 +2417,7 @@ class ModularSynthApp {
         accent: definition.accent,
         kicker: definition.tag,
         title: module.type,
+        moduleRef: module.id,
         onRemove: () => {
           this.state.components.splice(index, 1);
           this.selectedPresetId = "custom";
@@ -1990,6 +2461,16 @@ class ModularSynthApp {
       const controls = document.createElement("div");
       controls.className = "module-grid";
       definition.controls.forEach((control) => {
+        let patchTarget = null;
+        if (module.type === "Gain" && control.path === "options.gain") {
+          patchTarget = `component:${module.id}:gain`;
+        }
+        if (module.type === "PanVol" && control.path === "options.pan") {
+          patchTarget = `component:${module.id}:pan`;
+        }
+        if (module.type === "PanVol" && control.path === "options.volume") {
+          patchTarget = `component:${module.id}:volume`;
+        }
         controls.append(
           this.renderModuleControl(
             module,
@@ -1997,6 +2478,7 @@ class ModularSynthApp {
             () => this.engine.updateComponent(module),
             definition.accent,
             `components.${index}.${control.path}`,
+            patchTarget,
           ),
         );
       });
@@ -2017,6 +2499,7 @@ class ModularSynthApp {
         accent: definition.accent,
         kicker: definition.tag,
         title: module.type,
+        moduleRef: module.id,
         onRemove: () => {
           this.state.effects.splice(index, 1);
           this.selectedPresetId = "custom";
@@ -2060,6 +2543,13 @@ class ModularSynthApp {
       const controls = document.createElement("div");
       controls.className = "module-grid";
       definition.controls.forEach((control) => {
+        let patchTarget = null;
+        if (control.path === "options.wet") {
+          patchTarget = `effect:${module.id}:wet`;
+        }
+        if (control.path === "options.feedback") {
+          patchTarget = `effect:${module.id}:feedback`;
+        }
         controls.append(
           this.renderModuleControl(
             module,
@@ -2069,6 +2559,7 @@ class ModularSynthApp {
             },
             definition.accent,
             `effects.${index}.${control.path}`,
+            patchTarget,
           ),
         );
       });
@@ -2137,7 +2628,7 @@ class ModularSynthApp {
     });
   }
 
-  renderModuleControl(module, control, onCommit, accent, bindingPath = null) {
+  renderModuleControl(module, control, onCommit, accent, bindingPath = null, patchTarget = null) {
     const path = control.path;
     const value = getByPath(module, path);
 
@@ -2163,6 +2654,7 @@ class ModularSynthApp {
       step: control.step,
       value,
       path: bindingPath,
+      patchPoint: patchTarget ? { accent, targetId: patchTarget } : null,
       formatter: control.formatter || formatPlain,
       onInput: (nextValue) => {
         setByPath(module, path, nextValue);
@@ -2172,10 +2664,99 @@ class ModularSynthApp {
     });
   }
 
-  createModuleCard({ accent, kicker, title, onRemove = null, removable = false }) {
+  renderRouteRack(routeKey, accent) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "route-rack";
+
+    const routeOptions = getModulationTargets(this.state).map((target) => ({
+      label: target.label,
+      value: target.value,
+    }));
+    const routes = this.state.modulation[routeKey];
+
+    routes.forEach((route, index) => {
+      const row = document.createElement("div");
+      row.className = "route-row";
+
+      const stack = document.createElement("div");
+      stack.className = "module-grid compact route-grid";
+      stack.append(
+        this.createSelectControl({
+          label: `Route ${index + 1}`,
+          options: routeOptions,
+          value: route.target,
+          patchPoint: {
+            accent,
+            routeKey,
+            routeId: route.id,
+            routeIndex: index,
+          },
+          onChange: (value) => {
+            route.target = value;
+            this.selectedPresetId = "custom";
+            this.engine.updateModulation(this.state.modulation);
+            this.drawPatchCables();
+          },
+        }),
+        this.createRangeControl({
+          label: "Amount",
+          accent,
+          variant: "slider",
+          min: -1,
+          max: 1,
+          step: 0.01,
+          value: route.amount,
+          formatter: (value) => `${value >= 0 ? "+" : ""}${Math.round(value * 100)}%`,
+          onInput: (value) => {
+            route.amount = value;
+            this.selectedPresetId = "custom";
+            this.engine.updateModulation(this.state.modulation);
+          },
+        }),
+      );
+
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "route-remove";
+      removeButton.textContent = "Remove";
+      removeButton.addEventListener("click", () => {
+        this.state.modulation[routeKey].splice(index, 1);
+        this.selectedPresetId = "custom";
+        this.renderAll();
+        this.engine.updateModulation(this.state.modulation);
+      });
+
+      row.append(stack, removeButton);
+      wrapper.append(row);
+    });
+
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "route-add";
+    addButton.textContent = "Add Route";
+    addButton.addEventListener("click", () => {
+      const firstTarget = routeOptions[0]?.value;
+      if (!firstTarget) {
+        return;
+      }
+      this.state.modulation[routeKey].push(createModRoute(firstTarget, 0.35));
+      this.selectedPresetId = "custom";
+      this.renderAll();
+      this.engine.updateModulation(this.state.modulation);
+      this.drawPatchCables();
+    });
+
+    wrapper.append(addButton);
+    return wrapper;
+  }
+
+  createModuleCard({ accent, kicker, title, onRemove = null, removable = false, moduleRef = null }) {
     const card = document.createElement("section");
     card.className = "module-card";
     card.dataset.accent = accent;
+    if (moduleRef) {
+      card.dataset.moduleRef = moduleRef;
+    }
 
     const head = document.createElement("div");
     head.className = "module-head";
@@ -2201,18 +2782,242 @@ class ModularSynthApp {
 
     head.append(titleBlock, actions);
     card.append(head);
+
     return card;
   }
 
-  createSelectControl({ label, options, value, onChange }) {
+  isTargetPatched(targetValue) {
+    return [...(this.state.modulation?.lfoRoutes || []), ...(this.state.modulation?.envelopeRoutes || [])]
+      .some((route) => route.enabled !== false && route.target === targetValue);
+  }
+
+  createPatchPoint({ accent, targetId = null, routeKey = null, routeId = null, routeIndex = 0 }) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "patch-point";
+    button.style.setProperty("--accent", `var(--${accent})`);
+
+    if (targetId) {
+      button.dataset.modTarget = targetId;
+      if (this.dragHoverTarget === targetId) {
+        button.classList.add("is-hover");
+      }
+      if (this.isTargetPatched(targetId)) {
+        button.classList.add("is-patched");
+      }
+    }
+
+    if (routeId) {
+      button.dataset.routeHandle = routeId;
+      button.dataset.routeKey = routeKey;
+      if (this.dragPatch?.routeId === routeId) {
+        button.classList.add("is-active");
+      }
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        this.beginPatchDrag(event, routeKey, routeId, accent, routeIndex);
+      });
+    }
+
+    return button;
+  }
+
+  createEnvelopeVisualization(envelopeState, accent = "env") {
+    const wrap = document.createElement("div");
+    wrap.className = "module-visual envelope-visual";
+    wrap.style.setProperty("--accent", `var(--${accent})`);
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 220 90");
+
+    const attack = Math.max(0.03, Number(envelopeState.attack || 0.01));
+    const decay = Math.max(0.03, Number(envelopeState.decay || 0.2));
+    const sustain = clamp(Number(envelopeState.sustain || 0), 0, 1);
+    const release = Math.max(0.03, Number(envelopeState.release || 0.4));
+    const total = attack + decay + release + 0.5;
+    const x1 = 24 + (attack / total) * 128;
+    const x2 = x1 + (decay / total) * 54;
+    const x3 = 172;
+    const yBase = 76;
+    const yPeak = 14;
+    const ySustain = yBase - sustain * 42;
+    const points = [
+      [16, yBase],
+      [x1, yPeak],
+      [x2, ySustain],
+      [x3, ySustain],
+      [204, yBase],
+    ];
+
+    const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    polygon.setAttribute(
+      "points",
+      [...points, [204, yBase], [16, yBase]].map((point) => point.join(",")).join(" "),
+    );
+    polygon.setAttribute("fill", "currentColor");
+    polygon.setAttribute("opacity", "0.96");
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    line.setAttribute("points", points.map((point) => point.join(",")).join(" "));
+    line.setAttribute("fill", "none");
+    line.setAttribute("stroke", "currentColor");
+    line.setAttribute("stroke-width", "2.4");
+
+    svg.append(polygon, line);
+    wrap.append(svg);
+    return wrap;
+  }
+
+  createFilterVisualization(filterState) {
+    const wrap = document.createElement("div");
+    wrap.className = "module-visual filter-visual";
+    wrap.style.setProperty("--accent", "var(--filter)");
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 220 90");
+
+    const type = filterState.type || "lowpass";
+    const cutoffNorm = clamp((Math.log10(Math.max(20, filterState.frequency)) - Math.log10(20)) / (Math.log10(12000) - Math.log10(20)), 0, 1);
+    const resonance = clamp(Number(filterState.Q || 0.5) / 12, 0, 1);
+    const cutoffX = 42 + cutoffNorm * 142;
+    const bumpX = cutoffX + 10;
+    const baseY = 62;
+    const floorY = 80;
+    const peakY = baseY - resonance * 28;
+    let points;
+
+    if (type === "highpass") {
+      points = [
+        [16, floorY],
+        [cutoffX - 22, floorY],
+        [cutoffX, peakY],
+        [cutoffX + 24, baseY],
+        [204, baseY],
+      ];
+    } else if (type === "bandpass") {
+      points = [
+        [16, floorY],
+        [cutoffX - 34, floorY],
+        [cutoffX, peakY],
+        [cutoffX + 34, floorY],
+        [204, floorY],
+      ];
+    } else if (type === "notch") {
+      points = [
+        [16, baseY],
+        [cutoffX - 26, baseY],
+        [cutoffX, floorY],
+        [cutoffX + 26, baseY],
+        [204, baseY],
+      ];
+    } else {
+      points = [
+        [16, baseY],
+        [cutoffX - 30, baseY],
+        [bumpX, peakY],
+        [cutoffX + 28, floorY],
+        [204, floorY],
+      ];
+    }
+
+    const area = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    const linePath = `M ${points[0][0]} ${points[0][1]} C ${points[1][0]} ${points[1][1]}, ${points[2][0]} ${points[2][1]}, ${points[3][0]} ${points[3][1]} S ${points[4][0]} ${points[4][1]}, ${points[4][0]} ${points[4][1]}`;
+    area.setAttribute("d", `${linePath} L 204 84 L 16 84 Z`);
+    area.setAttribute("fill", "currentColor");
+    area.setAttribute("opacity", "0.9");
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    line.setAttribute("d", linePath);
+    line.setAttribute("fill", "none");
+    line.setAttribute("stroke", "currentColor");
+    line.setAttribute("stroke-width", "2.4");
+
+    svg.append(area, line);
+    wrap.append(svg);
+    return wrap;
+  }
+
+  beginPatchDrag(event, routeKey, routeId, accent, routeIndex) {
+    const sourceRef = routeKey === "lfoRoutes" ? "lfo-core" : "mod-envelope";
+    const color = accent === "lfo" ? "rgba(61, 127, 184, 0.92)" : "rgba(192, 160, 62, 0.92)";
+    this.dragPatch = {
+      routeKey,
+      routeId,
+      sourceRef,
+      color,
+      routeIndex,
+      point: this.getRelativePatchPoint(event.clientX, event.clientY),
+    };
+    this.drawPatchCables();
+  }
+
+  getRelativePatchPoint(clientX, clientY) {
+    const container = this.elements.signalFlow;
+    if (!container) {
+      return { x: 0, y: 0 };
+    }
+    const rect = container.getBoundingClientRect();
+    return {
+      x: clientX - rect.left + container.scrollLeft,
+      y: clientY - rect.top + container.scrollTop,
+    };
+  }
+
+  findHoveredPatchTarget(clientX, clientY) {
+    const element = document.elementFromPoint(clientX, clientY);
+    return element?.closest?.("[data-mod-target]") || null;
+  }
+
+  onPatchDragMove(event) {
+    if (!this.dragPatch) {
+      return;
+    }
+    this.dragPatch.point = this.getRelativePatchPoint(event.clientX, event.clientY);
+    const hoveredTarget = this.findHoveredPatchTarget(event.clientX, event.clientY);
+    const nextHoverTarget = hoveredTarget?.dataset.modTarget || "";
+    if (nextHoverTarget !== this.dragHoverTarget) {
+      this.dragHoverTarget = nextHoverTarget;
+      this.renderAll();
+      return;
+    }
+    this.drawPatchCables();
+  }
+
+  onPatchDragEnd(event) {
+    if (!this.dragPatch) {
+      return;
+    }
+
+    const hoveredTarget = this.findHoveredPatchTarget(event.clientX, event.clientY);
+    if (hoveredTarget?.dataset.modTarget) {
+      const route = findById(this.state.modulation[this.dragPatch.routeKey], this.dragPatch.routeId);
+      if (route) {
+        route.target = hoveredTarget.dataset.modTarget;
+        this.selectedPresetId = "custom";
+        this.engine.updateModulation(this.state.modulation);
+      }
+    }
+
+    this.dragPatch = null;
+    this.dragHoverTarget = "";
+    this.renderAll();
+  }
+
+  createSelectControl({ label, options, value, onChange, patchPoint = null }) {
     const wrapper = document.createElement("label");
     wrapper.className = "control";
 
     const controlLabel = document.createElement("div");
     controlLabel.className = "control-label";
+    const title = document.createElement("div");
+    title.className = "control-title";
     const strong = document.createElement("strong");
     strong.textContent = label;
-    controlLabel.append(strong);
+    title.append(strong);
+    if (patchPoint) {
+      title.append(this.createPatchPoint(patchPoint));
+    }
+    controlLabel.append(title);
 
     const select = document.createElement("select");
     select.className = "select-input";
@@ -2250,18 +3055,24 @@ class ModularSynthApp {
     return wrapper;
   }
 
-  createRangeControl({ label, value, min, max, step, formatter, onInput, accent = "source", variant = "knob", path = null, eventName = "input" }) {
+  createRangeControl({ label, value, min, max, step, formatter, onInput, accent = "source", variant = "slider", path = null, eventName = "input", patchPoint = null }) {
     const wrapper = document.createElement("label");
     wrapper.className = `control control-${variant}`;
     wrapper.style.setProperty("--accent", `var(--${accent})`);
 
     const controlLabel = document.createElement("div");
     controlLabel.className = "control-label";
+    const title = document.createElement("div");
+    title.className = "control-title";
     const strong = document.createElement("strong");
     strong.textContent = label;
     const readout = document.createElement("span");
     readout.className = "control-readout";
-    controlLabel.append(strong, readout);
+    title.append(strong);
+    if (patchPoint) {
+      title.append(this.createPatchPoint(patchPoint));
+    }
+    controlLabel.append(title, readout);
 
     const shell = document.createElement("div");
     shell.className = "slider-shell";
@@ -2460,12 +3271,47 @@ class ModularSynthApp {
       return output;
     };
 
+    const blendRouteLists = (listA, listB) => {
+      const max = Math.max(listA.length, listB.length);
+      const output = [];
+      for (let index = 0; index < max; index += 1) {
+        const routeA = listA[index];
+        const routeB = listB[index];
+        if (!routeA) {
+          output.push({ ...deepClone(routeB), id: createId("route") });
+          continue;
+        }
+        if (!routeB) {
+          output.push({ ...deepClone(routeA), id: createId("route") });
+          continue;
+        }
+
+        if (routeA.target === routeB.target) {
+          output.push({
+            id: createId("route"),
+            target: routeA.target,
+            enabled: t < 0.5 ? routeA.enabled !== false : routeB.enabled !== false,
+            amount: blendNumbers(Number(routeA.amount || 0), Number(routeB.amount || 0)),
+          });
+          continue;
+        }
+
+        output.push({ ...(t < 0.5 ? deepClone(routeA) : deepClone(routeB)), id: createId("route") });
+      }
+      return output;
+    };
+
     return normalizePreset({
       name: `Morph ${presetA.name} / ${presetB.name}`,
       global: blendObject(presetA.global, presetB.global),
       filter: blendObject(presetA.filter, presetB.filter),
       envelope: blendObject(presetA.envelope, presetB.envelope),
+      modEnvelope: blendObject(presetA.modEnvelope, presetB.modEnvelope),
       lfo: blendObject(presetA.lfo, presetB.lfo),
+      modulation: {
+        lfoRoutes: blendRouteLists(presetA.modulation.lfoRoutes, presetB.modulation.lfoRoutes),
+        envelopeRoutes: blendRouteLists(presetA.modulation.envelopeRoutes, presetB.modulation.envelopeRoutes),
+      },
       sources: blendModuleLists(presetA.sources, presetB.sources, normalizeSourceModule),
       components: blendModuleLists(presetA.components, presetB.components, normalizeComponentModule),
       effects: blendModuleLists(presetA.effects, presetB.effects, normalizeEffectModule),
@@ -2523,6 +3369,19 @@ class ModularSynthApp {
       const steps = Math.round((max - min) / step);
       return min + Math.floor(Math.random() * (steps + 1)) * step;
     };
+    const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    const shuffle = (list) => {
+      const next = [...list];
+      for (let index = next.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+      }
+      return next;
+    };
+    const createRandomRoutes = (targets, maxCount, amountScale = 0.75) =>
+      shuffle(targets)
+        .slice(0, Math.min(targets.length, maxCount))
+        .map((target) => createModRoute(target.value, randomRange(-amountScale, amountScale, 0.01)));
 
     const applyDefinitionRandomness = (module, definition) => {
       definition.controls.forEach((control) => {
@@ -2544,11 +3403,16 @@ class ModularSynthApp {
     this.state.envelope.decay = randomRange(0.04, 0.7, 0.001);
     this.state.envelope.sustain = randomRange(0.2, 0.95, 0.01);
     this.state.envelope.release = randomRange(0.08, 2.8, 0.01);
+    this.state.modEnvelope.enabled = Math.random() > 0.15;
+    this.state.modEnvelope.attack = randomRange(0.001, 0.6, 0.001);
+    this.state.modEnvelope.decay = randomRange(0.03, 1.4, 0.001);
+    this.state.modEnvelope.sustain = randomRange(0, 1, 0.01);
+    this.state.modEnvelope.release = randomRange(0.05, 3.2, 0.01);
     this.state.lfo.enabled = true;
     this.state.lfo.type = randomChoice(SHARED_WAVE_OPTIONS).value;
-    this.state.lfo.target = randomChoice(LFO_TARGETS).value;
     this.state.lfo.frequency = randomRange(0.08, 9.5, 0.01);
     this.state.lfo.amount = randomRange(0.05, 0.75, 0.01);
+    this.state.lfo.phase = randomRange(0, 360, 1);
 
     this.state.sources.forEach((module) => {
       module.volume = randomRange(-18, -4, 0.1);
@@ -2558,6 +3422,10 @@ class ModularSynthApp {
 
     this.state.components.forEach((module) => applyDefinitionRandomness(module, COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.Compressor));
     this.state.effects.forEach((module) => applyDefinitionRandomness(module, EFFECT_LIBRARY[module.type] || EFFECT_LIBRARY.Chorus));
+
+    const modulationTargets = getModulationTargets(this.state);
+    this.state.modulation.lfoRoutes = createRandomRoutes(modulationTargets, randomInt(1, Math.min(3, modulationTargets.length || 1)), 0.8);
+    this.state.modulation.envelopeRoutes = createRandomRoutes(modulationTargets, randomInt(1, Math.min(2, modulationTargets.length || 1)), 0.65);
 
     this.selectedPresetId = "custom";
     this.resetPerformanceControls();
@@ -2744,31 +3612,45 @@ class ModularSynthApp {
     }
 
     const containerRect = container.getBoundingClientRect();
-    const stageOrder = ["sources", "filter", "envelope", "components", "effects"];
-    const stageNodes = Object.fromEntries(
-      [...container.querySelectorAll(".stage")].map((stage) => [stage.dataset.stage, stage]),
-    );
-
-    svg.setAttribute("viewBox", `0 0 ${Math.round(containerRect.width)} ${Math.round(containerRect.height)}`);
+    const width = Math.round(container.scrollWidth || containerRect.width);
+    const height = Math.round(container.scrollHeight || containerRect.height);
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svg.innerHTML = "";
 
-    const createPath = (d, stroke, dashed = false, width = 3) => {
+    const createPath = (d, stroke, dashed = false, widthValue = 3, opacity = 0.7) => {
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("d", d);
       path.setAttribute("fill", "none");
       path.setAttribute("stroke", stroke);
-      path.setAttribute("stroke-width", String(width));
+      path.setAttribute("stroke-width", String(widthValue));
       path.setAttribute("stroke-linecap", "round");
       path.setAttribute("stroke-linejoin", "round");
-      path.setAttribute("opacity", dashed ? "0.82" : "0.55");
+      path.setAttribute("opacity", String(opacity));
       if (dashed) {
-        path.setAttribute("stroke-dasharray", "8 10");
+        path.setAttribute("stroke-dasharray", "7 9");
       }
       svg.append(path);
     };
 
-    const anchor = (stageName, side = "right", verticalBias = 0.3) => {
-      const node = stageNodes[stageName];
+    const createSocket = (x, y, fill, radius = 4.5) => {
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", String(x));
+      dot.setAttribute("cy", String(y));
+      dot.setAttribute("r", String(radius));
+      dot.setAttribute("fill", fill);
+      dot.setAttribute("opacity", "0.92");
+      svg.append(dot);
+    };
+
+    const escapeSelector = (value) => {
+      if (window.CSS?.escape) {
+        return window.CSS.escape(value);
+      }
+      return String(value).replace(/["\\]/g, "\\$&");
+    };
+
+    const anchorModule = (moduleRef, side = "right", verticalBias = 0.5) => {
+      const node = container.querySelector(`[data-module-ref="${escapeSelector(moduleRef)}"]`);
       if (!node) {
         return null;
       }
@@ -2779,30 +3661,93 @@ class ModularSynthApp {
       };
     };
 
-    stageOrder.forEach((stageName, index) => {
-      if (index === stageOrder.length - 1) {
+    const anchorRouteHandle = (routeId) => {
+      const node = container.querySelector(`[data-route-handle="${escapeSelector(routeId)}"]`);
+      if (!node) {
+        return null;
+      }
+      const rect = node.getBoundingClientRect();
+      return {
+        x: rect.right - containerRect.left,
+        y: rect.top - containerRect.top + rect.height * 0.5,
+      };
+    };
+
+    const anchorTarget = (targetId) => {
+      const node = container.querySelector(`[data-mod-target="${escapeSelector(targetId)}"]`);
+      if (!node) {
+        return null;
+      }
+      const rect = node.getBoundingClientRect();
+      return {
+        x: rect.left - containerRect.left + rect.width * 0.5,
+        y: rect.top - containerRect.top + rect.height * 0.5,
+      };
+    };
+
+    const drawCable = (from, to, color, widthValue, opacity, dashed = true) => {
+      const direction = to.x >= from.x ? 1 : -1;
+      const horizontalDistance = Math.max(42, Math.abs(to.x - from.x));
+      const controlOffset = horizontalDistance * 0.28;
+      const arcHeight = Math.max(22, Math.min(110, horizontalDistance * 0.18));
+      const controlY = Math.min(from.y, to.y) - arcHeight;
+      createPath(
+        `M ${from.x} ${from.y} C ${from.x + direction * controlOffset} ${controlY}, ${to.x - direction * controlOffset} ${controlY}, ${to.x} ${to.y}`,
+        color,
+        dashed,
+        widthValue,
+        opacity,
+      );
+    };
+
+    const modulationTargets = new Map(getModulationTargets(this.state).map((target) => [target.value, target]));
+    const routes = [
+      ...(this.state.modulation?.lfoRoutes || []).map((route) => ({
+        ...route,
+        color: "rgba(61, 127, 184, 0.92)",
+        sourceRef: "lfo-core",
+        sourceEnabled: this.state.lfo.enabled,
+      })),
+      ...(this.state.modulation?.envelopeRoutes || []).map((route) => ({
+        ...route,
+        color: "rgba(192, 160, 62, 0.92)",
+        sourceRef: "mod-envelope",
+        sourceEnabled: this.state.modEnvelope.enabled,
+      })),
+    ];
+
+    routes.forEach((route, index) => {
+      if (route.enabled === false) {
         return;
       }
-      const from = anchor(stageName, "right");
-      const to = anchor(stageOrder[index + 1], "left");
+      const targetMeta = modulationTargets.get(route.target);
+      if (!targetMeta) {
+        return;
+      }
+
+      const from = anchorRouteHandle(route.id) || anchorModule(route.sourceRef, "right", 0.35 + (index % 4) * 0.12);
+      const to = anchorTarget(targetMeta.value);
       if (!from || !to) {
         return;
       }
-      const dx = Math.max(46, (to.x - from.x) * 0.5);
-      createPath(`M ${from.x} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`, "rgba(67, 92, 66, 0.9)");
+
+      const widthValue = 2 + Math.abs(Number(route.amount || 0)) * 2.6;
+      const opacity = route.sourceEnabled ? 0.78 : 0.28;
+      drawCable(from, to, route.color, widthValue, opacity, true);
+      createSocket(from.x, from.y, route.color, 4);
+      createSocket(to.x, to.y, route.color, 3.5);
     });
 
-    const lfoFrom = anchor("lfo", "right", 0.45);
-    const lfoTargetName = this.state.lfo.target.startsWith("filter") ? "filter" : "effects";
-    const lfoTo = anchor(lfoTargetName, "left", 0.42);
-    if (lfoFrom && lfoTo) {
-      const controlY = Math.min(lfoFrom.y, lfoTo.y) - 72;
-      createPath(
-        `M ${lfoFrom.x} ${lfoFrom.y} C ${lfoFrom.x + 50} ${controlY}, ${lfoTo.x - 50} ${controlY}, ${lfoTo.x} ${lfoTo.y}`,
-        "rgba(61, 127, 184, 0.95)",
-        true,
-        2.5,
-      );
+    if (this.dragPatch?.point) {
+      const from =
+        anchorRouteHandle(this.dragPatch.routeId)
+        || anchorModule(this.dragPatch.sourceRef, "right", 0.4 + (this.dragPatch.routeIndex % 4) * 0.1);
+      const to = this.dragPatch.point;
+      if (from && to) {
+        drawCable(from, to, this.dragPatch.color, 2.6, 0.95, true);
+        createSocket(from.x, from.y, this.dragPatch.color, 4.5);
+        createSocket(to.x, to.y, this.dragPatch.color, 4);
+      }
     }
   }
 
