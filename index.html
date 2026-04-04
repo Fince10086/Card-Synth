@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tone.js Modular Synth Playground</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="title-block">
+          <p class="eyebrow">Tone.js / Web Audio Playground</p>
+          <h1>Modular Synth Rack</h1>
+          <p class="subtitle">
+            Patch sources, modulation, and effects. Audio starts on your first
+            click or key press.
+          </p>
+        </div>
+        <div class="status-card">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Standby. Touch any control to arm audio.</span>
+        </div>
+      </header>
+
+      <section class="global-strip panel">
+        <div class="global-block" id="presetControls"></div>
+        <div class="global-block volume-block" id="masterControls"></div>
+      </section>
+
+      <section class="signal-flow">
+        <svg id="patchCables" class="patch-cables" aria-hidden="true"></svg>
+
+        <div class="stage stage-sources" data-stage="sources">
+          <div class="stage-header">
+            <div>
+              <p class="stage-kicker">Stage 01</p>
+              <h2>Sources</h2>
+            </div>
+            <button class="action-button" id="addSourceBtn" type="button">
+              Add Source
+            </button>
+          </div>
+          <div class="module-list" id="sourceRack"></div>
+        </div>
+
+        <div class="stage stage-filter" data-stage="filter">
+          <div class="stage-header">
+            <div>
+              <p class="stage-kicker">Stage 02</p>
+              <h2>Filter</h2>
+            </div>
+          </div>
+          <div id="filterRack"></div>
+        </div>
+
+        <div class="stage stage-envelope" data-stage="envelope">
+          <div class="stage-header">
+            <div>
+              <p class="stage-kicker">Stage 03</p>
+              <h2>Envelope</h2>
+            </div>
+          </div>
+          <div id="envelopeRack"></div>
+        </div>
+
+        <div class="stage stage-lfo" data-stage="lfo">
+          <div class="stage-header">
+            <div>
+              <p class="stage-kicker">Stage 04</p>
+              <h2>LFO</h2>
+            </div>
+          </div>
+          <div id="lfoRack"></div>
+        </div>
+
+        <div class="stage stage-components" data-stage="components">
+          <div class="stage-header">
+            <div>
+              <p class="stage-kicker">Stage 05</p>
+              <h2>Components</h2>
+            </div>
+            <button class="action-button" id="addComponentBtn" type="button">
+              Add Component
+            </button>
+          </div>
+          <div class="module-list" id="componentRack"></div>
+        </div>
+
+        <div class="stage stage-effects" data-stage="effects">
+          <div class="stage-header">
+            <div>
+              <p class="stage-kicker">Stage 06</p>
+              <h2>Effects</h2>
+            </div>
+            <button class="action-button" id="addEffectBtn" type="button">
+              Add Effect
+            </button>
+          </div>
+          <div class="module-list" id="effectRack"></div>
+        </div>
+      </section>
+
+      <section class="bottom-row">
+        <div class="panel scope-panel">
+          <div class="panel-header">
+            <div>
+              <p class="stage-kicker">Output</p>
+              <h2>Oscilloscope</h2>
+            </div>
+            <div class="meter-chip" id="transportInfo">Oct 4 / Vel 80%</div>
+          </div>
+          <canvas id="oscilloscope" width="960" height="280"></canvas>
+        </div>
+
+        <div class="panel keyboard-panel">
+          <div class="panel-header">
+            <div>
+              <p class="stage-kicker">Performance</p>
+              <h2>Keyboard</h2>
+            </div>
+            <div class="key-hint">
+              <span>A-K play notes</span>
+              <span>Z/X octave</span>
+              <span>C/V velocity</span>
+            </div>
+          </div>
+          <div class="keyboard-shell">
+            <div id="virtualKeyboard" class="virtual-keyboard"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <input id="presetFileInput" type="file" accept=".json,application/json" hidden />
+
+    <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
