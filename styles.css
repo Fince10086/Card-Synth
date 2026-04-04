@@ -618,15 +618,15 @@ select {
 }
 
 .patch-point {
-  width: 10px;
-  height: 10px;
+  width: 7px;
+  height: 7px;
   flex: 0 0 auto;
   padding: 0;
   border: 0;
   outline: none;
   border-radius: 999px;
   background: #a0a0a0;
-  box-shadow: 0 0 0 4px rgba(160, 160, 160, 0.18);
+  box-shadow: 0 0 0 2px rgba(160, 160, 160, 0.18);
   cursor: crosshair;
   transition:
     transform 140ms ease,
@@ -637,12 +637,12 @@ select {
 
 .patch-point.is-patched {
   background: var(--accent, var(--ink));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, var(--ink)) 18%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, var(--ink)) 18%, transparent);
 }
 
 .patch-point.is-active,
 .patch-point.is-hover {
-  transform: scale(1.08);
+  transform: scale(1.1);
 }
 
 /* 旋钮采用较轻的立体感，和整体扁平化界面保持平衡。 */
@@ -770,6 +770,35 @@ select {
 .control-fader .slider-input {
   width: 98px;
   transform: rotate(-90deg);
+}
+
+.readout-input {
+  width: 48px;
+  padding: 2px 4px;
+  border: 1px solid color-mix(in srgb, var(--accent, var(--ink)) 40%, transparent);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 11px;
+  text-align: right;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.readout-input:focus {
+  border-color: var(--accent, var(--ink));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, var(--ink)) 20%, transparent);
+}
+
+.readout-input::-webkit-inner-spin-button,
+.readout-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.readout-input[type="number"] {
+  -moz-appearance: textfield;
 }
 
 /* select / button 共享同一套基础交互状态。 */

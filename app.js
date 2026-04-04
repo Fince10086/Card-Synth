@@ -3984,6 +3984,57 @@ class ModularSynthApp {
       });
     }
 
+    const handleReadoutDoubleClick = () => {
+      const currentInput = readout.nextElementSibling;
+      if (currentInput && currentInput.classList.contains("readout-input")) {
+        return;
+      }
+
+      const inputField = document.createElement("input");
+      inputField.type = "number";
+      inputField.min = String(min);
+      inputField.max = String(max);
+      inputField.step = String(step);
+      inputField.value = String(input.value);
+      inputField.className = "readout-input";
+
+      readout.style.display = "none";
+      controlLabel.insertBefore(inputField, readout);
+      inputField.focus();
+      inputField.select();
+
+      const commitValue = () => {
+        let newValue = Number(inputField.value);
+        if (Number.isNaN(newValue)) {
+          newValue = Number(input.value);
+        }
+        newValue = Math.max(min, Math.min(max, newValue));
+        input.value = String(newValue);
+        updateVisual(newValue);
+        onInput(newValue);
+        inputField.remove();
+        readout.style.display = "";
+      };
+
+      const cancelEdit = () => {
+        inputField.remove();
+        readout.style.display = "";
+      };
+
+      inputField.addEventListener("blur", commitValue);
+      inputField.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commitValue();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          cancelEdit();
+        }
+      });
+    };
+
+    readout.addEventListener("dblclick", handleReadoutDoubleClick);
+
     wrapper.append(controlLabel, shell);
     return wrapper;
   }
