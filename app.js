@@ -1973,7 +1973,10 @@ class ModularSynthApp {
       select.append(element);
     });
     select.value = value;
-    select.addEventListener("change", (event) => onChange(event.target.value));
+    select.addEventListener("change", (event) => {
+      onChange(event.target.value);
+      select.blur();
+    });
 
     wrapper.append(controlLabel, select);
     return wrapper;
@@ -2005,10 +2008,11 @@ class ModularSynthApp {
     };
 
     syncState(Boolean(value));
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
       const nextValue = !button.classList.contains("is-on");
       syncState(nextValue);
       onToggle(nextValue);
+      event.target.blur();
     });
 
     wrapper.append(controlLabel, button);
@@ -2104,9 +2108,15 @@ class ModularSynthApp {
       }
     });
 
+    // 滑块拖动结束后失去焦点，恢复键盘演奏
+    input.addEventListener("pointerup", () => {
+      input.blur();
+    });
+
     if (eventName === "change") {
       input.addEventListener("change", (event) => {
         onInput(Number(event.target.value));
+        input.blur();
       });
     }
 
