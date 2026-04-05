@@ -50,6 +50,12 @@ class ModularSynthApp {
       motion: 0.5,
     };
 
+    // 示波器缩放参数
+    this.scopeZoom = {
+      horizontal: 1,
+      vertical: 1,
+    };
+
     // MIDI 状态
     this.midi = {
       supported: typeof navigator !== "undefined" && "requestMIDIAccess" in navigator,
@@ -104,6 +110,12 @@ class ModularSynthApp {
       transportInfo: document.getElementById("transportInfo"),
       patchCables: document.getElementById("patchCables"),
       signalFlow: document.querySelector(".signal-flow"),
+      scopeZoomInH: document.getElementById("scopeZoomInH"),
+      scopeZoomOutH: document.getElementById("scopeZoomOutH"),
+      scopeZoomInV: document.getElementById("scopeZoomInV"),
+      scopeZoomOutV: document.getElementById("scopeZoomOutV"),
+      scopeHLabel: document.getElementById("scopeHLabel"),
+      scopeVLabel: document.getElementById("scopeVLabel"),
     };
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
   }
@@ -157,6 +169,37 @@ class ModularSynthApp {
         event.target.value = "";
       }
     });
+
+    // 示波器缩放控制
+    this.elements.scopeZoomInH?.addEventListener("click", () => {
+      this.scopeZoom.horizontal = Math.min(8, this.scopeZoom.horizontal * 2);
+      this.updateScopeZoomLabels();
+    });
+    this.elements.scopeZoomOutH?.addEventListener("click", () => {
+      this.scopeZoom.horizontal = Math.max(0.25, this.scopeZoom.horizontal / 2);
+      this.updateScopeZoomLabels();
+    });
+    this.elements.scopeZoomInV?.addEventListener("click", () => {
+      this.scopeZoom.vertical = Math.min(4, this.scopeZoom.vertical * 1.5);
+      this.updateScopeZoomLabels();
+    });
+    this.elements.scopeZoomOutV?.addEventListener("click", () => {
+      this.scopeZoom.vertical = Math.max(0.25, this.scopeZoom.vertical / 1.5);
+      this.updateScopeZoomLabels();
+    });
+    this.updateScopeZoomLabels();
+  }
+
+  /**
+   * 更新示波器缩放标签显示
+   */
+  updateScopeZoomLabels() {
+    if (this.elements.scopeHLabel) {
+      this.elements.scopeHLabel.textContent = `${this.scopeZoom.horizontal}x`;
+    }
+    if (this.elements.scopeVLabel) {
+      this.elements.scopeVLabel.textContent = `${this.scopeZoom.vertical.toFixed(1)}x`;
+    }
   }
 
   /* -------------------------------------------------------------------------- */
@@ -1340,7 +1383,7 @@ class ModularSynthApp {
 
   /**
    * 渲染虚拟键盘
-   * 根据当前八度和屏幕宽度实时重建
+   * 键盘固定在顶部工具栏中
    */
   renderKeyboard() {
     if (!this.elements.keyboard) {
@@ -1348,13 +1391,10 @@ class ModularSynthApp {
     }
     this.elements.keyboard.innerHTML = "";
 
-    const compactLayout = window.innerWidth < 940;
-    const whiteKeyWidth = compactLayout ? 68 : 72;
-    const blackKeyWidth = compactLayout ? 42 : 46;
-    const keyboardPadding = 10;
-    const keyboardWidth = whiteKeyWidth * 8 + keyboardPadding * 2;
+    const whiteKeyWidth = 38;
+    const blackKeyWidth = 28;
+    const keyboardPadding = 0;
 
-    this.elements.keyboard.style.width = `${keyboardWidth}px`;
     this.elements.keyboard.style.setProperty("--white-key-width", `${whiteKeyWidth}px`);
     this.elements.keyboard.style.setProperty("--black-key-width", `${blackKeyWidth}px`);
 
@@ -3385,6 +3425,38 @@ class ModularSynthApp {
   /* -------------------------------------------------------------------------- */
 
   /**
+   * 使用自相关算法计算波形的基频周期
+   * 用于稳定波形显示位置
+   * @param {Float32Array} waveform - 波形数据
+   * @param {number} minPeriod - 最小周期（采样点数）
+   * @param {number} maxPeriod - 最大周期（采样点数）
+   * @returns {number} - 周期位置（采样点偏移）
+   */
+  findAutocorrelationPeak(waveform, minPeriod = 32, maxPeriod = 512) {
+    const n = waveform.length;
+    const searchMin = Math.max(1, minPeriod);
+    const searchMax = Math.min(n / 2, maxPeriod);
+
+    let bestCorrelation = -Infinity;
+    let bestOffset = 0;
+
+    for (let lag = searchMin; lag < searchMax; lag++) {
+      let correlation = 0;
+      for (let i = 0; i < n - lag; i++) {
+        correlation += waveform[i] * waveform[i + lag];
+      }
+      correlation /= n - lag;
+
+      if (correlation > bestCorrelation) {
+        bestCorrelation = correlation;
+        bestOffset = lag;
+      }
+    }
+
+    return bestOffset;
+  }
+
+  /**
    * 调整示波器画布大小
    * 把 canvas 的实际像素尺寸同步到 CSS 尺寸 * DPR，避免高分屏模糊
    */
@@ -3403,6 +3475,7 @@ class ModularSynthApp {
   /**
    * 绘制示波器
    * 示例波器持续重绘；当音频尚未启动时则显示占位提示文本
+   * 支持横向和纵向缩放，使用自相关算法稳定波形显示位置
    */
   drawOscilloscope() {
     requestAnimationFrame(() => this.drawOscilloscope());
@@ -3415,12 +3488,10 @@ class ModularSynthApp {
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
 
-    // 清空画布
     context.clearRect(0, 0, width, height);
     context.fillStyle = "#f5f7fb";
     context.fillRect(0, 0, width, height);
 
-    // 绘制网格
     context.strokeStyle = "rgba(42, 36, 27, 0.08)";
     context.lineWidth = 1;
     for (let x = 0; x <= width; x += width / 12) {
@@ -3436,37 +3507,45 @@ class ModularSynthApp {
       context.stroke();
     }
 
-    // 绘制中心线
     context.strokeStyle = "rgba(61, 127, 184, 0.22)";
     context.beginPath();
     context.moveTo(0, height / 2);
     context.lineTo(width, height / 2);
     context.stroke();
 
-    // 获取分析器数据
     const analyser = this.engine.getAnalyser();
     if (!analyser || !this.audioBooted) {
       context.fillStyle = "rgba(114, 103, 87, 0.78)";
-      context.font = '500 16px "IBM Plex Sans"';
-      context.fillText("Waveform will appear after the first interaction.", 24, 34);
+      context.font = '500 14px "IBM Plex Sans"';
+      context.fillText("点击任意位置启动音频", 24, height / 2 + 5);
       return;
     }
 
-    // 绘制波形
     const waveform = analyser.getValue();
+    const zoomH = this.scopeZoom.horizontal;
+    const zoomV = this.scopeZoom.vertical;
+
+    const period = this.findAutocorrelationPeak(waveform);
+    const startOffset = period > 0 ? period : 0;
+
+    const samplesPerScreen = Math.floor(waveform.length / zoomH);
+    const visibleSamples = Math.min(samplesPerScreen, waveform.length - startOffset);
+
     context.strokeStyle = "#2e8ea7";
-    context.lineWidth = 2;
+    context.lineWidth = Math.max(1.5, 2.5 / zoomH);
     context.beginPath();
 
-    waveform.forEach((sample, index) => {
-      const x = (index / (waveform.length - 1)) * width;
-      const y = height * 0.5 + sample * height * 0.34;
-      if (index === 0) {
+    for (let i = 0; i < visibleSamples; i++) {
+      const sampleIndex = (startOffset + i) % waveform.length;
+      const x = (i / (visibleSamples - 1)) * width;
+      const sample = waveform[sampleIndex];
+      const y = height * 0.5 + sample * height * 0.4 * zoomV;
+      if (i === 0) {
         context.moveTo(x, y);
       } else {
         context.lineTo(x, y);
       }
-    });
+    }
 
     context.stroke();
   }

@@ -934,6 +934,110 @@ select {
   font-size: 0.72rem;
 }
 
+/* 性能工具栏：固定在顶部，包含示波器和键盘 */
+.performance-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  height: 150px;
+  max-height: 150px;
+  margin-bottom: 10px;
+  background: #ffffff;
+  border-bottom: 1px solid #e0e2ea;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+/* 内部容器：限制最大宽度并居中 */
+.performance-bar-inner {
+  display: flex;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.performance-bar-scope {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 200px;
+  max-width: 680px;
+  padding: 4px 8px;
+  background: #fdfdfe;
+  overflow: hidden;
+}
+
+.performance-bar-keyboard {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 280px;
+  padding: 4px 8px;
+  border-left: 1px solid #e8eaef;
+  background: #fafbfd;
+  overflow: hidden;
+}
+
+.keyboard-hint {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 2px;
+  flex-shrink: 0;
+}
+
+.keyboard-hint span {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #f0f2f6;
+  color: #7c8298;
+  font-size: 0.62rem;
+}
+
+/* 示波器 canvas 和缩放控制 */
+#oscilloscope {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 0;
+  min-height: 40px;
+  display: block;
+  background: linear-gradient(180deg, #fbfcfe 0%, #f5f7fb 100%);
+}
+
+.scope-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.scope-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #5a6070;
+  font-size: 9px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.scope-btn:hover {
+  background: #f0f2f6;
+  color: #2a241b;
+}
+
+.scope-label {
+  min-width: 26px;
+  text-align: center;
+  font-size: 0.62rem;
+  color: #7c8298;
+  font-weight: 500;
+}
+
 .bottom-row {
   display: grid;
   grid-template-columns: 1.12fr 0.88fr;
@@ -946,18 +1050,6 @@ select {
 .keyboard-panel {
   padding: 10px 10px 12px;
   border-radius: 0;
-}
-
-/* 示波器外壳改成浅色面板，真实波形由 canvas 动态绘制。 */
-#oscilloscope {
-  width: 100%;
-  height: 264px;
-  display: block;
-  margin-top: 10px;
-  border-radius: 0;
-  border: 1px solid #e2e6ef;
-  background: linear-gradient(180deg, #fbfcfe 0%, #f2f5fb 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 /* 键盘提示胶囊，与模块参数标签共用轻量化语言。 */
@@ -1003,7 +1095,89 @@ select {
   scrollbar-color: #c5cada #edf0f6;
 }
 
-/* 黑白键都以“平面化控制块”而不是拟物钢琴键为目标。 */
+/* 紧凑键盘样式（用于顶部工具栏） */
+.performance-bar-keyboard .virtual-keyboard {
+  --white-key-width: 28px;
+  --black-key-width: 18px;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  overflow: hidden;
+}
+
+.performance-bar-keyboard .white-key,
+.performance-bar-keyboard .black-key {
+  top: 0;
+  transition: background 80ms ease, border-color 80ms ease;
+}
+
+.performance-bar-keyboard .white-key {
+  height: 100%;
+  background: #fdfbf7;
+  border: 1px solid #d7dce7;
+  border-radius: 0 0 3px 3px;
+  box-shadow: none;
+}
+
+.performance-bar-keyboard .white-key:hover {
+  background: #f0f4fb;
+}
+
+.performance-bar-keyboard .white-key.active {
+  background: #c8daf0;
+  border-color: #7fa8d4;
+}
+
+.performance-bar-keyboard .black-key {
+  height: 60%;
+  background: #3a3f4c;
+  border-radius: 0 0 2px 2px;
+  box-shadow: none;
+}
+
+.performance-bar-keyboard .black-key:hover {
+  background: #4a5060;
+}
+
+.performance-bar-keyboard .black-key.active {
+  background: #5a7090;
+}
+
+.performance-bar-keyboard .key-cap {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  padding-bottom: 4px;
+}
+
+.performance-bar-keyboard .key-bind {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #667089;
+  padding: 0;
+  background: transparent;
+}
+
+.performance-bar-keyboard .black-key .key-bind {
+  color: #c5cade;
+}
+
+.performance-bar-keyboard .key-note {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #2d3140;
+}
+
+.performance-bar-keyboard .black-key .key-note {
+  color: #f0f4ff;
+}
+
+/* 黑白键都以"平面化控制块"而不是拟物钢琴键为目标。 */
 .white-key,
 .black-key {
   position: absolute;
@@ -1152,30 +1326,4 @@ select {
     justify-content: flex-start;
   }
 
-  /* 键盘尺寸再缩一档，避免横向超出过多。 */
-  .virtual-keyboard {
-    min-height: 176px;
-  }
-
-  .white-key {
-    width: var(--white-key-width);
-  }
-
-  .black-key {
-    width: var(--black-key-width);
-  }
-
-  .canvas-toolbar-controls {
-    width: 100%;
-  }
-
-  .toolbar-field {
-    min-width: 0;
-    flex: 1 1 220px;
-  }
-
-  .module-card {
-    flex-basis: 100%;
-    width: 100%;
-  }
 }

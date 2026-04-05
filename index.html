@@ -17,16 +17,11 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <!--
-      整个合成器应用的外层壳。
-      主工作区放在左侧，固定的全局控制边栏放在右侧。
-    -->
     <div class="page-shell">
-      <!-- 顶部只保留标题和运行状态，尽量维持类似模块化机架的极简结构。 -->
+      <!-- 顶部工具栏：左侧标题、中间示波器、右侧键盘 -->
       <header class="topbar">
         <div class="title-block">
-          <h1>Modular Synth Rack</h1>
-          </p>
+          <h1>模块合成器编辑器</h1>
         </div>
         <div class="status-card">
           <span class="status-dot" id="statusDot"></span>
@@ -34,13 +29,37 @@
         </div>
       </header>
 
+      <!-- 性能工具栏：固定在顶部，包含示波器和键盘 -->
+      <section class="performance-bar">
+        <div class="performance-bar-inner">
+          <!-- 示波器 -->
+          <div class="performance-bar-scope">
+            <canvas id="oscilloscope"></canvas>
+            <div class="scope-controls">
+              <button class="scope-btn" id="scopeZoomOutH" title="横向缩小">◀</button>
+              <span class="scope-label" id="scopeHLabel">1x</span>
+              <button class="scope-btn" id="scopeZoomInH" title="横向放大">▶</button>
+              <button class="scope-btn" id="scopeZoomOutV" title="纵向缩小">▼</button>
+              <span class="scope-label" id="scopeVLabel">1x</span>
+              <button class="scope-btn" id="scopeZoomInV" title="纵向放大">▲</button>
+            </div>
+          </div>
+
+          <!-- 键盘 -->
+          <div class="performance-bar-keyboard">
+            <div class="keyboard-hint">
+              <span>A-K 演奏</span>
+              <span>Z/X 八度</span>
+              <span>C/V 力度</span>
+            </div>
+            <div id="virtualKeyboard" class="virtual-keyboard"></div>
+          </div>
+        </div>
+      </section>
+
       <div class="workspace-layout">
         <main class="workspace-main">
           <div class="signal-flow-shell">
-            <!--
-              机架工具条。
-              当前只保留“添加模块”入口，避免引入复杂菜单层级。
-            -->
             <div class="canvas-toolbar">
               <div class="canvas-toolbar-controls">
                 <label class="toolbar-field" for="addModuleSelect">
@@ -51,11 +70,6 @@
               </div>
             </div>
 
-            <!--
-              核心模块区域。
-              实际布局已经不再依赖 stage 做视觉分组，但这些容器 id 仍然作为 JS 的渲染挂载点保留。
-              patch-cables SVG 覆盖在最上层，用于渲染调制连线。
-            -->
             <section class="signal-flow">
               <svg id="patchCables" class="patch-cables" aria-hidden="true"></svg>
 
@@ -120,44 +134,8 @@
               </div>
             </section>
           </div>
-
-          <!--
-            底部表现层区域：
-            左边是示波器，右边是虚拟键盘，分别承担输出观察和演奏输入。
-          -->
-          <section class="bottom-row">
-            <div class="panel scope-panel">
-              <div class="panel-header">
-                <div>
-                  <h2>Oscilloscope</h2>
-                </div>
-                <div class="meter-chip" id="transportInfo">Oct 4 / Vel 80%</div>
-              </div>
-              <canvas id="oscilloscope" width="960" height="280"></canvas>
-            </div>
-
-            <div class="panel keyboard-panel">
-              <div class="panel-header">
-                <div>
-                  <h2>Keyboard</h2>
-                </div>
-                <div class="key-hint">
-                  <span>A-K play notes</span>
-                  <span>Z/X octave</span>
-                  <span>C/V velocity</span>
-                </div>
-              </div>
-              <div class="keyboard-shell">
-                <div id="virtualKeyboard" class="virtual-keyboard"></div>
-              </div>
-            </div>
-          </section>
         </main>
 
-        <!--
-          固定在右侧的全局控制边栏。
-          这里承载预设、导入导出、宏控制、MIDI、主音量等不属于单个模块的参数。
-        -->
         <aside class="global-strip global-sidebar">
           <div class="global-block" id="presetControls"></div>
           <div class="global-block volume-block" id="masterControls"></div>
@@ -165,17 +143,8 @@
       </div>
     </div>
 
-    <!-- 用于导入预设 JSON 的隐藏 input，由按钮触发点击。 -->
     <input id="presetFileInput" type="file" accept=".json,application/json" hidden />
 
-    <!-- 
-      Tone.js 负责底层音频节点。
-      模块化脚本加载顺序：
-      1. constants.js - 常量定义、库配置（无依赖）
-      2. helpers.js - 工具函数（依赖 constants）
-      3. audio-engine.js - 音频引擎类（依赖 helpers、constants）
-      4. app.js - 主应用类（依赖以上所有）
-    -->
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js"></script>
     <script src="./constants.js"></script>
     <script src="./helpers.js"></script>
