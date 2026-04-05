@@ -60,16 +60,6 @@
       <div class="workspace-layout">
         <main class="workspace-main">
           <div class="signal-flow-shell">
-            <div class="canvas-toolbar">
-              <div class="canvas-toolbar-controls">
-                <label class="toolbar-field" for="addModuleSelect">
-                  <span>Add Module</span>
-                  <select id="addModuleSelect" class="select-input"></select>
-                </label>
-                <button class="action-button" id="addModuleBtn" type="button">Add To Rack</button>
-              </div>
-            </div>
-
             <section class="signal-flow">
               <svg id="patchCables" class="patch-cables" aria-hidden="true"></svg>
 
@@ -131,6 +121,12 @@
                   </div>
                 </div>
                 <div class="module-list" id="effectRack"></div>
+              </div>
+
+              <div class="add-module-card" id="addModuleCard">
+                <div class="add-module-icon">+</div>
+                <div class="add-module-label">添加模块</div>
+                <div class="add-module-dropdown" id="addModuleDropdown"></div>
               </div>
             </section>
           </div>

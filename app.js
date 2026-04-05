@@ -102,8 +102,8 @@ class ModularSynthApp {
       lfoRack: document.getElementById("lfoRack"),
       componentRack: document.getElementById("componentRack"),
       effectRack: document.getElementById("effectRack"),
-      addModuleSelect: document.getElementById("addModuleSelect"),
-      addModuleBtn: document.getElementById("addModuleBtn"),
+      addModuleCard: document.getElementById("addModuleCard"),
+      addModuleDropdown: document.getElementById("addModuleDropdown"),
       keyboard: document.getElementById("virtualKeyboard"),
       oscilloscope: document.getElementById("oscilloscope"),
       presetFileInput: document.getElementById("presetFileInput"),
@@ -142,8 +142,18 @@ class ModularSynthApp {
     window.addEventListener("keydown", (event) => this.onKeyDown(event));
     window.addEventListener("keyup", (event) => this.onKeyUp(event));
 
-    this.populateAddModuleSelect();
-    this.elements.addModuleBtn?.addEventListener("click", () => this.handleAddModule());
+    this.populateAddModuleDropdown();
+    this.elements.addModuleCard?.addEventListener("click", (e) => {
+      if (e.target.closest(".add-module-dropdown-item")) {
+        return;
+      }
+      this.toggleAddModuleDropdown();
+    });
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".add-module-card")) {
+        this.hideAddModuleDropdown();
+      }
+    });
 
     // 预设文件导入
     this.elements.presetFileInput?.addEventListener("change", async (event) => {
@@ -248,44 +258,151 @@ class ModularSynthApp {
   /* -------------------------------------------------------------------------- */
 
   /**
-   * 填充 "Add Module" 下拉列表
+   * 填充 "Add Module" 下拉菜单
    * 会随着核心模块的显隐动态变化
    */
-  populateAddModuleSelect() {
-    const select = this.elements.addModuleSelect;
-    if (!select) {
+  populateAddModuleDropdown() {
+    const dropdown = this.elements.addModuleDropdown;
+    if (!dropdown) {
       return;
     }
 
-    const previousValue = select.value;
-    select.innerHTML = "";
+    dropdown.innerHTML = "";
 
-    getAddableModuleOptions()
-      .filter((option) => {
-        if (!option.value.startsWith("core:")) {
-          return true;
-        }
-        const key = option.value.split(":")[1];
-        return this.state.ui.visibleModules[key] === false;
-      })
-      .forEach((option) => {
-        const element = document.createElement("option");
-        element.value = option.value;
-        element.textContent = option.label;
-        select.append(element);
+    const options = getAddableModuleOptions().filter((option) => {
+      if (!option.value.startsWith("core:")) {
+        return true;
+      }
+      const key = option.value.split(":")[1];
+      return this.state.ui.visibleModules[key] === false;
+    });
+
+    const groups = {
+      core: { title: "核心模块", items: [] },
+      source: { title: "声源", items: [] },
+      component: { title: "组件", items: [] },
+      effect: { title: "效果器", items: [] },
+    };
+
+    options.forEach((option) => {
+      const kind = option.value.split(":")[0];
+      if (groups[kind]) {
+        groups[kind].items.push(option);
+      }
+    });
+
+    Object.entries(groups).forEach(([kind, group]) => {
+      if (group.items.length === 0) {
+        return;
+      }
+
+      const groupEl = document.createElement("div");
+      groupEl.className = "add-module-dropdown-group";
+
+      const titleEl = document.createElement("div");
+      titleEl.className = "add-module-dropdown-group-title";
+      titleEl.textContent = group.title;
+      groupEl.appendChild(titleEl);
+
+      group.items.forEach((option) => {
+        const itemEl = document.createElement("div");
+        itemEl.className = "add-module-dropdown-item";
+        itemEl.dataset.value = option.value;
+        itemEl.textContent = option.label;
+        itemEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.handleAddModule(option.value);
+          this.hideAddModuleDropdown();
+        });
+        groupEl.appendChild(itemEl);
       });
 
-    if (previousValue && [...select.options].some((option) => option.value === previousValue)) {
-      select.value = previousValue;
+      dropdown.appendChild(groupEl);
+    });
+  }
+
+  /**
+   * 切换添加模块下拉菜单的显示状态
+   */
+  toggleAddModuleDropdown() {
+    const dropdown = this.elements.addModuleDropdown;
+    const card = this.elements.addModuleCard;
+    if (!dropdown || !card) {
+      return;
+    }
+
+    const isVisible = dropdown.classList.contains("visible");
+    if (isVisible) {
+      this.hideAddModuleDropdown();
+    } else {
+      this.positionDropdown(dropdown, card);
+      dropdown.classList.add("visible");
+      card.classList.add("active");
+    }
+  }
+
+  /**
+   * 计算下拉菜单的位置，防止超出屏幕
+   */
+  positionDropdown(dropdown, anchor) {
+    const rect = anchor.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const dropdownHeight = 300;
+    const dropdownWidth = 180;
+    const gap = 4;
+
+    dropdown.style.left = "";
+    dropdown.style.top = "";
+    dropdown.style.right = "";
+    dropdown.style.bottom = "";
+    dropdown.classList.remove("above");
+
+    let top;
+    const spaceBelow = viewportHeight - rect.bottom - gap;
+    const spaceAbove = rect.top - gap;
+
+    if (spaceBelow >= dropdownHeight || spaceBelow >= spaceAbove) {
+      top = rect.bottom + gap;
+    } else {
+      top = rect.top - gap - dropdownHeight;
+      dropdown.classList.add("above");
+    }
+
+    let left = rect.left;
+    if (left + dropdownWidth > viewportWidth) {
+      left = viewportWidth - dropdownWidth - 10;
+    }
+    if (left < 10) {
+      left = 10;
+    }
+
+    dropdown.style.left = `${left}px`;
+    dropdown.style.top = `${top}px`;
+    dropdown.style.width = `${Math.max(rect.width, dropdownWidth)}px`;
+  }
+
+  /**
+   * 隐藏添加模块下拉菜单
+   */
+  hideAddModuleDropdown() {
+    const dropdown = this.elements.addModuleDropdown;
+    const card = this.elements.addModuleCard;
+    if (dropdown) {
+      dropdown.classList.remove("visible");
+      dropdown.classList.remove("above");
+    }
+    if (card) {
+      card.classList.remove("active");
     }
   }
 
   /**
    * 处理添加模块
    * 根据下拉值把模块加回机架，并同步重建音频链
+   * @param {string} value - 模块值 (如 "core:filter", "source:Oscillator")
    */
-  handleAddModule() {
-    const value = this.elements.addModuleSelect?.value;
+  handleAddModule(value) {
     if (!value) {
       return;
     }
@@ -328,7 +445,7 @@ class ModularSynthApp {
    */
   renderAll(previousState = null) {
     this.sanitizeModulationState();
-    this.populateAddModuleSelect();
+    this.populateAddModuleDropdown();
     this.controlBindings = new Map();
 
     const sections = [
@@ -396,7 +513,13 @@ class ModularSynthApp {
       return;
     }
 
-    const cards = [...container.querySelectorAll(".module-card")];
+    const moduleCards = [...container.querySelectorAll(".module-card")];
+    const addCard = container.querySelector(".add-module-card");
+    const cards = [...moduleCards];
+    if (addCard) {
+      cards.push(addCard);
+    }
+
     if (!cards.length) {
       container.style.height = "0px";
       return;
@@ -409,7 +532,7 @@ class ModularSynthApp {
     const columnWidth = Math.floor((containerWidth - gap * (columnCount - 1)) / columnCount);
     const columnHeights = new Array(columnCount).fill(0);
 
-    cards.forEach((card) => {
+    moduleCards.forEach((card) => {
       card.style.position = "absolute";
       card.style.width = `${columnWidth}px`;
       const shortestColumn = columnHeights.indexOf(Math.min(...columnHeights));
@@ -419,6 +542,17 @@ class ModularSynthApp {
       card.style.top = `${top}px`;
       columnHeights[shortestColumn] += card.offsetHeight + gap;
     });
+
+    if (addCard) {
+      addCard.style.position = "absolute";
+      addCard.style.width = `${columnWidth}px`;
+      const shortestColumn = columnHeights.indexOf(Math.min(...columnHeights));
+      const left = shortestColumn * (columnWidth + gap);
+      const top = columnHeights[shortestColumn];
+      addCard.style.left = `${left}px`;
+      addCard.style.top = `${top}px`;
+      columnHeights[shortestColumn] += addCard.offsetHeight + gap;
+    }
 
     container.style.height = `${Math.max(...columnHeights) - gap}px`;
   }
