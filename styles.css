@@ -52,12 +52,12 @@ select {
   font: inherit;
 }
 
-/* 页面为“主内容 + 固定右侧边栏”预留空间。 */
+/* 页面为"主内容 + 固定右侧边栏"预留空间。 */
 .page-shell {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 12px 10px 180px 10px;
+  padding: 12px 10px 420px 10px;
 }
 
 /* 当前主布局由绝对定位的瀑布流卡片驱动，这里仅保留块级上下文。 */
@@ -980,65 +980,6 @@ select {
 
 
 
-.keyboard-hint {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 2px;
-  flex-shrink: 0;
-}
-
-.keyboard-hint span {
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: #f0f2f6;
-  color: #7c8298;
-  font-size: 0.62rem;
-}
-
-/* 示波器 canvas 和缩放控制 */
-#oscilloscope {
-  flex: 1 1 auto;
-  width: 100%;
-  height: 0;
-  min-height: 40px;
-  display: block;
-  background: linear-gradient(180deg, #fbfcfe 0%, #f5f7fb 100%);
-}
-
-.scope-controls {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-top: 2px;
-  flex-shrink: 0;
-}
-
-.scope-btn {
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: #5a6070;
-  font-size: 9px;
-  cursor: pointer;
-  border-radius: 2px;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.scope-btn:hover {
-  background: #f0f2f6;
-  color: #2a241b;
-}
-
-.scope-label {
-  min-width: 26px;
-  text-align: center;
-  font-size: 0.62rem;
-  color: #7c8298;
-  font-weight: 500;
-}
-
 .bottom-row {
   display: grid;
   grid-template-columns: 1.12fr 0.88fr;
@@ -1094,88 +1035,6 @@ select {
   overflow-y: hidden;
   scrollbar-width: thin;
   scrollbar-color: #c5cada #edf0f6;
-}
-
-/* 紧凑键盘样式（用于顶部工具栏） */
-.performance-bar-keyboard .virtual-keyboard {
-  --white-key-width: 28px;
-  --black-key-width: 18px;
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  overflow: hidden;
-}
-
-.performance-bar-keyboard .white-key,
-.performance-bar-keyboard .black-key {
-  top: 0;
-  transition: background 80ms ease, border-color 80ms ease;
-}
-
-.performance-bar-keyboard .white-key {
-  height: 100%;
-  background: #fdfbf7;
-  border: 1px solid #d7dce7;
-  border-radius: 0 0 3px 3px;
-  box-shadow: none;
-}
-
-.performance-bar-keyboard .white-key:hover {
-  background: #f0f4fb;
-}
-
-.performance-bar-keyboard .white-key.active {
-  background: #c8daf0;
-  border-color: #7fa8d4;
-}
-
-.performance-bar-keyboard .black-key {
-  height: 60%;
-  background: #3a3f4c;
-  border-radius: 0 0 2px 2px;
-  box-shadow: none;
-}
-
-.performance-bar-keyboard .black-key:hover {
-  background: #4a5060;
-}
-
-.performance-bar-keyboard .black-key.active {
-  background: #5a7090;
-}
-
-.performance-bar-keyboard .key-cap {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  height: 100%;
-  padding-bottom: 4px;
-}
-
-.performance-bar-keyboard .key-bind {
-  font-size: 0.58rem;
-  font-weight: 600;
-  color: #667089;
-  padding: 0;
-  background: transparent;
-}
-
-.performance-bar-keyboard .black-key .key-bind {
-  color: #c5cade;
-}
-
-.performance-bar-keyboard .key-note {
-  font-size: 0.62rem;
-  font-weight: 600;
-  color: #2d3140;
-}
-
-.performance-bar-keyboard .black-key .key-note {
-  color: #f0f4ff;
 }
 
 /* 黑白键都以"平面化控制块"而不是拟物钢琴键为目标。 */
@@ -1292,65 +1151,14 @@ select {
 }
 
 @media (max-width: 1320px) {
-  /* 较窄宽度下，示波器与键盘上下堆叠。 */
   .bottom-row {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 940px) {
-  .page-shell {
-    width: 100%;
-    padding: 18px 18px 200px;
-  }
-
-  .bottom-bar {
-    flex-direction: column;
-    height: auto;
-  }
-
-  .bottom-bar-inner {
-    flex-direction: column;
-  }
-
-  .bottom-bar-left {
-    width: 100%;
-    padding-right: 0;
-    padding-bottom: 8px;
-    border-right: none;
-    border-bottom: 1px solid #e0e1e8;
-  }
-
-  .bottom-bar-left .global-block {
-    border-right: none;
-    padding-right: 0;
-    border-bottom: 1px solid #e0e1e8;
-    padding-bottom: 8px;
-  }
-
-  .bottom-bar-left .global-block:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
-  }
-
-  .bottom-bar-right {
-    flex-direction: column;
-  }
-
-  .bottom-bar-scope {
-    max-width: none;
-  }
-
-  .bottom-bar-keyboard {
-    border-left: none;
-    border-top: 1px solid #e8eaef;
-  }
-
-  .key-hint {
-    justify-content: flex-start;
-  }
-
-}
+/* ========================================
+   底栏样式 (重构后)
+   ======================================== */
 
 .bottom-bar {
   position: fixed;
@@ -1359,93 +1167,307 @@ select {
   right: 0;
   z-index: 80;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   background: rgba(245, 246, 250, 0.98);
   border-top: 1px solid #dedfe7;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+  min-height: 120px;
+  max-height: 400px;
+  height: 180px;
 }
 
-.bottom-bar-inner {
+/* 拖拽手柄 */
+.bottom-bar__handle {
+  height: 10px;
+  cursor: ns-resize;
   display: flex;
-  width: 100%;
-  max-width: 1400px;
-  padding: 8px 12px;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  user-select: none;
 }
 
-.bottom-bar-left {
+.bottom-bar__handle-line {
+  width: 48px;
+  height: 4px;
+  background: #d0d4de;
+  border-radius: 2px;
+  transition: background 0.2s ease;
+}
+
+.bottom-bar__handle:hover .bottom-bar__handle-line {
+  background: #a8adb8;
+}
+
+.bottom-bar__handle:active .bottom-bar__handle-line {
+  background: #8a909c;
+}
+
+/* 内容容器 */
+.bottom-bar__content {
+  flex: 1;
   display: flex;
-  flex-direction: row;
-  flex: 1 1 auto;
-  gap: 12px;
-  padding-right: 12px;
-  border-right: 1px solid #e0e1e8;
   align-items: stretch;
-}
-
-.bottom-bar-right {
-  display: flex;
-  flex: 1 1 auto;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
   min-width: 0;
-  gap: 8px;
 }
 
-.bottom-bar-scope {
+/* 各个项目 */
+.bottom-bar__item {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+}
+
+/* 预设控制区域 */
+.bottom-bar__presets {
   min-width: 200px;
-  max-width: 500px;
+  max-width: 280px;
 }
 
-.bottom-bar-keyboard {
+.preset-section {
   display: flex;
   flex-direction: column;
-  flex: 0 0 auto;
-  padding: 4px 8px;
-  border-left: 1px solid #e8eaef;
+  gap: 8px;
+  height: 100%;
 }
 
-.bottom-bar-left .global-block {
-  border-bottom: none;
-  padding-bottom: 0;
-  border-right: 1px solid #e0e1e8;
-  padding-right: 12px;
+.preset-section .control {
+  flex-shrink: 0;
 }
 
-.bottom-bar-left .global-block:last-child {
-  border-right: none;
-  padding-right: 0;
+.preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
-.bottom-bar-scope #oscilloscope {
+.preset-buttons .pill-button {
   flex: 1 1 auto;
+  min-width: 50px;
+  font-size: 0.68rem;
+  padding: 4px 8px;
+}
+
+.midi-status {
+  font-size: 0.65rem;
+  color: #7c8298;
+  padding: 4px 8px;
+  background: #f5f6fa;
+  border-radius: 4px;
+  text-align: center;
+}
+
+/* Morph 控制区域 */
+.bottom-bar__morph {
+  min-width: 140px;
+  max-width: 180px;
+  padding: 0 8px;
+  border-left: 1px solid #e0e1e8;
+}
+
+.morph-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+}
+
+.morph-section .control {
+  flex-shrink: 0;
+}
+
+.morph-section .select-input {
+  font-size: 0.7rem;
+  padding: 3px 6px;
+}
+
+.morph-section .slider-shell {
+  padding: 2px 0;
+}
+
+.morph-section .slider-input {
+  height: 4px;
+}
+
+/* 宏控制区域 */
+.bottom-bar__macros {
+  min-width: 140px;
+  max-width: 180px;
+  padding: 0 8px;
+  border-left: 1px solid #e0e1e8;
+}
+
+.macros-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+}
+
+.macros-section .control {
+  flex-shrink: 0;
+}
+
+.macros-section .slider-shell {
+  padding: 2px 0;
+}
+
+.macros-section .slider-input {
+  height: 4px;
+}
+
+.slider-input--filter {
+  accent-color: #4a90c2;
+}
+
+.slider-input--lfo {
+  accent-color: #7b68ee;
+}
+
+.slider-input--component {
+  accent-color: #20b2aa;
+}
+
+/* 主音量控制区域 */
+.bottom-bar__volume {
+  min-width: 80px;
+  max-width: 100px;
+  padding: 0 8px;
+  border-left: 1px solid #e0e1e8;
+  border-right: 1px solid #e8eaef;
+}
+
+.bottom-bar__volume .control-fader {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.bottom-bar__volume .control-label {
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.bottom-bar__volume .slider-shell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.bottom-bar__volume .slider-input {
+  writing-mode: horizontal-tb;
+  direction: ltr;
+  width: 100px;
+  height: 6px;
+}
+
+.bottom-bar__volume .control-fader .slider-shell {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+
+/* 示波器区域 */
+.bottom-bar__scope {
+  min-width: 200px;
+  max-width: 400px;
+  flex: 1 1 auto;
+}
+
+.bottom-bar__scope #oscilloscope {
+  flex: 1;
   width: 100%;
-  height: 100px;
   min-height: 60px;
   display: block;
   background: linear-gradient(180deg, #fbfcfe 0%, #f5f7fb 100%);
+  border-radius: 4px;
 }
 
-.bottom-bar-keyboard .virtual-keyboard {
+.bottom-bar__scope .scope-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.scope-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #5a6070;
+  font-size: 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.scope-btn:hover {
+  background: #e8ebf0;
+  color: #2a241b;
+}
+
+.scope-label {
+  min-width: 28px;
+  text-align: center;
+  font-size: 0.65rem;
+  color: #7c8298;
+  font-weight: 500;
+}
+
+/* 虚拟键盘区域 */
+.bottom-bar__keyboard {
+  min-width: 315px;
+  flex: 0 0 auto;
+  padding-left: 8px;
+  border-left: 1px solid #e8eaef;
+}
+
+.keyboard-hint {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.keyboard-hint span {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #f0f2f6;
+  color: #7c8298;
+  font-size: 0.62rem;
+}
+
+/* 紧凑型虚拟键盘样式 */
+.virtual-keyboard--compact {
   --white-key-width: 28px;
   --black-key-width: 18px;
   position: relative;
   flex: 1;
-  min-height: 80px;
+  min-height: 60px;
   padding: 0;
   border: none;
   background: transparent;
   overflow: hidden;
 }
 
-.bottom-bar-keyboard .white-key,
-.bottom-bar-keyboard .black-key {
+.virtual-keyboard--compact .white-key,
+.virtual-keyboard--compact .black-key {
   top: 0;
   transition: background 80ms ease, border-color 80ms ease;
 }
 
-.bottom-bar-keyboard .white-key {
+.virtual-keyboard--compact .white-key {
   height: 100%;
   background: #fdfbf7;
   border: 1px solid #d7dce7;
@@ -1453,31 +1475,31 @@ select {
   box-shadow: none;
 }
 
-.bottom-bar-keyboard .white-key:hover {
+.virtual-keyboard--compact .white-key:hover {
   background: #f0f4fb;
 }
 
-.bottom-bar-keyboard .white-key.active {
+.virtual-keyboard--compact .white-key.active {
   background: #c8daf0;
   border-color: #7fa8d4;
 }
 
-.bottom-bar-keyboard .black-key {
+.virtual-keyboard--compact .black-key {
   height: 60%;
   background: #3a3f4c;
   border-radius: 0 0 2px 2px;
   box-shadow: none;
 }
 
-.bottom-bar-keyboard .black-key:hover {
+.virtual-keyboard--compact .black-key:hover {
   background: #4a5060;
 }
 
-.bottom-bar-keyboard .black-key.active {
+.virtual-keyboard--compact .black-key.active {
   background: #5a7090;
 }
 
-.bottom-bar-keyboard .key-cap {
+.virtual-keyboard--compact .key-cap {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -1486,7 +1508,7 @@ select {
   padding-bottom: 4px;
 }
 
-.bottom-bar-keyboard .key-bind {
+.virtual-keyboard--compact .key-bind {
   font-size: 0.58rem;
   font-weight: 600;
   color: #667089;
@@ -1494,16 +1516,98 @@ select {
   background: transparent;
 }
 
-.bottom-bar-keyboard .black-key .key-bind {
+.virtual-keyboard--compact .black-key .key-bind {
   color: #c5cade;
 }
 
-.bottom-bar-keyboard .key-note {
+.virtual-keyboard--compact .key-note {
   font-size: 0.62rem;
   font-weight: 600;
   color: #2d3140;
 }
 
-.bottom-bar-keyboard .black-key .key-note {
+.virtual-keyboard--compact .black-key .key-note {
   color: #f0f4ff;
+}
+
+/* 响应式样式 */
+@media (max-width: 1200px) {
+  .bottom-bar__content {
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  
+  .bottom-bar__presets {
+    min-width: 180px;
+    max-width: 280px;
+  }
+  
+  .bottom-bar__scope {
+    min-width: 180px;
+    max-width: 320px;
+  }
+
+}
+
+@media (max-width: 940px) {
+  .bottom-bar {
+    min-height: 160px;
+    height: 220px;
+  }
+  
+  .bottom-bar__content {
+    flex-wrap: wrap;
+    align-content: flex-start;
+  }
+  
+  .bottom-bar__presets {
+    order: 1;
+    min-width: 100%;
+    max-width: 100%;
+    flex-basis: 100%;
+  }
+  
+  .bottom-bar__volume {
+    order: 2;
+    border-left: none;
+    border-right: 1px solid #e0e1e8;
+    padding-left: 0;
+  }
+  
+  .bottom-bar__scope {
+    order: 3;
+    min-width: 180px;
+    flex: 1 1 auto;
+  }
+  
+  .bottom-bar__keyboard {
+    order: 4;
+    flex: 1 1 auto;
+    min-width: 200px;
+    border-left: none;
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .bottom-bar {
+    min-height: 200px;
+    height: 280px;
+  }
+  
+  .bottom-bar__content {
+    padding: 6px 8px;
+  }
+  
+  .bottom-bar__scope {
+    order: 4;
+    flex-basis: 100%;
+    min-width: 100%;
+  }
+  
+  .bottom-bar__keyboard {
+    order: 3;
+    flex-basis: calc(100% - 100px);
+    min-width: 0;
+  }
 }

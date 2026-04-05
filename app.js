@@ -116,6 +116,27 @@ class ModularSynthApp {
       scopeZoomOutV: document.getElementById("scopeZoomOutV"),
       scopeHLabel: document.getElementById("scopeHLabel"),
       scopeVLabel: document.getElementById("scopeVLabel"),
+      bottomBar: document.getElementById("bottomBar"),
+      bottomBarHandle: document.getElementById("bottomBarHandle"),
+      presetSelect: document.getElementById("presetSelect"),
+      importBtn: document.getElementById("importBtn"),
+      exportBtn: document.getElementById("exportBtn"),
+      resetBtn: document.getElementById("resetBtn"),
+      randomBtn: document.getElementById("randomBtn"),
+      midiBtn: document.getElementById("midiBtn"),
+      midiStatus: document.getElementById("midiStatus"),
+      masterFader: document.getElementById("masterFader"),
+      masterReadout: document.getElementById("masterReadout"),
+      morphASelect: document.getElementById("morphASelect"),
+      morphBSelect: document.getElementById("morphBSelect"),
+      morphSlider: document.getElementById("morphSlider"),
+      morphReadout: document.getElementById("morphReadout"),
+      brightnessSlider: document.getElementById("brightnessSlider"),
+      brightnessReadout: document.getElementById("brightnessReadout"),
+      motionSlider: document.getElementById("motionSlider"),
+      motionReadout: document.getElementById("motionReadout"),
+      tensionSlider: document.getElementById("tensionSlider"),
+      tensionReadout: document.getElementById("tensionReadout"),
     };
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
   }
@@ -198,6 +219,254 @@ class ModularSynthApp {
       this.updateScopeZoomLabels();
     });
     this.updateScopeZoomLabels();
+
+    this.initBottomBarResize();
+    this.bindStaticControls();
+  }
+
+  initBottomBarResize() {
+    const handle = this.elements.bottomBarHandle;
+    const bottomBar = this.elements.bottomBar;
+    if (!handle || !bottomBar) return;
+
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    handle.addEventListener("pointerdown", (e) => {
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = bottomBar.offsetHeight;
+      handle.setPointerCapture(e.pointerId);
+      document.body.style.cursor = "ns-resize";
+      document.body.style.userSelect = "none";
+    });
+
+    handle.addEventListener("pointermove", (e) => {
+      if (!isResizing) return;
+      const deltaY = startY - e.clientY;
+      const newHeight = Math.max(120, Math.min(400, startHeight + deltaY));
+      bottomBar.style.height = `${newHeight}px`;
+      this.resizeScopeCanvas();
+      this.layoutModuleMasonry();
+    });
+
+    handle.addEventListener("pointerup", (e) => {
+      isResizing = false;
+      handle.releasePointerCapture(e.pointerId);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    });
+
+    handle.addEventListener("pointercancel", (e) => {
+      isResizing = false;
+      handle.releasePointerCapture(e.pointerId);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    });
+  }
+
+  bindStaticControls() {
+    this.elements.presetSelect?.addEventListener("change", (e) => {
+      const value = e.target.value;
+      if (value !== "custom") {
+        this.applyBuiltinPreset(value);
+      }
+    });
+
+    this.elements.importBtn?.addEventListener("click", () => {
+      this.elements.presetFileInput?.click();
+    });
+
+    this.elements.exportBtn?.addEventListener("click", () => {
+      const filename = `${(this.state.name || "tone-preset").toLowerCase().replace(/\s+/g, "-")}.json`;
+      downloadJson(filename, this.state);
+      this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
+    });
+
+    this.elements.resetBtn?.addEventListener("click", () => {
+      this.applyBuiltinPreset("init");
+    });
+
+    this.elements.randomBtn?.addEventListener("click", () => {
+      this.randomizeCurrentPatch();
+    });
+
+    this.elements.midiBtn?.addEventListener("click", () => {
+      this.requestMidiAccess();
+    });
+
+    this.elements.masterFader?.addEventListener("input", (e) => {
+      const value = Number(e.target.value);
+      this.state.global.volume = value;
+      this.selectedPresetId = "custom";
+      this.engine.updateGlobal(this.state.global);
+      this.updateMasterReadout(value);
+      const shell = e.target.closest(".slider-shell");
+      if (shell) {
+        const percent = (value + 36) / 42;
+        shell.style.setProperty("--percent", percent.toString());
+      }
+    });
+
+    this.elements.morphASelect?.addEventListener("change", (e) => {
+      this.performance.morphA = e.target.value;
+      this.applyMorphState();
+    });
+
+    this.elements.morphBSelect?.addEventListener("change", (e) => {
+      this.performance.morphB = e.target.value;
+      this.applyMorphState();
+    });
+
+    this.elements.morphSlider?.addEventListener("input", (e) => {
+      const value = Number(e.target.value);
+      this.performance.morph = value;
+      this.updateMorphReadout(value);
+      this.applyMorphState();
+      const shell = e.target.closest(".slider-shell");
+      if (shell) {
+        shell.style.setProperty("--percent", value.toString());
+      }
+    });
+
+    this.elements.brightnessSlider?.addEventListener("input", (e) => {
+      const value = Number(e.target.value);
+      this.performance.brightness = value;
+      this.updateBrightnessReadout(value);
+      this.applyBrightnessMacro(value);
+      const shell = e.target.closest(".slider-shell");
+      if (shell) {
+        shell.style.setProperty("--percent", value.toString());
+      }
+    });
+
+    this.elements.motionSlider?.addEventListener("input", (e) => {
+      const value = Number(e.target.value);
+      this.performance.motion = value;
+      this.updateMotionReadout(value);
+      this.applyMotionMacro(value);
+      const shell = e.target.closest(".slider-shell");
+      if (shell) {
+        shell.style.setProperty("--percent", value.toString());
+      }
+    });
+
+    this.elements.tensionSlider?.addEventListener("input", (e) => {
+      const value = Number(e.target.value);
+      this.state.ui.cableTension = value;
+      this.updateTensionReadout(value);
+      this.drawPatchCables();
+      const shell = e.target.closest(".slider-shell");
+      if (shell) {
+        const percent = (value - 0.2) / 0.8;
+        shell.style.setProperty("--percent", percent.toString());
+      }
+    });
+
+    this.updatePresetSelect();
+    this.updateMasterReadout(this.state.global.volume);
+    this.updateMidiStatus();
+    this.updateMorphControls();
+    this.updateMacroControls();
+  }
+
+  updatePresetSelect() {
+    if (this.elements.presetSelect) {
+      this.elements.presetSelect.value = this.selectedPresetId;
+    }
+  }
+
+  updateMasterReadout(value) {
+    if (this.elements.masterReadout) {
+      this.elements.masterReadout.textContent = formatDb(value);
+    }
+    if (this.elements.masterFader) {
+      this.elements.masterFader.value = String(value);
+      const shell = this.elements.masterFader.closest(".slider-shell");
+      if (shell) {
+        const percent = (value + 36) / 42;
+        shell.style.setProperty("--percent", percent.toString());
+      }
+    }
+  }
+
+  updateMidiStatus() {
+    if (this.elements.midiStatus) {
+      this.elements.midiStatus.textContent = this.midi.supported ? this.midi.status : "MIDI unsupported";
+    }
+    if (this.elements.midiBtn) {
+      this.elements.midiBtn.textContent = this.midi.access ? "Refresh MIDI" : "Enable MIDI";
+    }
+  }
+
+  updateMorphControls() {
+    if (this.elements.morphASelect) {
+      this.elements.morphASelect.value = this.performance.morphA;
+    }
+    if (this.elements.morphBSelect) {
+      this.elements.morphBSelect.value = this.performance.morphB;
+    }
+    this.updateMorphReadout(this.performance.morph);
+  }
+
+  updateMorphReadout(value) {
+    if (this.elements.morphReadout) {
+      this.elements.morphReadout.textContent = formatPercent(value);
+    }
+    if (this.elements.morphSlider) {
+      this.elements.morphSlider.value = String(value);
+      const shell = this.elements.morphSlider.closest(".slider-shell");
+      if (shell) {
+        shell.style.setProperty("--percent", value.toString());
+      }
+    }
+  }
+
+  updateMacroControls() {
+    this.updateBrightnessReadout(this.performance.brightness);
+    this.updateMotionReadout(this.performance.motion);
+    this.updateTensionReadout(this.state.ui.cableTension ?? 0.78);
+  }
+
+  updateBrightnessReadout(value) {
+    if (this.elements.brightnessReadout) {
+      this.elements.brightnessReadout.textContent = formatPercent(value);
+    }
+    if (this.elements.brightnessSlider) {
+      this.elements.brightnessSlider.value = String(value);
+      const shell = this.elements.brightnessSlider.closest(".slider-shell");
+      if (shell) {
+        shell.style.setProperty("--percent", value.toString());
+      }
+    }
+  }
+
+  updateMotionReadout(value) {
+    if (this.elements.motionReadout) {
+      this.elements.motionReadout.textContent = formatPercent(value);
+    }
+    if (this.elements.motionSlider) {
+      this.elements.motionSlider.value = String(value);
+      const shell = this.elements.motionSlider.closest(".slider-shell");
+      if (shell) {
+        shell.style.setProperty("--percent", value.toString());
+      }
+    }
+  }
+
+  updateTensionReadout(value) {
+    if (this.elements.tensionReadout) {
+      this.elements.tensionReadout.textContent = formatPercent(value);
+    }
+    if (this.elements.tensionSlider) {
+      this.elements.tensionSlider.value = String(value);
+      const shell = this.elements.tensionSlider.closest(".slider-shell");
+      if (shell) {
+        const percent = (value - 0.2) / 0.8;
+        shell.style.setProperty("--percent", percent.toString());
+      }
+    }
   }
 
   /**
@@ -565,206 +834,12 @@ class ModularSynthApp {
   /* 全局边栏渲染                                                               */
   /* -------------------------------------------------------------------------- */
 
-  /**
-   * 渲染右侧固定边栏
-   * 预设、导入导出、MIDI、宏控制和主音量都在这里生成
-   */
   renderGlobalStrip() {
-    if (!this.elements.presetControls || !this.elements.masterControls) {
-      return;
-    }
-    this.elements.presetControls.innerHTML = "";
-    this.elements.masterControls.innerHTML = "";
-
-    // 预设选择器
-    const presetCluster = document.createElement("div");
-    presetCluster.className = "compact-block column";
-
-    const presetSelect = this.createSelectControl({
-      label: "Built-in Preset",
-      options: [
-        { label: "Init Patch", value: "init" },
-        { label: "FM Bell Stack", value: "fmBell" },
-        { label: "Cinematic Dust", value: "cinematicDust" },
-        { label: "Percussion Lab", value: "percussionLab" },
-        { label: "Current Patch", value: "custom" },
-      ],
-      value: this.selectedPresetId,
-      onChange: (value) => {
-        if (value === "custom") {
-          return;
-        }
-        this.applyBuiltinPreset(value);
-      },
-    });
-
-    // 全局操作按钮
-    const globalActions = document.createElement("div");
-    globalActions.className = "global-cluster";
-
-    const importButton = document.createElement("button");
-    importButton.type = "button";
-    importButton.className = "pill-button";
-    importButton.textContent = "Import JSON";
-    importButton.addEventListener("click", () => this.elements.presetFileInput.click());
-
-    const exportButton = document.createElement("button");
-    exportButton.type = "button";
-    exportButton.className = "pill-button";
-    exportButton.textContent = "Export JSON";
-    exportButton.addEventListener("click", () => {
-      const filename = `${(this.state.name || "tone-preset").toLowerCase().replace(/\s+/g, "-")}.json`;
-      downloadJson(filename, this.state);
-      this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
-    });
-
-    const resetButton = document.createElement("button");
-    resetButton.type = "button";
-    resetButton.className = "pill-button";
-    resetButton.textContent = "Init Rack";
-    resetButton.addEventListener("click", () => this.applyBuiltinPreset("init"));
-
-    const randomButton = document.createElement("button");
-    randomButton.type = "button";
-    randomButton.className = "pill-button";
-    randomButton.textContent = "Randomize";
-    randomButton.addEventListener("click", () => this.randomizeCurrentPatch());
-
-    const midiButton = document.createElement("button");
-    midiButton.type = "button";
-    midiButton.className = "pill-button";
-    midiButton.textContent = this.midi.access ? "Refresh MIDI" : "Enable MIDI";
-    midiButton.addEventListener("click", () => this.requestMidiAccess());
-
-    globalActions.append(importButton, exportButton, resetButton, randomButton, midiButton);
-
-    // MIDI 状态显示
-    const midiCluster = document.createElement("div");
-    midiCluster.className = "global-subgrid";
-    const midiStatus = document.createElement("div");
-    midiStatus.className = "meter-chip";
-    midiStatus.textContent = this.midi.supported ? this.midi.status : "Web MIDI unsupported";
-    midiCluster.append(midiStatus);
-    if (this.midi.inputs.length) {
-      midiCluster.append(
-        this.createSelectControl({
-          label: "MIDI Input",
-          options: this.midi.inputs.map((input) => ({ label: input.name || input.id, value: input.id })),
-          value: this.midi.selectedInputId,
-          onChange: (value) => this.selectMidiInput(value),
-        }),
-      );
-    }
-
-    presetCluster.append(presetSelect, globalActions, midiCluster);
-    this.elements.presetControls.append(presetCluster);
-
-    // Morph 控制
-    const morphCluster = document.createElement("div");
-    morphCluster.className = "compact-block";
-    morphCluster.append(
-      this.createSelectControl({
-        label: "Morph A",
-        options: Object.keys(BUILTIN_PRESET_TEMPLATES).map((id) => ({
-          label: BUILTIN_PRESET_TEMPLATES[id].name,
-          value: id,
-        })),
-        value: this.performance.morphA,
-        onChange: (value) => {
-          this.performance.morphA = value;
-          this.applyMorphState();
-        },
-      }),
-      this.createSelectControl({
-        label: "Morph B",
-        options: Object.keys(BUILTIN_PRESET_TEMPLATES).map((id) => ({
-          label: BUILTIN_PRESET_TEMPLATES[id].name,
-          value: id,
-        })),
-        value: this.performance.morphB,
-        onChange: (value) => {
-          this.performance.morphB = value;
-          this.applyMorphState();
-        },
-      }),
-      this.createRangeControl({
-        label: "Morph",
-        variant: "slider",
-        accent: "component",
-        min: 0,
-        max: 1,
-        step: 0.01,
-        value: this.performance.morph,
-        eventName: "change",
-        formatter: formatPercent,
-        onInput: (value) => {
-          this.performance.morph = value;
-          this.applyMorphState();
-        },
-      }),
-    );
-
-    // 宏控制
-    const macroCluster = document.createElement("div");
-    macroCluster.className = "compact-block";
-    macroCluster.append(
-      this.createRangeControl({
-        label: "Brightness",
-        accent: "filter",
-        min: 0,
-        max: 1,
-        step: 0.01,
-        value: this.performance.brightness,
-        formatter: formatPercent,
-        onInput: (value) => this.applyBrightnessMacro(value),
-      }),
-      this.createRangeControl({
-        label: "Motion",
-        accent: "lfo",
-        min: 0,
-        max: 1,
-        step: 0.01,
-        value: this.performance.motion,
-        formatter: formatPercent,
-        onInput: (value) => this.applyMotionMacro(value),
-      }),
-      this.createRangeControl({
-        label: "Cable Tension",
-        accent: "component",
-        min: 0.2,
-        max: 1,
-        step: 0.01,
-        value: this.state.ui.cableTension ?? 0.78,
-        formatter: formatPercent,
-        onInput: (value) => {
-          this.state.ui.cableTension = value;
-          this.drawPatchCables();
-        },
-      }),
-    );
-
-    this.elements.presetControls.append(morphCluster, macroCluster);
-
-    // 主音量推子
-    const masterFader = this.createRangeControl({
-      label: "Master",
-      variant: "fader",
-      accent: "lfo",
-      min: -36,
-      max: 6,
-      step: 0.1,
-      value: this.state.global.volume,
-      path: "global.volume",
-      formatter: formatDb,
-      onInput: (value) => {
-        this.state.global.volume = value;
-        this.selectedPresetId = "custom";
-        this.engine.updateGlobal(this.state.global);
-        this.updateTransportInfo();
-      },
-    });
-
-    this.elements.masterControls.append(masterFader);
+    this.updatePresetSelect();
+    this.updateMasterReadout(this.state.global.volume);
+    this.updateMidiStatus();
+    this.updateMorphControls();
+    this.updateMacroControls();
   }
 
   /* -------------------------------------------------------------------------- */
