@@ -187,7 +187,6 @@ select {
 /* 所有面板使用统一的白底与细边框。 */
 .panel {
   background: #ffffff;
-  border: 1px solid #e2e3eb;
   box-shadow: none;
 }
 
