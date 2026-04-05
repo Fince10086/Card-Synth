@@ -57,7 +57,7 @@ select {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 12px 160px 22px 10px;
+  padding: 12px 10px 180px 10px;
 }
 
 /* 当前主布局由绝对定位的瀑布流卡片驱动，这里仅保留块级上下文。 */
@@ -77,14 +77,7 @@ select {
   padding-bottom: 8px;
 }
 
-/* 顶栏保持信息密度低，只承载标题和状态。 */
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-  margin-bottom: 10px;
-}
+
 
 /* 小型题注用于 stage / panel 的次级标签。 */
 .eyebrow,
@@ -158,31 +151,7 @@ select {
   box-shadow: 0 0 0 5px rgba(206, 93, 87, 0.16);
 }
 
-/* 右侧全局边栏固定在视口右边，不随主内容滚动。 */
-.global-strip {
-  position: fixed;
-  top: 0;
-  right: 0;
-  z-index: 80;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: 150px;
-  height: 100vh;
-  padding: 12px 12px 16px;
-  min-width: 0;
-  min-height: 100vh;
-  overflow-y: auto;
-}
 
-/* 边栏作为页面一级层，而非漂浮卡片。 */
-.global-sidebar {
-  border-left: 1px solid #dedfe7;
-  background: rgba(245, 246, 250, 0.98);
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
 
 /* 所有面板使用统一的白底与细边框。 */
 .panel {
@@ -193,7 +162,6 @@ select {
 /* 全局边栏内部的区块纵向排列。 */
 .global-block {
   display: flex;
-  flex-direction: column;
   gap: 8px;
   align-items: stretch;
   padding-bottom: 10px;
@@ -1010,47 +978,7 @@ select {
   font-size: 0.72rem;
 }
 
-/* 性能工具栏：固定在顶部，包含示波器和键盘 */
-.performance-bar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  display: flex;
-  justify-content: center;
-  height: 150px;
-  max-height: 150px;
-  margin-bottom: 10px;
-  background: #ffffff;
-  border-bottom: 1px solid #e0e2ea;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
-}
 
-/* 内部容器：限制最大宽度并居中 */
-.performance-bar-inner {
-  display: flex;
-  width: 100%;
-  max-width: 960px;
-  margin: 0 auto;
-}
-
-.performance-bar-scope {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-width: 200px;
-  max-width: 680px;
-  overflow: hidden;
-}
-
-.performance-bar-keyboard {
-  display: flex;
-  flex-direction: column;
-  flex: 0 0 322px;
-  padding: 4px 8px;
-  border-left: 1px solid #e8eaef;
-  overflow: hidden;
-}
 
 .keyboard-hint {
   display: flex;
@@ -1371,32 +1299,211 @@ select {
 }
 
 @media (max-width: 940px) {
-  /* 移动端取消固定侧边栏，改为自然文档流。 */
   .page-shell {
     width: 100%;
-    padding: 18px 18px 32px;
+    padding: 18px 18px 200px;
   }
 
-  .status-card {
-    min-width: 0;
-  }
-
-  .global-strip {
-    position: static;
-    width: auto;
+  .bottom-bar {
+    flex-direction: column;
     height: auto;
-    min-height: 0;
-    padding: 16px 0 0;
-    box-shadow: none;
-    border-left: 0;
-    background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
   }
 
-  /* 小屏下让提示从右对齐改为左对齐，更容易浏览。 */
+  .bottom-bar-inner {
+    flex-direction: column;
+  }
+
+  .bottom-bar-left {
+    width: 100%;
+    padding-right: 0;
+    padding-bottom: 8px;
+    border-right: none;
+    border-bottom: 1px solid #e0e1e8;
+  }
+
+  .bottom-bar-left .global-block {
+    border-right: none;
+    padding-right: 0;
+    border-bottom: 1px solid #e0e1e8;
+    padding-bottom: 8px;
+  }
+
+  .bottom-bar-left .global-block:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .bottom-bar-right {
+    flex-direction: column;
+  }
+
+  .bottom-bar-scope {
+    max-width: none;
+  }
+
+  .bottom-bar-keyboard {
+    border-left: none;
+    border-top: 1px solid #e8eaef;
+  }
+
   .key-hint {
     justify-content: flex-start;
   }
 
+}
+
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: center;
+  background: rgba(245, 246, 250, 0.98);
+  border-top: 1px solid #dedfe7;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.bottom-bar-inner {
+  display: flex;
+  width: 100%;
+  max-width: 1400px;
+  padding: 8px 12px;
+  gap: 12px;
+}
+
+.bottom-bar-left {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 auto;
+  gap: 12px;
+  padding-right: 12px;
+  border-right: 1px solid #e0e1e8;
+  align-items: stretch;
+}
+
+.bottom-bar-right {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 8px;
+}
+
+.bottom-bar-scope {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 200px;
+  max-width: 500px;
+}
+
+.bottom-bar-keyboard {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-left: 1px solid #e8eaef;
+}
+
+.bottom-bar-left .global-block {
+  border-bottom: none;
+  padding-bottom: 0;
+  border-right: 1px solid #e0e1e8;
+  padding-right: 12px;
+}
+
+.bottom-bar-left .global-block:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.bottom-bar-scope #oscilloscope {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100px;
+  min-height: 60px;
+  display: block;
+  background: linear-gradient(180deg, #fbfcfe 0%, #f5f7fb 100%);
+}
+
+.bottom-bar-keyboard .virtual-keyboard {
+  --white-key-width: 28px;
+  --black-key-width: 18px;
+  position: relative;
+  flex: 1;
+  min-height: 80px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  overflow: hidden;
+}
+
+.bottom-bar-keyboard .white-key,
+.bottom-bar-keyboard .black-key {
+  top: 0;
+  transition: background 80ms ease, border-color 80ms ease;
+}
+
+.bottom-bar-keyboard .white-key {
+  height: 100%;
+  background: #fdfbf7;
+  border: 1px solid #d7dce7;
+  border-radius: 0 0 3px 3px;
+  box-shadow: none;
+}
+
+.bottom-bar-keyboard .white-key:hover {
+  background: #f0f4fb;
+}
+
+.bottom-bar-keyboard .white-key.active {
+  background: #c8daf0;
+  border-color: #7fa8d4;
+}
+
+.bottom-bar-keyboard .black-key {
+  height: 60%;
+  background: #3a3f4c;
+  border-radius: 0 0 2px 2px;
+  box-shadow: none;
+}
+
+.bottom-bar-keyboard .black-key:hover {
+  background: #4a5060;
+}
+
+.bottom-bar-keyboard .black-key.active {
+  background: #5a7090;
+}
+
+.bottom-bar-keyboard .key-cap {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  padding-bottom: 4px;
+}
+
+.bottom-bar-keyboard .key-bind {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #667089;
+  padding: 0;
+  background: transparent;
+}
+
+.bottom-bar-keyboard .black-key .key-bind {
+  color: #c5cade;
+}
+
+.bottom-bar-keyboard .key-note {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #2d3140;
+}
+
+.bottom-bar-keyboard .black-key .key-note {
+  color: #f0f4ff;
 }

@@ -18,47 +18,7 @@
   </head>
   <body>
     <div class="page-shell">
-      <!-- 顶部工具栏：左侧标题、中间示波器、右侧键盘 -->
-      <header class="topbar">
-        <div class="title-block">
-          <h1>模块合成器编辑器</h1>
-        </div>
-        <div class="status-card">
-          <span class="status-dot" id="statusDot"></span>
-          <span id="statusText">STANDBY</span>
-        </div>
-      </header>
-
-      <!-- 性能工具栏：固定在顶部，包含示波器和键盘 -->
-      <section class="performance-bar">
-        <div class="performance-bar-inner">
-          <!-- 示波器 -->
-          <div class="performance-bar-scope">
-            <canvas id="oscilloscope"></canvas>
-            <div class="scope-controls">
-              <button class="scope-btn" id="scopeZoomOutH" title="横向缩小">◀</button>
-              <span class="scope-label" id="scopeHLabel">1x</span>
-              <button class="scope-btn" id="scopeZoomInH" title="横向放大">▶</button>
-              <button class="scope-btn" id="scopeZoomOutV" title="纵向缩小">▼</button>
-              <span class="scope-label" id="scopeVLabel">1x</span>
-              <button class="scope-btn" id="scopeZoomInV" title="纵向放大">▲</button>
-            </div>
-          </div>
-
-          <!-- 键盘 -->
-          <div class="performance-bar-keyboard">
-            <div class="keyboard-hint">
-              <span>A-K 演奏</span>
-              <span>Z/X 八度</span>
-              <span>C/V 力度</span>
-            </div>
-            <div id="virtualKeyboard" class="virtual-keyboard"></div>
-          </div>
-        </div>
-      </section>
-
-      <div class="workspace-layout">
-        <main class="workspace-main">
+      <main class="workspace-main">
           <div class="signal-flow-shell">
             <section class="signal-flow">
               <svg id="patchCables" class="patch-cables" aria-hidden="true"></svg>
@@ -131,12 +91,37 @@
             </section>
           </div>
         </main>
-
-        <aside class="global-strip global-sidebar">
-          <div class="global-block" id="presetControls"></div>
-          <div class="global-block volume-block" id="masterControls"></div>
-        </aside>
       </div>
+
+      <footer class="bottom-bar">
+        <div class="bottom-bar-inner">
+          <div class="bottom-bar-left">
+            <div class="global-block" id="presetControls"></div>
+            <div class="global-block volume-block" id="masterControls"></div>
+          </div>
+          <div class="bottom-bar-right">
+            <div class="bottom-bar-scope">
+              <canvas id="oscilloscope"></canvas>
+              <div class="scope-controls">
+                <button class="scope-btn" id="scopeZoomOutH" title="横向缩小">◀</button>
+                <span class="scope-label" id="scopeHLabel">1x</span>
+                <button class="scope-btn" id="scopeZoomInH" title="横向放大">▶</button>
+                <button class="scope-btn" id="scopeZoomOutV" title="纵向缩小">▼</button>
+                <span class="scope-label" id="scopeVLabel">1x</span>
+                <button class="scope-btn" id="scopeZoomInV" title="纵向放大">▲</button>
+              </div>
+            </div>
+            <div class="bottom-bar-keyboard">
+              <div class="keyboard-hint">
+                <span>A-K 演奏</span>
+                <span>Z/X 八度</span>
+                <span>C/V 力度</span>
+              </div>
+              <div id="virtualKeyboard" class="virtual-keyboard"></div>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
 
     <input id="presetFileInput" type="file" accept=".json,application/json" hidden />

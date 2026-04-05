@@ -243,13 +243,17 @@ class ModularSynthApp {
    * @param {string} tone - 状态色调 (neutral/live/error)
    */
   setStatus(message, tone = "neutral") {
-    this.elements.statusText.textContent = message;
-    this.elements.statusDot.classList.remove("live", "error");
-    if (tone === "live") {
-      this.elements.statusDot.classList.add("live");
+    if (this.elements.statusText) {
+      this.elements.statusText.textContent = message;
     }
-    if (tone === "error") {
-      this.elements.statusDot.classList.add("error");
+    if (this.elements.statusDot) {
+      this.elements.statusDot.classList.remove("live", "error");
+      if (tone === "live") {
+        this.elements.statusDot.classList.add("live");
+      }
+      if (tone === "error") {
+        this.elements.statusDot.classList.add("error");
+      }
     }
   }
 
