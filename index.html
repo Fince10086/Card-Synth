@@ -170,8 +170,18 @@
     <!-- 用于导入预设 JSON 的隐藏 input，由按钮触发点击。 -->
     <input id="presetFileInput" type="file" accept=".json,application/json" hidden />
 
-    <!-- Tone.js 负责底层音频节点，app.js 负责状态、渲染和交互。 -->
+    <!-- 
+      Tone.js 负责底层音频节点。
+      模块化脚本加载顺序：
+      1. constants.js - 常量定义、库配置（无依赖）
+      2. helpers.js - 工具函数（依赖 constants）
+      3. audio-engine.js - 音频引擎类（依赖 helpers、constants）
+      4. app.js - 主应用类（依赖以上所有）
+    -->
     <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/build/Tone.js"></script>
+    <script src="./constants.js"></script>
+    <script src="./helpers.js"></script>
+    <script src="./audio-engine.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
