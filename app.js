@@ -137,6 +137,8 @@ class ModularSynthApp {
       motionReadout: document.getElementById("motionReadout"),
       tensionSlider: document.getElementById("tensionSlider"),
       tensionReadout: document.getElementById("tensionReadout"),
+      voicesSlider: document.getElementById("voicesSlider"),
+      voicesReadout: document.getElementById("voicesReadout"),
     };
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
   }
@@ -364,11 +366,20 @@ class ModularSynthApp {
       }
     });
 
+    this.elements.voicesSlider?.addEventListener("input", (e) => {
+      const value = Number(e.target.value);
+      this.state.global.polyphony = value;
+      this.selectedPresetId = "custom";
+      this.updateVoicesReadout(value);
+      this.engine.updatePolyphony(value);
+    });
+
     this.updatePresetSelect();
     this.updateMasterReadout(this.state.global.volume);
     this.updateMidiStatus();
     this.updateMorphControls();
     this.updateMacroControls();
+    this.updateVoicesReadout(this.state.global.polyphony);
   }
 
   updatePresetSelect() {
@@ -464,6 +475,20 @@ class ModularSynthApp {
       const shell = this.elements.tensionSlider.closest(".slider-shell");
       if (shell) {
         const percent = (value - 0.2) / 0.8;
+        shell.style.setProperty("--percent", percent.toString());
+      }
+    }
+  }
+
+  updateVoicesReadout(value) {
+    if (this.elements.voicesReadout) {
+      this.elements.voicesReadout.textContent = String(value);
+    }
+    if (this.elements.voicesSlider) {
+      this.elements.voicesSlider.value = String(value);
+      const shell = this.elements.voicesSlider.closest(".slider-shell");
+      if (shell) {
+        const percent = (value - 1) / 9;
         shell.style.setProperty("--percent", percent.toString());
       }
     }
@@ -840,6 +865,7 @@ class ModularSynthApp {
     this.updateMidiStatus();
     this.updateMorphControls();
     this.updateMacroControls();
+    this.updateVoicesReadout(this.state.global.polyphony);
   }
 
   /* -------------------------------------------------------------------------- */

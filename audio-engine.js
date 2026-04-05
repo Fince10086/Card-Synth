@@ -803,12 +803,27 @@ class AudioEngine {
     };
 
     // 根据运行时类型创建节点
+    const voices = [];
+    const activeVoiceMap = new Map();
+    const MAX_VOICES = 10;
+
     if (definition.runtime === "pitchedSource") {
-      node = new Tone[definition.voiceClass](module.options);
-      auxEnvelope = new Tone.AmplitudeEnvelope(module.ampEnvelope);
-      node.connect(auxEnvelope);
-      auxEnvelope.connect(volumeNode);
-      node.start();
+      for (let i = 0; i < MAX_VOICES; i++) {
+        const voiceOsc = new Tone[definition.voiceClass](module.options);
+        const voiceEnv = new Tone.AmplitudeEnvelope(module.ampEnvelope);
+        voiceOsc.connect(voiceEnv);
+        voiceEnv.connect(volumeNode);
+        voiceOsc.start();
+        voices.push({
+          oscillator: voiceOsc,
+          envelope: voiceEnv,
+          note: null,
+          active: false,
+          releaseTime: 0,
+        });
+      }
+      node = voices[0].oscillator;
+      auxEnvelope = voices[0].envelope;
     } else if (definition.runtime === "noise") {
       node = new Tone.Noise(module.options);
       auxEnvelope = new Tone.AmplitudeEnvelope(module.ampEnvelope);
@@ -846,6 +861,7 @@ class AudioEngine {
       volumeNode,
       panNode,
       auxEnvelope,
+      voices,
 
       /**
        * 应用模块状态更新
@@ -853,12 +869,15 @@ class AudioEngine {
        */
       apply: (nextModule) => {
         moduleState = deepClone(nextModule);
-        // enabled=false 不销毁节点，只把音量拉低，切换时更平滑
         rampParam(volumeNode.volume, moduleState.enabled ? moduleState.volume : -48);
         rampParam(panNode.pan, moduleState.pan);
 
-        if (
-          definition.runtime === "pitchedSource" ||
+        if (definition.runtime === "pitchedSource") {
+          voices.forEach((voice) => {
+            safeSet(voice.oscillator, moduleState.options);
+            safeSet(voice.envelope, moduleState.ampEnvelope);
+          });
+        } else if (
           definition.runtime === "noise" ||
           definition.runtime === "grainPlayer"
         ) {
@@ -895,10 +914,28 @@ class AudioEngine {
         }
 
         if (definition.runtime === "pitchedSource") {
-          if (node.frequency) {
-            node.frequency.rampTo(getNoteFrequency(note), 0.02);
+          const polyphony = this.state?.global?.polyphony || 8;
+          const availableVoices = voices.slice(0, polyphony);
+          let voice = availableVoices.find((v) => !v.active);
+
+          if (!voice) {
+            voice = availableVoices.reduce((oldest, v) =>
+              v.releaseTime < oldest.releaseTime ? v : oldest
+            );
+            voice.envelope.triggerRelease(Tone.now());
+            if (voice.note) {
+              activeVoiceMap.delete(voice.note);
+            }
           }
-          auxEnvelope.triggerAttack(Tone.now(), velocity);
+
+          if (voice.oscillator.frequency) {
+            voice.oscillator.frequency.rampTo(getNoteFrequency(note), 0.02);
+          }
+          voice.envelope.triggerAttack(Tone.now(), velocity);
+          voice.note = note;
+          voice.active = true;
+          voice.releaseTime = Infinity;
+          activeVoiceMap.set(note, voice);
         } else if (definition.runtime === "noise") {
           auxEnvelope.triggerAttack(Tone.now(), velocity);
         } else if (definition.runtime === "grainPlayer") {
@@ -937,8 +974,16 @@ class AudioEngine {
        * @param {string} note - 音符
        */
       triggerRelease: (note) => {
-        if (
-          definition.runtime === "pitchedSource" ||
+        if (definition.runtime === "pitchedSource") {
+          const voice = activeVoiceMap.get(note);
+          if (voice) {
+            voice.envelope.triggerRelease(Tone.now());
+            voice.active = false;
+            voice.releaseTime = Tone.now();
+            voice.note = null;
+            activeVoiceMap.delete(note);
+          }
+        } else if (
           definition.runtime === "noise" ||
           definition.runtime === "grainPlayer"
         ) {
@@ -967,8 +1012,17 @@ class AudioEngine {
        * 释放所有音符
        */
       releaseAll: () => {
-        if (
-          definition.runtime === "pitchedSource" ||
+        if (definition.runtime === "pitchedSource") {
+          voices.forEach((voice) => {
+            if (voice.active) {
+              voice.envelope.triggerRelease(Tone.now());
+              voice.active = false;
+              voice.releaseTime = Tone.now();
+              voice.note = null;
+            }
+          });
+          activeVoiceMap.clear();
+        } else if (
           definition.runtime === "noise" ||
           definition.runtime === "grainPlayer"
         ) {
@@ -998,11 +1052,22 @@ class AudioEngine {
        * 销毁运行时
        */
       dispose: () => {
-        if (node && typeof node.dispose === "function") {
-          node.dispose();
-        }
-        if (auxEnvelope) {
-          auxEnvelope.dispose();
+        if (definition.runtime === "pitchedSource") {
+          voices.forEach((voice) => {
+            if (voice.oscillator && typeof voice.oscillator.dispose === "function") {
+              voice.oscillator.dispose();
+            }
+            if (voice.envelope) {
+              voice.envelope.dispose();
+            }
+          });
+        } else {
+          if (node && typeof node.dispose === "function") {
+            node.dispose();
+          }
+          if (auxEnvelope) {
+            auxEnvelope.dispose();
+          }
         }
         volumeNode.dispose();
         panNode.dispose();
@@ -1082,5 +1147,13 @@ class AudioEngine {
       releaseStart: 0,
       releaseFrom: 0,
     };
+  }
+
+  /**
+   * 更新复音数
+   * @param {number} polyphony - 复音数 (1-10)
+   */
+  updatePolyphony(polyphony) {
+    this.state.global.polyphony = polyphony;
   }
 }

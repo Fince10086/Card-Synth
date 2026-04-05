@@ -1333,6 +1333,10 @@ select {
   accent-color: #20b2aa;
 }
 
+.slider-input--source {
+  accent-color: #e67e22;
+}
+
 /* 主音量控制区域 */
 .bottom-bar__volume {
   min-width: 80px;

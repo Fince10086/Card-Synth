@@ -521,7 +521,7 @@ function createBasePreset() {
 function normalizePreset(preset = {}) {
   const fallback = {
     name: "Untitled Patch",
-    global: { volume: -8, octave: 4, velocity: 0.8 },
+    global: { volume: -8, octave: 4, velocity: 0.8, polyphony: 8 },
     filter: { enabled: true, type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 },
     envelope: { enabled: true, attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65 },
     modEnvelope: { enabled: true, attack: 0.01, decay: 0.24, sustain: 0.36, release: 0.8 },
@@ -574,6 +574,7 @@ function normalizePreset(preset = {}) {
   merged.global.octave = clamp(Number(merged.global.octave || 4), 1, 7);
   merged.global.velocity = clamp(Number(merged.global.velocity || 0.8), 0.1, 1);
   merged.global.volume = clamp(Number(merged.global.volume || -8), -36, 6);
+  merged.global.polyphony = clamp(Number(merged.global.polyphony || 8), 1, 10);
   return merged;
 }
 
