@@ -3514,8 +3514,8 @@ class ModularSynthApp {
     svg.innerHTML = "";
 
     // 张力控制：张力 1 = 紧绷，张力 0 = 最大下垂
-    const tension = clamp(Number(this.state.ui?.cableTension ?? 0.78), 0, 1);
-    const sagAmount = (1 - tension) * 80; // 下垂幅度
+    const tension = clamp(Number(this.state.ui?.cableTension ?? 0.50), 0, 1);
+    const sagAmount = (1 - tension) * 200; // 下垂幅度
     let shouldContinue = Boolean(this.dragPatch);
     const activeKeys = new Set();
 
