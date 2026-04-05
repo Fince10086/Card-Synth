@@ -3,6 +3,7 @@
  * 常量和配置定义
  * 
  * 包含：
+ * - 格式化函数（用于库配置中的 formatter）
  * - 音名表和键盘布局
  * - 波形和噪声类型选项
  * - 模块库定义（声源、效果器、组件）
@@ -11,6 +12,94 @@
  */
 
 const Tone = window.Tone || null;
+
+/* -------------------------------------------------------------------------- */
+/* 格式化函数                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 格式化普通数值
+ * @param {number} value - 要格式化的值
+ * @returns {string} - 格式化后的字符串
+ */
+function formatPlain(value) {
+  return Number(value).toFixed(Math.abs(value) < 10 ? 2 : 1).replace(/\.0+$/, "");
+}
+
+/**
+ * 格式化秒数
+ * @param {number} value - 秒数
+ * @returns {string} - 格式化后的字符串
+ */
+function formatSeconds(value) {
+  return `${Number(value).toFixed(value < 0.1 ? 3 : value < 1 ? 2 : 1).replace(/0+$/, "").replace(/\.$/, "")}s`;
+}
+
+/**
+ * 格式化百分比
+ * @param {number} value - 百分比值 (0-1)
+ * @returns {string} - 格式化后的字符串
+ */
+function formatPercent(value) {
+  return `${Math.round(Number(value) * 100)}%`;
+}
+
+/**
+ * 格式化分贝值
+ * @param {number} value - 分贝值
+ * @returns {string} - 格式化后的字符串
+ */
+function formatDb(value) {
+  return `${Number(value).toFixed(1)} dB`;
+}
+
+/**
+ * 格式化音分值
+ * @param {number} value - 音分值
+ * @returns {string} - 格式化后的字符串
+ */
+function formatCents(value) {
+  return `${Math.round(value)} ct`;
+}
+
+/**
+ * 格式化比率
+ * @param {number} value - 比率值
+ * @returns {string} - 格式化后的字符串
+ */
+function formatRatio(value) {
+  return `${Number(value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}:1`;
+}
+
+/**
+ * 格式化赫兹值
+ * @param {number} value - 赫兹值
+ * @returns {string} - 格式化后的字符串
+ */
+function formatHertz(value) {
+  return `${Number(value).toFixed(value < 1 ? 2 : 1).replace(/0+$/, "").replace(/\.$/, "")} Hz`;
+}
+
+/**
+ * 格式化频率值
+ * @param {number} value - 频率值
+ * @returns {string} - 格式化后的字符串
+ */
+function formatFrequency(value) {
+  if (value >= 1000) {
+    return `${Number(value / 1000).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} kHz`;
+  }
+  return `${Math.round(value)} Hz`;
+}
+
+/**
+ * 格式化倍数
+ * @param {number} value - 倍数值
+ * @returns {string} - 格式化后的字符串
+ */
+function formatMultiplier(value) {
+  return `${Number(value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}x`;
+}
 
 /* -------------------------------------------------------------------------- */
 /* 音名和键盘布局                                                            */
