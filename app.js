@@ -98,7 +98,6 @@ class ModularSynthApp {
       sourceRack: document.getElementById("sourceRack"),
       filterRack: document.getElementById("filterRack"),
       envelopeRack: document.getElementById("envelopeRack"),
-      lfoRack: document.getElementById("lfoRack"),
       componentRack: document.getElementById("componentRack"),
       effectRack: document.getElementById("effectRack"),
       addModuleCard: document.getElementById("addModuleCard"),
@@ -713,8 +712,6 @@ class ModularSynthApp {
         this.state.envelope.enabled = true;
       } else if (type === "modEnvelope") {
         this.state.modEnvelope.enabled = true;
-      } else if (type === "lfo") {
-        this.state.lfo.enabled = true;
       }
     } else if (kind === "source") {
       this.state.sources.push(createSourceModule(type));
@@ -750,7 +747,6 @@ class ModularSynthApp {
       ["sources", () => this.renderSourceRack()],
       ["filter", () => this.renderFilterModule()],
       ["envelope", () => this.renderEnvelopeModule()],
-      ["lfo", () => this.renderLfoModule()],
       ["components", () => this.renderComponentsRack()],
       ["effects", () => this.renderEffectRack()],
       ["keyboard", () => this.renderKeyboard()],
@@ -785,15 +781,7 @@ class ModularSynthApp {
         .filter((route) => route && validTargets.has(route.target))
         .map((route) => ({ ...route, id: route.id || createId("route") }));
 
-    this.state.modulation.lfoRoutes = sanitizeList(this.state.modulation?.lfoRoutes);
     this.state.modulation.envelopeRoutes = sanitizeList(this.state.modulation?.envelopeRoutes);
-
-    if (!this.state.modulation.lfoRoutes.length) {
-      const firstTarget = getModulationTargets(this.state)[0]?.value;
-      if (firstTarget) {
-        this.state.modulation.lfoRoutes.push(createModRoute(firstTarget, 0.45));
-      }
-    }
   }
 
   /* -------------------------------------------------------------------------- */
@@ -1343,115 +1331,6 @@ class ModularSynthApp {
   }
 
   /* -------------------------------------------------------------------------- */
-  /* LFO 模块渲染                                                               */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 渲染 LFO 模块
-   * LFO 模块既可以作为调制源，也可以被整体移除出机架
-   */
-  renderLfoModule() {
-    if (!this.elements.lfoRack) {
-      return;
-    }
-    this.elements.lfoRack.innerHTML = "";
-
-    if (this.state.ui.visibleModules.lfo === false) {
-      return;
-    }
-
-    const card = this.createModuleCard({
-      accent: "lfo",
-      kicker: "Modulation",
-      title: "LFO",
-      moduleRef: "lfo-core",
-      headerPatchPoint: { accent: "lfo", sourceKey: "lfoRoutes" },
-      enabled: this.state.lfo.enabled,
-      onToggleEnabled: () => {
-        this.state.lfo.enabled = !this.state.lfo.enabled;
-        this.selectedPresetId = "custom";
-        this.engine.updateLfo(this.state.lfo);
-        this.renderAll();
-      },
-      removable: this.state.ui.visibleModules.lfo,
-      onRemove: () => {
-        this.state.ui.visibleModules.lfo = false;
-        this.state.lfo.enabled = false;
-        this.selectedPresetId = "custom";
-        this.renderAll();
-        this.engine.fullSync(this.state);
-      },
-    });
-
-    const headGrid = document.createElement("div");
-    headGrid.className = "module-grid compact";
-    headGrid.append(
-      this.createSelectControl({
-        label: "Wave",
-        options: SHARED_WAVE_OPTIONS,
-        value: this.state.lfo.type,
-        onChange: (value) => {
-          this.state.lfo.type = value;
-          this.selectedPresetId = "custom";
-          this.engine.updateLfo(this.state.lfo);
-        },
-      }),
-    );
-
-    const controls = document.createElement("div");
-    controls.className = "module-grid";
-    controls.append(
-      this.createRangeControl({
-        label: "Rate",
-        accent: "lfo",
-        min: 0.05,
-        max: 18,
-        step: 0.01,
-        value: this.state.lfo.frequency,
-        path: "lfo.frequency",
-        formatter: formatHertz,
-        onInput: (value) => {
-          this.state.lfo.frequency = value;
-          this.selectedPresetId = "custom";
-          this.engine.updateLfo(this.state.lfo);
-        },
-      }),
-      this.createRangeControl({
-        label: "Depth",
-        accent: "lfo",
-        min: 0,
-        max: 1,
-        step: 0.01,
-        value: this.state.lfo.amount,
-        path: "lfo.amount",
-        formatter: formatPercent,
-        onInput: (value) => {
-          this.state.lfo.amount = value;
-          this.selectedPresetId = "custom";
-          this.engine.updateLfo(this.state.lfo);
-        },
-      }),
-      this.createRangeControl({
-        label: "Phase",
-        accent: "lfo",
-        min: 0,
-        max: 360,
-        step: 1,
-        value: this.state.lfo.phase || 0,
-        formatter: (value) => `${Math.round(value)}deg`,
-        onInput: (value) => {
-          this.state.lfo.phase = value;
-          this.selectedPresetId = "custom";
-          this.engine.updateLfo(this.state.lfo);
-        },
-      }),
-    );
-
-    card.append(headGrid, controls, this.renderRouteRack("lfoRoutes", "lfo"));
-    this.elements.lfoRack.append(card);
-  }
-
-  /* -------------------------------------------------------------------------- */
   /* 组件机架渲染                                                               */
   /* -------------------------------------------------------------------------- */
 
@@ -1743,7 +1622,7 @@ class ModularSynthApp {
 
   /**
    * 渲染路由机架
-   * 渲染 LFO / Mod Envelope 的路由列表，同时提供拖线句柄
+   * 渲染 Mod Envelope 的路由列表，同时提供拖线句柄
    * @param {string} routeKey - 路由键
    * @param {string} accent - 强调色
    * @returns {HTMLElement} - 路由机架元素
@@ -1950,7 +1829,7 @@ class ModularSynthApp {
    * @returns {boolean} - 是否已被调制
    */
   isTargetPatched(targetValue) {
-    return [...(this.state.modulation?.lfoRoutes || []), ...(this.state.modulation?.envelopeRoutes || [])].some(
+    return [...(this.state.modulation?.envelopeRoutes || [])].some(
       (route) => route.enabled !== false && route.target === targetValue,
     );
   }
@@ -2442,9 +2321,7 @@ class ModularSynthApp {
       filter: blendObject(presetA.filter, presetB.filter),
       envelope: blendObject(presetA.envelope, presetB.envelope),
       modEnvelope: blendObject(presetA.modEnvelope, presetB.modEnvelope),
-      lfo: blendObject(presetA.lfo, presetB.lfo),
       modulation: {
-        lfoRoutes: blendRouteLists(presetA.modulation.lfoRoutes, presetB.modulation.lfoRoutes),
         envelopeRoutes: blendRouteLists(
           presetA.modulation.envelopeRoutes,
           presetB.modulation.envelopeRoutes,
@@ -2508,17 +2385,13 @@ class ModularSynthApp {
 
   /**
    * 应用运动宏
-   * Motion 宏优先映射到 LFO 速度/深度以及可感知明显的 effect wet / feedback
+   * Motion 宏优先映射到 effect wet / feedback
    * @param {number} value - 运动值
    */
   applyMotionMacro(value) {
     const delta = value - this.performance.motion;
     this.performance.motion = value;
     this.selectedPresetId = "custom";
-
-    this.state.lfo.enabled = true;
-    this.state.lfo.frequency = clamp(this.state.lfo.frequency + delta * 8, 0.05, 18);
-    this.state.lfo.amount = clamp(this.state.lfo.amount + delta * 0.8, 0, 1);
 
     this.state.effects.forEach((module) => {
       if (typeof module.options.wet === "number") {
@@ -2529,7 +2402,6 @@ class ModularSynthApp {
       }
     });
 
-    this.engine.updateLfo(this.state.lfo);
     this.state.effects.forEach((module) => this.engine.updateEffect(module));
     this.syncControlsFromState();
   }
@@ -2587,11 +2459,6 @@ class ModularSynthApp {
     this.state.modEnvelope.decay = randomRange(0.03, 1.4, 0.001);
     this.state.modEnvelope.sustain = randomRange(0, 1, 0.01);
     this.state.modEnvelope.release = randomRange(0.05, 3.2, 0.01);
-    this.state.lfo.enabled = true;
-    this.state.lfo.type = randomChoice(SHARED_WAVE_OPTIONS).value;
-    this.state.lfo.frequency = randomRange(0.08, 9.5, 0.01);
-    this.state.lfo.amount = randomRange(0.05, 0.75, 0.01);
-    this.state.lfo.phase = randomRange(0, 360, 1);
 
     this.state.sources.forEach((module) => {
       module.volume = randomRange(-18, -4, 0.1);
@@ -2607,11 +2474,6 @@ class ModularSynthApp {
     );
 
     const modulationTargets = getModulationTargets(this.state);
-    this.state.modulation.lfoRoutes = createRandomRoutes(
-      modulationTargets,
-      randomInt(1, Math.min(3, modulationTargets.length || 1)),
-      0.8,
-    );
     this.state.modulation.envelopeRoutes = createRandomRoutes(
       modulationTargets,
       randomInt(1, Math.min(2, modulationTargets.length || 1)),
@@ -2871,8 +2733,7 @@ class ModularSynthApp {
    * @param {string} endType - 端点类型
    */
   beginPatchDrag(event, routeKey, routeId, accent, endType = "target") {
-    const color =
-      accent === "lfo" ? "rgba(61, 127, 184, 0.92)" : "rgba(192, 160, 62, 0.92)";
+    const color = "rgba(192, 160, 62, 0.92)";
     this.dragPatch = {
       routeKey,
       routeId,
@@ -3091,13 +2952,6 @@ class ModularSynthApp {
       getModulationTargets(this.state).map((target) => [target.value, target]),
     );
     const routes = [
-      ...(this.state.modulation?.lfoRoutes || []).map((route) => ({
-        ...route,
-        accent: "lfo",
-        color: "rgba(61, 127, 184, 0.92)",
-        sourceKey: "lfoRoutes",
-        sourceEnabled: this.state.lfo.enabled,
-      })),
       ...(this.state.modulation?.envelopeRoutes || []).map((route) => ({
         ...route,
         accent: "env",

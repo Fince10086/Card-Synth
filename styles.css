@@ -11,7 +11,6 @@
   --source: #2f9f95;
   --filter: #d67c31;
   --env: #c0a03e;
-  --lfo: #3d7fb8;
   --component: #6f8f4e;
   --fx: #ca5d48;
   --white-key: #fdfbf7;
@@ -246,7 +245,6 @@ select {
 .module-list,
 #filterRack,
 #envelopeRack,
-#lfoRack,
 #componentRack,
 #effectRack {
   display: contents;
@@ -277,10 +275,6 @@ select {
 
 .module-card[data-accent="env"] {
   --accent: var(--env);
-}
-
-.module-card[data-accent="lfo"] {
-  --accent: var(--lfo);
 }
 
 .module-card[data-accent="component"] {
@@ -1312,7 +1306,7 @@ select {
   accent-color: #4a90c2;
 }
 
-.slider-input--lfo {
+.slider-input--global {
   accent-color: #7b68ee;
 }
 
