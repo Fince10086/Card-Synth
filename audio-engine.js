@@ -348,34 +348,19 @@ class AudioEngine {
     const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
     let moduleState = deepClone(module);
 
-    // 创建音量和声像节点
     const volumeNode = new Tone.Volume(module.enabled ? module.volume : -48);
     const panNode = new Tone.Panner(module.pan);
     volumeNode.connect(panNode);
     panNode.connect(this.sourceBus);
 
     let node;
-    let auxEnvelope = null;
-    let activePlayerKey = "";
 
-    // 音高计算工具
     const getNoteFrequency = (note) => Tone.Frequency(note).toFrequency();
     const getPitchRatio = (note) => {
       const root = Tone.Frequency(moduleState.rootNote || "C4").toFrequency();
       return getNoteFrequency(note) / root;
     };
-    const getPlayersKey = (note) => {
-      const octave = Number(String(note).replace(/[^0-9-]/g, "")) || 4;
-      if (octave <= 3) {
-        return "low";
-      }
-      if (octave >= 5) {
-        return "high";
-      }
-      return "mid";
-    };
 
-    // 根据运行时类型创建节点
     const voices = [];
     const activeVoiceMap = new Map();
     const MAX_VOICES = 10;
@@ -383,48 +368,27 @@ class AudioEngine {
     if (definition.runtime === "pitchedSource") {
       for (let i = 0; i < MAX_VOICES; i++) {
         const voiceOsc = new Tone[definition.voiceClass](module.options);
-        const voiceEnv = new Tone.AmplitudeEnvelope(module.ampEnvelope);
-        voiceOsc.connect(voiceEnv);
-        voiceEnv.connect(volumeNode);
+        voiceOsc.connect(volumeNode);
         voiceOsc.start();
         voices.push({
           oscillator: voiceOsc,
-          envelope: voiceEnv,
           note: null,
           active: false,
           releaseTime: 0,
         });
       }
       node = voices[0].oscillator;
-      auxEnvelope = voices[0].envelope;
     } else if (definition.runtime === "noise") {
       node = new Tone.Noise(module.options);
-      auxEnvelope = new Tone.AmplitudeEnvelope(module.ampEnvelope);
-      node.connect(auxEnvelope);
-      auxEnvelope.connect(volumeNode);
-      node.start();
-    } else if (definition.runtime === "grainPlayer") {
-      node = new Tone.GrainPlayer(moduleState.options);
-      auxEnvelope = new Tone.AmplitudeEnvelope(module.ampEnvelope);
-      node.connect(auxEnvelope);
-      auxEnvelope.connect(volumeNode);
+      node.connect(volumeNode);
       node.start();
     } else if (definition.runtime === "player") {
       node = new Tone.Player(moduleState.options);
       applyPlayerLikeOptions(node, moduleState.options);
       node.connect(volumeNode);
-    } else if (definition.runtime === "players") {
-      node = new Tone.Players(moduleState.options.urls || {});
-      applyPlayersOptions(node, moduleState.options);
-      node.connect(volumeNode);
-    } else if (definition.runtime === "monoTrigger") {
-      node = new Tone[definition.voiceClass](moduleState.options);
-      node.connect(volumeNode);
     } else {
       node = new Tone.Oscillator(moduleState.options);
-      auxEnvelope = new Tone.AmplitudeEnvelope(module.ampEnvelope);
-      node.connect(auxEnvelope);
-      auxEnvelope.connect(volumeNode);
+      node.connect(volumeNode);
       node.start();
     }
 
@@ -433,13 +397,8 @@ class AudioEngine {
       node,
       volumeNode,
       panNode,
-      auxEnvelope,
       voices,
 
-      /**
-       * 应用模块状态更新
-       * @param {Object} nextModule - 新的模块状态
-       */
       apply: (nextModule) => {
         moduleState = deepClone(nextModule);
         rampParam(volumeNode.volume, moduleState.enabled ? moduleState.volume : -48);
@@ -448,39 +407,15 @@ class AudioEngine {
         if (definition.runtime === "pitchedSource") {
           voices.forEach((voice) => {
             safeSet(voice.oscillator, moduleState.options);
-            safeSet(voice.envelope, moduleState.ampEnvelope);
           });
-        } else if (
-          definition.runtime === "noise" ||
-          definition.runtime === "grainPlayer"
-        ) {
+        } else if (definition.runtime === "noise") {
           safeSet(node, moduleState.options);
-          if (definition.runtime === "grainPlayer") {
-            applyPlayerLikeOptions(node, moduleState.options);
-          }
-          if (auxEnvelope) {
-            safeSet(auxEnvelope, moduleState.ampEnvelope);
-          }
         } else if (definition.runtime === "player") {
           safeSet(node, moduleState.options);
           applyPlayerLikeOptions(node, moduleState.options);
-        } else if (definition.runtime === "monoTrigger") {
-          safeSet(node, moduleState.options);
-        } else {
-          Object.entries(moduleState.options.urls || {}).forEach(([key, value]) => {
-            if (typeof node.player === "function" && node.player(key)) {
-              node.player(key).load(value);
-            }
-          });
-          applyPlayersOptions(node, moduleState.options);
         }
       },
 
-      /**
-       * 触发 Attack
-       * @param {string} note - 音符
-       * @param {number} velocity - 力度
-       */
       triggerAttack: (note, velocity) => {
         if (!moduleState.enabled) {
           return;
@@ -495,7 +430,6 @@ class AudioEngine {
             voice = availableVoices.reduce((oldest, v) =>
               v.releaseTime < oldest.releaseTime ? v : oldest
             );
-            voice.envelope.triggerRelease(Tone.now());
             if (voice.note) {
               activeVoiceMap.delete(voice.note);
             }
@@ -504,18 +438,12 @@ class AudioEngine {
           if (voice.oscillator.frequency) {
             voice.oscillator.frequency.rampTo(getNoteFrequency(note), 0.02);
           }
-          voice.envelope.triggerAttack(Tone.now(), velocity);
           voice.note = note;
           voice.active = true;
           voice.releaseTime = Infinity;
           activeVoiceMap.set(note, voice);
         } else if (definition.runtime === "noise") {
-          auxEnvelope.triggerAttack(Tone.now(), velocity);
-        } else if (definition.runtime === "grainPlayer") {
-          if ("playbackRate" in node) {
-            node.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
-          }
-          auxEnvelope.triggerAttack(Tone.now(), velocity);
+          // Noise 直接启动，无 envelope
         } else if (definition.runtime === "player") {
           if ("playbackRate" in node) {
             node.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
@@ -524,122 +452,56 @@ class AudioEngine {
             node.stop(Tone.now());
           } catch {}
           node.start(Tone.now());
-        } else if (definition.runtime === "players") {
-          const key = getPlayersKey(note);
-          const player = typeof node.player === "function" ? node.player(key) : null;
-          if (player) {
-            activePlayerKey = key;
-            try {
-              player.stop(Tone.now());
-            } catch {}
-            if ("playbackRate" in player) {
-              player.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
-            }
-            player.start(Tone.now());
-          }
-        } else if (definition.runtime === "monoTrigger") {
-          node.triggerAttack(note, Tone.now(), velocity);
         }
       },
 
-      /**
-       * 触发 Release
-       * @param {string} note - 音符
-       */
       triggerRelease: (note) => {
         if (definition.runtime === "pitchedSource") {
           const voice = activeVoiceMap.get(note);
           if (voice) {
-            voice.envelope.triggerRelease(Tone.now());
             voice.active = false;
             voice.releaseTime = Tone.now();
             voice.note = null;
             activeVoiceMap.delete(note);
           }
-        } else if (
-          definition.runtime === "noise" ||
-          definition.runtime === "grainPlayer"
-        ) {
-          auxEnvelope.triggerRelease(Tone.now());
+        } else if (definition.runtime === "noise") {
+          // Noise 直接停止，无 envelope
         } else if (definition.runtime === "player") {
           try {
             node.stop(Tone.now());
           } catch {}
-        } else if (definition.runtime === "players") {
-          const player =
-            activePlayerKey && typeof node.player === "function"
-              ? node.player(activePlayerKey)
-              : null;
-          if (player) {
-            try {
-              player.stop(Tone.now());
-            } catch {}
-          }
-          activePlayerKey = "";
-        } else if (definition.runtime === "monoTrigger" && typeof node.triggerRelease === "function") {
-          node.triggerRelease(note, Tone.now());
         }
       },
 
-      /**
-       * 释放所有音符
-       */
       releaseAll: () => {
         if (definition.runtime === "pitchedSource") {
           voices.forEach((voice) => {
             if (voice.active) {
-              voice.envelope.triggerRelease(Tone.now());
               voice.active = false;
               voice.releaseTime = Tone.now();
               voice.note = null;
             }
           });
           activeVoiceMap.clear();
-        } else if (
-          definition.runtime === "noise" ||
-          definition.runtime === "grainPlayer"
-        ) {
-          auxEnvelope.triggerRelease(Tone.now());
+        } else if (definition.runtime === "noise") {
+          // Noise 无需处理
         } else if (definition.runtime === "player") {
           try {
             node.stop(Tone.now());
           } catch {}
-        } else if (definition.runtime === "players") {
-          ["low", "mid", "high"].forEach((key) => {
-            const player = typeof node.player === "function" ? node.player(key) : null;
-            if (player) {
-              try {
-                player.stop(Tone.now());
-              } catch {}
-            }
-          });
-          activePlayerKey = "";
-        } else if (definition.runtime === "monoTrigger") {
-          if (typeof node.triggerRelease === "function") {
-            node.triggerRelease(Tone.now());
-          }
         }
       },
 
-      /**
-       * 销毁运行时
-       */
       dispose: () => {
         if (definition.runtime === "pitchedSource") {
           voices.forEach((voice) => {
             if (voice.oscillator && typeof voice.oscillator.dispose === "function") {
               voice.oscillator.dispose();
             }
-            if (voice.envelope) {
-              voice.envelope.dispose();
-            }
           });
         } else {
           if (node && typeof node.dispose === "function") {
             node.dispose();
-          }
-          if (auxEnvelope) {
-            auxEnvelope.dispose();
           }
         }
         volumeNode.dispose();

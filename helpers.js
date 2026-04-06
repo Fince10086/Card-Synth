@@ -188,7 +188,6 @@ function createSourceModule(type = "Oscillator") {
     pan: 0,
     ...(definition.moduleDefaults ? deepClone(definition.moduleDefaults) : {}),
     options: deepClone(definition.options),
-    ampEnvelope: definition.ampEnvelope ? deepClone(definition.ampEnvelope) : undefined,
   };
 }
 
