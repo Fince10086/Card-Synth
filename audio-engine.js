@@ -377,6 +377,9 @@ class AudioEngine {
         } else if (definition.runtime === "noise") {
           // Noise 直接启动，无 envelope
         } else if (definition.runtime === "player") {
+          if (!node.loaded) {
+            return;
+          }
           if ("playbackRate" in node) {
             node.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
           }
