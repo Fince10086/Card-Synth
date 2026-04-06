@@ -413,7 +413,7 @@ const EFFECT_LIBRARY = {
  */
 const COMPONENT_LIBRARY = {
   Filter: {
-    accent: "filter",
+    accent: "component",
     tag: "Component",
     options: { type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 },
     controls: [

@@ -9,7 +9,6 @@
   --ink: #2a241b;
   --muted: #726757;
   --source: #2f9f95;
-  --filter: #d67c31;
   --env: #c0a03e;
   --component: #6f8f4e;
   --fx: #ca5d48;
@@ -239,10 +238,6 @@ select {
 /* 每种模块只通过 accent 变量切换颜色，不复制整套样式。 */
 .module-card[data-accent="source"] {
   --accent: var(--source);
-}
-
-.module-card[data-accent="filter"] {
-  --accent: var(--filter);
 }
 
 .module-card[data-accent="env"] {
@@ -1213,10 +1208,6 @@ select {
 
 .macros-section .slider-input {
   height: 4px;
-}
-
-.slider-input--filter {
-  accent-color: #4a90c2;
 }
 
 .slider-input--global {
