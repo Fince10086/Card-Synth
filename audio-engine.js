@@ -149,10 +149,10 @@ class AudioEngine {
     // 断开所有连接
     this.sourceBus.disconnect();
 
-    // 重建信号链，从 sourceBus 开始
+    // 重建信号链
     let cursor = this.sourceBus;
 
-    // 添加组件节点（包括 Filter 和 AmplitudeEnvelope）
+    // 添加组件节点
     this.state.components.forEach((module) => {
       if (!module.enabled) {
         return;
