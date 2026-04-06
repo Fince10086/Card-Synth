@@ -416,6 +416,38 @@ const EFFECT_LIBRARY = {
  * 相较于 effect，更偏工具型或增益结构型节点
  */
 const COMPONENT_LIBRARY = {
+  Filter: {
+    accent: "filter",
+    tag: "Component",
+    options: { type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 },
+    controls: [
+      { path: "options.type", kind: "select", label: "Type", options: [
+        { label: "Low-pass", value: "lowpass" },
+        { label: "Band-pass", value: "bandpass" },
+        { label: "High-pass", value: "highpass" },
+        { label: "Notch", value: "notch" },
+      ] },
+      { path: "options.rolloff", kind: "select", label: "Slope", options: [
+        { label: "-12 dB", value: -12 },
+        { label: "-24 dB", value: -24 },
+        { label: "-48 dB", value: -48 },
+        { label: "-96 dB", value: -96 },
+      ]},
+      { path: "options.frequency", kind: "range", label: "Cutoff", min: 40, max: 12000, step: 1, formatter: formatFrequency },
+      { path: "options.Q", kind: "range", label: "Q", min: 0.001, max: 20, step: 0.001, formatter: formatPlain },
+    ],
+  },
+  AmplitudeEnvelope: {
+    accent: "env",
+    tag: "Component",
+    options: { attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65 },
+    controls: [
+      { path: "options.attack", kind: "range", label: "Attack", min: 0.001, max: 4, step: 0.001, formatter: formatSeconds },
+      { path: "options.decay", kind: "range", label: "Decay", min: 0.001, max: 4, step: 0.001, formatter: formatSeconds },
+      { path: "options.sustain", kind: "range", label: "Sustain", min: 0, max: 1, step: 0.01, formatter: formatPercent },
+      { path: "options.release", kind: "range", label: "Release", min: 0.001, max: 4, step: 0.001, formatter: formatSeconds },
+    ],
+  },
   Compressor: {
     accent: "component",
     tag: "Component",
@@ -462,13 +494,6 @@ const COMPONENT_LIBRARY = {
   },
 };
 
-// 滤波器类型选项
-const FILTER_TYPES = [
-  { label: "Low-pass", value: "lowpass" },
-  { label: "Band-pass", value: "bandpass" },
-  { label: "High-pass", value: "highpass" },
-  { label: "Notch", value: "notch" },
-];
 
 /* -------------------------------------------------------------------------- */
 /* 内置预设模板                                                              */
@@ -482,9 +507,6 @@ const BUILTIN_PRESET_TEMPLATES = {
   init: {
     name: "Init Patch",
     global: { volume: -8, octave: 4, velocity: 0.8 },
-    filter: { type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 },
-    envelope: { attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65 },
-    lfo: { enabled: true, type: "sine", frequency: 2.1, amount: 0.35, target: "filter.frequency" },
     sources: [
       {
         type: "Oscillator",
@@ -501,7 +523,11 @@ const BUILTIN_PRESET_TEMPLATES = {
         options: { width: 0.5, detune: 6 },
       },
     ],
-    components: [{ type: "Compressor", enabled: true, options: { threshold: -18, ratio: 2.6, attack: 0.01, release: 0.22, knee: 20 } }],
+    components: [
+      { type: "Filter", enabled: true, options: { type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 } },
+      { type: "AmplitudeEnvelope", enabled: true, options: { attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65 } },
+      { type: "Compressor", enabled: true, options: { threshold: -18, ratio: 2.6, attack: 0.01, release: 0.22, knee: 20 } },
+    ],
     effects: [
       { type: "Chorus", enabled: true, options: { frequency: 1.4, delayTime: 2.4, depth: 0.5, spread: 180, wet: 0.32 } },
       { type: "Reverb", enabled: true, options: { decay: 3.8, preDelay: 0.02, wet: 0.2 } },
@@ -510,9 +536,6 @@ const BUILTIN_PRESET_TEMPLATES = {
   cinematicDust: {
     name: "Cinematic Dust",
     global: { volume: -11, octave: 3, velocity: 0.72 },
-    filter: { type: "lowpass", frequency: 1450, Q: 0.92, rolloff: -48 },
-    envelope: { attack: 0.14, decay: 0.48, sustain: 0.7, release: 2.6 },
-    lfo: { enabled: true, type: "sine", frequency: 0.42, amount: 0.58, target: "filter.frequency" },
     sources: [
       {
         type: "Oscillator",
@@ -530,6 +553,8 @@ const BUILTIN_PRESET_TEMPLATES = {
       },
     ],
     components: [
+      { type: "Filter", enabled: true, options: { type: "lowpass", frequency: 1450, Q: 0.92, rolloff: -48 } },
+      { type: "AmplitudeEnvelope", enabled: true, options: { attack: 0.14, decay: 0.48, sustain: 0.7, release: 2.6 } },
       { type: "Gain", enabled: true, options: { gain: 1.08 } },
       { type: "EQ3", enabled: true, options: { low: 2.4, mid: -0.8, high: -2.8, lowFrequency: 240, highFrequency: 2100 } },
     ],

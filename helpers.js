@@ -232,8 +232,6 @@ function createComponentModule(type = "Compressor") {
  */
 function getAddableModuleOptions() {
   return [
-    { value: "core:filter", label: "Core / Filter" },
-    { value: "core:envelope", label: "Core / Amp Envelope" },
     { value: "core:lfo", label: "Core / LFO" },
     ...Object.keys(SOURCE_LIBRARY).map((type) => ({
       value: `source:${type}`,
@@ -308,16 +306,8 @@ function normalizePreset(preset = {}) {
   const fallback = {
     name: "Untitled Patch",
     global: { volume: -8, octave: 4, velocity: 0.8, polyphony: 8 },
-    filter: { enabled: true, type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 },
-    envelope: { enabled: true, attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65 },
-    ui: {
-      visibleModules: {
-        filter: true,
-        envelope: true,
-      },
-    },
     sources: [createSourceModule("Oscillator")],
-    components: [createComponentModule("Compressor")],
+    components: [createComponentModule("Filter"), createComponentModule("AmplitudeEnvelope")],
     effects: [createEffectModule("Chorus")],
   };
 
@@ -332,39 +322,11 @@ function normalizePreset(preset = {}) {
   merged.effects = Array.isArray(preset.effects)
     ? preset.effects.map((module) => normalizeEffectModule(module))
     : fallback.effects.map((module) => normalizeEffectModule(module));
-  merged.filter = deepMerge(fallback.filter, preset.filter || {});
-  merged.envelope = deepMerge(fallback.envelope, preset.envelope || {});
-  merged.ui = deepMerge(fallback.ui, preset.ui || {});
   merged.global.octave = clamp(Number(merged.global.octave || 4), 1, 7);
   merged.global.velocity = clamp(Number(merged.global.velocity || 0.8), 0.1, 1);
   merged.global.volume = clamp(Number(merged.global.volume || -8), -36, 6);
   merged.global.polyphony = clamp(Number(merged.global.polyphony || 8), 1, 10);
   return merged;
-}
-
-/* -------------------------------------------------------------------------- */
-/* 音频状态提取函数                                                           */
-/* -------------------------------------------------------------------------- */
-
-/**
- * 获取滤波器音频状态
- * enabled 只是编辑器层的 UI 开关，不直接传给 Tone.Filter
- * @param {Object} filterState - 滤波器状态
- * @returns {Object} - 音频状态
- */
-function getFilterAudioState(filterState = {}) {
-  const { enabled, ...options } = filterState || {};
-  return options;
-}
-
-/**
- * 获取包络音频状态
- * @param {Object} envelopeState - 包络状态
- * @returns {Object} - 音频状态
- */
-function getEnvelopeAudioState(envelopeState = {}) {
-  const { enabled, ...options } = envelopeState || {};
-  return options;
 }
 
 /* -------------------------------------------------------------------------- */

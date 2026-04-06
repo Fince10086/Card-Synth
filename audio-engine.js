@@ -49,9 +49,6 @@ class AudioEngine {
     // 创建主信号链节点
     // sourceBus 是所有 source 的汇总入口
     this.sourceBus = new Tone.Gain(1);
-    this.filter = new Tone.Filter(getFilterAudioState(state.filter));
-    this.ampEnvelope = new Tone.AmplitudeEnvelope(getEnvelopeAudioState(state.envelope));
-    this.ampBypass = new Tone.Gain(1);
     this.masterVolume = new Tone.Volume(state.global.volume);
     this.analyser = new Tone.Analyser("waveform", 1024);
 
@@ -88,8 +85,6 @@ class AudioEngine {
       return;
     }
 
-    safeSet(this.filter, getFilterAudioState(state.filter));
-    safeSet(this.ampEnvelope, getEnvelopeAudioState(state.envelope));
     rampParam(this.masterVolume.volume, state.global.volume);
     this.silenceAll();
     this.rebuildEffects();
@@ -106,37 +101,6 @@ class AudioEngine {
       return;
     }
     rampParam(this.masterVolume.volume, globalState.volume);
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 核心模块更新                                                               */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 更新滤波器
-   * filter / envelope 的更新除了改 Tone 参数，还可能改动主链路的串接方式
-   * @param {Object} filterState - 滤波器状态
-   */
-  updateFilter(filterState) {
-    this.state.filter = deepClone(filterState);
-    if (!this.ready) {
-      return;
-    }
-    safeSet(this.filter, getFilterAudioState(filterState));
-    this.rebuildEffects();
-  }
-
-  /**
-   * 更新音量包络
-   * @param {Object} envelopeState - 包络状态
-   */
-  updateEnvelope(envelopeState) {
-    this.state.envelope = deepClone(envelopeState);
-    if (!this.ready) {
-      return;
-    }
-    safeSet(this.ampEnvelope, getEnvelopeAudioState(envelopeState));
-    this.rebuildEffects();
   }
 
   /* -------------------------------------------------------------------------- */
@@ -168,11 +132,11 @@ class AudioEngine {
   /**
    * 重建效果器链
    * 主信号链重建器
-   * 当前链路顺序固定为：
-   * sourceBus -> (filter?) -> (ampEnvelope or bypass) -> components* -> effects* -> masterVolume
+   * 当前链路顺序为：
+   * sourceBus -> components* -> effects* -> masterVolume
    */
   rebuildEffects() {
-    if (!this.masterVolume || !this.ampEnvelope || !this.ampBypass || !this.filter) {
+    if (!this.masterVolume) {
       return;
     }
 
@@ -184,27 +148,11 @@ class AudioEngine {
 
     // 断开所有连接
     this.sourceBus.disconnect();
-    this.filter.disconnect();
-    this.ampEnvelope.disconnect();
-    this.ampBypass.disconnect();
 
-    // 重建信号链
+    // 重建信号链，从 sourceBus 开始
     let cursor = this.sourceBus;
 
-    // filter 与 amp envelope 都允许被当作"核心模块"整体移除或 bypass
-    if (this.state.filter.enabled !== false) {
-      cursor.connect(this.filter);
-      cursor = this.filter;
-    }
-    if (this.state.envelope.enabled !== false) {
-      cursor.connect(this.ampEnvelope);
-      cursor = this.ampEnvelope;
-    } else {
-      cursor.connect(this.ampBypass);
-      cursor = this.ampBypass;
-    }
-
-    // 添加组件节点
+    // 添加组件节点（包括 Filter 和 AmplitudeEnvelope）
     this.state.components.forEach((module) => {
       if (!module.enabled) {
         return;
@@ -216,6 +164,7 @@ class AudioEngine {
       }
 
       const node = new RuntimeCtor(module.options);
+
       // 某些 Tone 节点需要 start()/generate() 才会进入可用状态
       if (typeof node.start === "function") {
         node.start();
@@ -229,6 +178,7 @@ class AudioEngine {
 
       this.componentRuntimes.set(module.id, {
         node,
+        type: module.type,  // 存储 type 用于后续判断是否为 AmplitudeEnvelope
         dispose: () => node.dispose(),
       });
     });
@@ -516,8 +466,8 @@ class AudioEngine {
 
   /**
    * 触发音符 Attack
-   * 全局音量包络只在"第一个音开始"时触发一次
-   * 避免和多音 source 的内部包络重复冲突
+   * 如果没有任何活跃音符，触发所有 AmplitudeEnvelope 的 attack
+   * 这确保包络只在第一个音符按下时触发一次，避免多音重复触发
    * @param {string} note - 音符
    * @param {number} velocity - 力度
    */
@@ -526,10 +476,15 @@ class AudioEngine {
       return;
     }
 
+    // 如果没有任何活跃音符，触发所有 AmplitudeEnvelope 的 attack
     if (!this.activeNotes.size) {
-      if (this.state.envelope.enabled !== false) {
-        this.ampEnvelope.triggerAttack(Tone.now(), velocity);
-      }
+      this.componentRuntimes.forEach((runtime) => {
+        // 检查是否为 AmplitudeEnvelope 类型
+        // AmplitudeEnvelope 需要响应音符开始事件来触发包络
+        if (runtime.type === "AmplitudeEnvelope" && runtime.node) {
+          runtime.node.triggerAttack(Tone.now(), velocity);
+        }
+      });
     }
 
     this.activeNotes.add(note);
@@ -538,6 +493,8 @@ class AudioEngine {
 
   /**
    * 触发音符 Release
+   * 当所有音符都释放后，触发所有 AmplitudeEnvelope 的 release
+   * 这确保包络只在最后一个音符释放时触发，保持音符间的连贯性
    * @param {string} note - 音符
    */
   release(note) {
@@ -548,15 +505,21 @@ class AudioEngine {
     this.activeNotes.delete(note);
     this.sourceRuntimes.forEach((runtime) => runtime.triggerRelease(note));
 
+    // 当所有音符都释放后，触发所有 AmplitudeEnvelope 的 release
     if (!this.activeNotes.size) {
-      if (this.state.envelope.enabled !== false) {
-        this.ampEnvelope.triggerRelease(Tone.now());
-      }
+      this.componentRuntimes.forEach((runtime) => {
+        // 检查是否为 AmplitudeEnvelope 类型
+        // AmplitudeEnvelope 需要响应音符结束事件来触发包络释放
+        if (runtime.type === "AmplitudeEnvelope" && runtime.node) {
+          runtime.node.triggerRelease(Tone.now());
+        }
+      });
     }
   }
 
   /**
    * 静音所有音符
+   * 强制释放所有 AmplitudeEnvelope，用于紧急静音场景
    */
   silenceAll() {
     this.activeNotes.clear();
@@ -564,9 +527,14 @@ class AudioEngine {
       return;
     }
     this.sourceRuntimes.forEach((runtime) => runtime.releaseAll());
-    if (this.state.envelope.enabled !== false) {
-      this.ampEnvelope.triggerRelease(Tone.now());
-    }
+
+    // 强制释放所有 AmplitudeEnvelope
+    // 用于紧急静音场景，如切换预设或停止播放
+    this.componentRuntimes.forEach((runtime) => {
+      if (runtime.type === "AmplitudeEnvelope" && runtime.node) {
+        runtime.node.triggerRelease(Tone.now());
+      }
+    });
   }
 
   /**

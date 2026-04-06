@@ -85,8 +85,6 @@ class ModularSynthApp {
       presetControls: document.getElementById("presetControls"),
       masterControls: document.getElementById("masterControls"),
       sourceRack: document.getElementById("sourceRack"),
-      filterRack: document.getElementById("filterRack"),
-      envelopeRack: document.getElementById("envelopeRack"),
       componentRack: document.getElementById("componentRack"),
       effectRack: document.getElementById("effectRack"),
       addModuleCard: document.getElementById("addModuleCard"),
@@ -403,27 +401,6 @@ class ModularSynthApp {
   }
 
   /* -------------------------------------------------------------------------- */
-  /* 音频启动                                                                   */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 确保音频已启动
-   */
-  async ensureAudioStarted() {
-    if (this.audioBooted) {
-      return;
-    }
-
-    try {
-      await this.engine.start(this.state);
-      this.audioBooted = true;
-      this.setStatus("LIVE", "live");
-    } catch (error) {
-      this.setStatus(`AUDIO START FAILED: ${error.message}`, "error");
-    }
-  }
-
-  /* -------------------------------------------------------------------------- */
   /* 状态更新                                                                   */
   /* -------------------------------------------------------------------------- */
 
@@ -594,7 +571,7 @@ class ModularSynthApp {
   /**
    * 处理添加模块
    * 根据下拉值把模块加回机架，并同步重建音频链
-   * @param {string} value - 模块值 (如 "core:filter", "source:Oscillator")
+   * @param {string} value - 模块值 (如 "source:Oscillator", "component:Filter")
    */
   handleAddModule(value) {
     if (!value) {
@@ -602,14 +579,7 @@ class ModularSynthApp {
     }
 
     const [kind, type] = value.split(":");
-    if (kind === "core") {
-      this.state.ui.visibleModules[type] = true;
-      if (type === "filter") {
-        this.state.filter.enabled = true;
-      } else if (type === "envelope") {
-        this.state.envelope.enabled = true;
-      }
-    } else if (kind === "source") {
+    if (kind === "source") {
       this.state.sources.push(createSourceModule(type));
     } else if (kind === "component") {
       this.state.components.push(createComponentModule(type));
@@ -640,8 +610,6 @@ class ModularSynthApp {
     const sections = [
       ["global strip", () => this.renderGlobalStrip()],
       ["sources", () => this.renderSourceRack()],
-      ["filter", () => this.renderFilterModule()],
-      ["envelope", () => this.renderEnvelopeModule()],
       ["components", () => this.renderComponentsRack()],
       ["effects", () => this.renderEffectRack()],
       ["keyboard", () => this.renderKeyboard()],
@@ -974,187 +942,12 @@ class ModularSynthApp {
   }
 
   /* -------------------------------------------------------------------------- */
-  /* 滤波器模块渲染                                                             */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 渲染滤波器模块
-   * Filter 属于核心模块，因此支持"隐藏模块"和"仅关闭音频处理"两层状态
-   */
-  renderFilterModule() {
-    if (!this.elements.filterRack) {
-      return;
-    }
-    this.elements.filterRack.innerHTML = "";
-
-    if (this.state.ui.visibleModules.filter === false) {
-      return;
-    }
-
-    const card = this.createModuleCard({
-      accent: "filter",
-      kicker: "Component",
-      title: "Filter",
-      moduleRef: "filter-core",
-      enabled: this.state.filter.enabled !== false,
-      onToggleEnabled: () => {
-        this.state.filter.enabled = this.state.filter.enabled === false;
-        this.selectedPresetId = "custom";
-        this.engine.updateFilter(this.state.filter);
-        this.renderAll();
-      },
-      removable: this.state.ui.visibleModules.filter,
-      onRemove: () => {
-        this.state.ui.visibleModules.filter = false;
-        this.state.filter.enabled = false;
-        this.selectedPresetId = "custom";
-        this.renderAll();
-        this.engine.fullSync(this.state);
-      },
-    });
-
-    const headGrid = document.createElement("div");
-    headGrid.className = "module-grid compact";
-    headGrid.append(
-      this.createSelectControl({
-        label: "Filter Type",
-        options: FILTER_TYPES,
-        value: this.state.filter.type,
-        onChange: (value) => {
-          this.state.filter.type = value;
-          this.selectedPresetId = "custom";
-          this.engine.updateFilter(this.state.filter);
-        },
-      }),
-      this.createSelectControl({
-        label: "Slope",
-        options: [
-          { label: "-12 dB", value: "-12" },
-          { label: "-24 dB", value: "-24" },
-          { label: "-48 dB", value: "-48" },
-          { label: "-96 dB", value: "-96" },
-        ],
-        value: String(this.state.filter.rolloff),
-        onChange: (value) => {
-          this.state.filter.rolloff = Number(value);
-          this.selectedPresetId = "custom";
-          this.engine.updateFilter(this.state.filter);
-        },
-      }),
-    );
-
-    const controls = document.createElement("div");
-    controls.className = "module-grid";
-    controls.append(
-      this.createRangeControl({
-        label: "Cutoff",
-        accent: "filter",
-        min: 40,
-        max: 12000,
-        step: 1,
-        value: this.state.filter.frequency,
-        path: "filter.frequency",
-        formatter: formatFrequency,
-        onInput: (value) => {
-          this.state.filter.frequency = value;
-          this.selectedPresetId = "custom";
-          this.engine.updateFilter(this.state.filter);
-        },
-      }),
-      this.createRangeControl({
-        label: "Q",
-        accent: "filter",
-        min: 0.001,
-        max: 20,
-        step: 0.001,
-        value: this.state.filter.Q,
-        path: "filter.Q",
-        formatter: formatPlain,
-        onInput: (value) => {
-          this.state.filter.Q = value;
-          this.selectedPresetId = "custom";
-          this.engine.updateFilter(this.state.filter);
-        },
-      }),
-    );
-
-    card.append(headGrid, controls);
-    this.elements.filterRack.append(card);
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 包络模块渲染                                                               */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 渲染包络模块
-   * Envelope 区同时承载音量包络和调制包络两个模块
-   */
-  renderEnvelopeModule() {
-    if (!this.elements.envelopeRack) {
-      return;
-    }
-    this.elements.envelopeRack.innerHTML = "";
-
-    // 音量包络
-    if (this.state.ui.visibleModules.envelope !== false) {
-      const ampCard = this.createModuleCard({
-        accent: "env",
-        kicker: "Component",
-        title: "Amp Envelope",
-        moduleRef: "amp-envelope",
-        enabled: this.state.envelope.enabled !== false,
-        onToggleEnabled: () => {
-          this.state.envelope.enabled = this.state.envelope.enabled === false;
-          this.selectedPresetId = "custom";
-          this.engine.updateEnvelope(this.state.envelope);
-          this.renderAll();
-        },
-        removable: this.state.ui.visibleModules.envelope,
-        onRemove: () => {
-          this.state.ui.visibleModules.envelope = false;
-          this.state.envelope.enabled = false;
-          this.selectedPresetId = "custom";
-          this.renderAll();
-          this.engine.fullSync(this.state);
-        },
-      });
-
-      const controls = document.createElement("div");
-      controls.className = "module-grid";
-
-      ["attack", "decay", "sustain", "release"].forEach((key) => {
-        controls.append(
-          this.createRangeControl({
-            label: key.charAt(0).toUpperCase() + key.slice(1),
-            accent: "env",
-            min: key === "sustain" ? 0 : 0.001,
-            max: key === "sustain" ? 1 : 4,
-            step: key === "sustain" ? 0.01 : 0.001,
-            value: this.state.envelope[key],
-            path: `envelope.${key}`,
-            formatter: key === "sustain" ? formatPercent : formatSeconds,
-            onInput: (value) => {
-              this.state.envelope[key] = value;
-              this.selectedPresetId = "custom";
-              this.engine.updateEnvelope(this.state.envelope);
-            },
-          }),
-        );
-      });
-
-      ampCard.append(controls);
-      this.elements.envelopeRack.append(ampCard);
-    }
-  }
-
-  /* -------------------------------------------------------------------------- */
   /* 组件机架渲染                                                               */
   /* -------------------------------------------------------------------------- */
 
   /**
    * 渲染组件机架
-   * Component rack 用于串接压缩、增益、EQ 等工具型节点
+   * Component rack 用于串接压缩、增益、EQ、Filter、AmplitudeEnvelope 等工具型节点
    */
   renderComponentsRack() {
     if (!this.elements.componentRack) {
@@ -1982,7 +1775,6 @@ class ModularSynthApp {
       const steps = Math.round((max - min) / step);
       return min + Math.floor(Math.random() * (steps + 1)) * step;
     };
-    const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
     const applyDefinitionRandomness = (module, definition) => {
       definition.controls.forEach((control) => {
@@ -1997,13 +1789,6 @@ class ModularSynthApp {
     const previousState = deepClone(this.state);
     this.state.global.volume = randomRange(-16, -4, 0.1);
     this.state.global.velocity = randomRange(0.55, 1, 0.01);
-    this.state.filter.type = randomChoice(FILTER_TYPES).value;
-    this.state.filter.frequency = randomRange(180, 8800, 1);
-    this.state.filter.Q = randomRange(0.2, 8, 0.01);
-    this.state.envelope.attack = randomRange(0.001, 0.18, 0.001);
-    this.state.envelope.decay = randomRange(0.04, 0.7, 0.001);
-    this.state.envelope.sustain = randomRange(0.2, 0.95, 0.01);
-    this.state.envelope.release = randomRange(0.08, 2.8, 0.01);
 
     this.state.sources.forEach((module) => {
       module.volume = randomRange(-18, -4, 0.1);
@@ -2039,35 +1824,7 @@ class ModularSynthApp {
       return;
     }
 
-    try {
-      await this.ensureAudioStarted();
-      this.midi.access = this.midi.access || (await navigator.requestMIDIAccess());
-      this.midi.access.onstatechange = () => {
-        this.refreshMidiInputs();
-        this.renderGlobalStrip();
-      };
-      this.refreshMidiInputs();
-      this.renderGlobalStrip();
-      this.setStatus(
-        "MIDI ready. Select an input and play hardware notes.",
-        this.audioBooted ? "live" : "neutral",
-      );
-    } catch (error) {
-      this.midi.status = `MIDI failed: ${error.message}`;
-      this.renderGlobalStrip();
-      this.setStatus(this.midi.status, "error");
-    }
-  }
 
-  /**
-   * 刷新 MIDI 输入设备列表
-   */
-  refreshMidiInputs() {
-    if (!this.midi.access) {
-      this.midi.inputs = [];
-      this.midi.status = "MIDI idle";
-      return;
-    }
 
     this.midi.inputs = Array.from(this.midi.access.inputs.values());
     if (!this.midi.inputs.length) {
