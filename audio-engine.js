@@ -462,6 +462,9 @@ class AudioEngine {
       type: module.type,
       category: module.category || "component",
       node,
+      apply: (nextModule) => {
+        safeSet(node, nextModule.options);
+      },
       dispose: () => {
         if (node && typeof node.dispose === "function") {
           node.dispose();
