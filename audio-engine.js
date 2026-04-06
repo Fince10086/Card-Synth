@@ -229,8 +229,16 @@ class AudioEngine {
     const useHiddenAmpEnv = !hasAmpEnvInPath;
     runtime.hiddenAmpEnvEnabled = useHiddenAmpEnv;
 
-    // 连接信号链
-    const outputNode = useHiddenAmpEnv && runtime.hiddenAmpEnv ? runtime.hiddenAmpEnv : runtime.outputNode;
+    // 确定输出节点：如果使用隐藏 AmpEnv，需要先连接 panNode → hiddenAmpEnv
+    let outputNode;
+    if (useHiddenAmpEnv && runtime.hiddenAmpEnv) {
+      // 连接 panNode → hiddenAmpEnv
+      runtime.panNode.connect(runtime.hiddenAmpEnv);
+      outputNode = runtime.hiddenAmpEnv;
+    } else {
+      // 不使用隐藏 AmpEnv，直接从 panNode 输出
+      outputNode = runtime.panNode;
+    }
 
     if (targetIndex >= 0) {
       // 连接到目标模块
@@ -312,7 +320,6 @@ class AudioEngine {
       sustain: 1,
       release: 0.05,
     });
-    panNode.connect(hiddenAmpEnv);
 
     let node;
 
@@ -349,7 +356,7 @@ class AudioEngine {
       panNode,
       hiddenAmpEnv,
       hiddenAmpEnvEnabled: false,  // 默认禁用，由 connectSourceModule 决定
-      outputNode: hiddenAmpEnv,    // 输出节点指向隐藏 AmpEnv
+      outputNode: panNode,         // 默认输出节点指向 panNode
       definition,
       moduleState,
 
