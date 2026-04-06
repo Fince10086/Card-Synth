@@ -424,13 +424,29 @@ class ModularSynthApp {
     }
   }
 
+  /**
+   * 确保音频引擎已启动
+   * 浏览器要求音频上下文必须由用户手势触发，首次交互时调用此方法启动音频
+   */
+  async ensureAudioStarted() {
+    if (this.audioBooted) {
+      return;
+    }
+    try {
+      await this.engine.start(this.state);
+      this.audioBooted = true;
+      this.setStatus("Audio ready.", "live");
+    } catch (error) {
+      this.setStatus(`Audio failed: ${error.message}`, "error");
+    }
+  }
+
   /* -------------------------------------------------------------------------- */
   /* 模块添加                                                                   */
   /* -------------------------------------------------------------------------- */
 
   /**
    * 填充 "Add Module" 下拉菜单
-   * 会随着核心模块的显隐动态变化
    */
   populateAddModuleDropdown() {
     const dropdown = this.elements.addModuleDropdown;
@@ -440,13 +456,7 @@ class ModularSynthApp {
 
     dropdown.innerHTML = "";
 
-    const options = getAddableModuleOptions().filter((option) => {
-      if (!option.value.startsWith("core:")) {
-        return true;
-      }
-      const key = option.value.split(":")[1];
-      return this.state.ui.visibleModules[key] === false;
-    });
+    const options = getAddableModuleOptions();
 
     const groups = {
       core: { title: "核心模块", items: [] },
@@ -699,7 +709,6 @@ class ModularSynthApp {
     this.updateMasterReadout(this.state.global.volume);
     this.updateMidiStatus();
     this.updateMorphControls();
-    this.updateMacroControls();
     this.updateVoicesReadout(this.state.global.polyphony);
   }
 
