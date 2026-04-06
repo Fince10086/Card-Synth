@@ -315,9 +315,6 @@ class AudioEngine {
     panNode.connect(hiddenAmpEnv);
 
     let node;
-    const voices = [];
-    const activeVoiceMap = new Map();
-    const MAX_VOICES = 10;
 
     const getNoteFrequency = (note) => Tone.Frequency(note).toFrequency();
     const getPitchRatio = (note) => {
@@ -327,18 +324,9 @@ class AudioEngine {
 
     // 根据 runtime 类型创建不同的声源节点
     if (definition.runtime === "pitchedSource") {
-      for (let i = 0; i < MAX_VOICES; i++) {
-        const voiceOsc = new Tone[definition.voiceClass](module.options);
-        voiceOsc.connect(volumeNode);
-        voiceOsc.start();
-        voices.push({
-          oscillator: voiceOsc,
-          note: null,
-          active: false,
-          releaseTime: 0,
-        });
-      }
-      node = voices[0].oscillator;
+      node = new Tone[module.type](module.options);
+      node.connect(volumeNode);
+      node.start();
     } else if (definition.runtime === "noise") {
       node = new Tone.Noise(module.options);
       node.connect(volumeNode);
@@ -362,7 +350,6 @@ class AudioEngine {
       hiddenAmpEnv,
       hiddenAmpEnvEnabled: false,  // 默认禁用，由 connectSourceModule 决定
       outputNode: hiddenAmpEnv,    // 输出节点指向隐藏 AmpEnv
-      voices,
       definition,
       moduleState,
 
@@ -372,9 +359,7 @@ class AudioEngine {
         rampParam(panNode.pan, moduleState.pan);
 
         if (definition.runtime === "pitchedSource") {
-          voices.forEach((voice) => {
-            safeSet(voice.oscillator, moduleState.options);
-          });
+          safeSet(node, moduleState.options);
         } else if (definition.runtime === "noise") {
           safeSet(node, moduleState.options);
         } else if (definition.runtime === "player") {
@@ -389,26 +374,9 @@ class AudioEngine {
         }
 
         if (definition.runtime === "pitchedSource") {
-          const polyphony = this.state?.global?.polyphony || 8;
-          const availableVoices = voices.slice(0, polyphony);
-          let voice = availableVoices.find((v) => !v.active);
-
-          if (!voice) {
-            voice = availableVoices.reduce((oldest, v) =>
-              v.releaseTime < oldest.releaseTime ? v : oldest
-            );
-            if (voice.note) {
-              activeVoiceMap.delete(voice.note);
-            }
+          if (node.frequency) {
+            node.frequency.rampTo(getNoteFrequency(note), 0.02);
           }
-
-          if (voice.oscillator.frequency) {
-            voice.oscillator.frequency.rampTo(getNoteFrequency(note), 0.02);
-          }
-          voice.note = note;
-          voice.active = true;
-          voice.releaseTime = Infinity;
-          activeVoiceMap.set(note, voice);
         } else if (definition.runtime === "noise") {
           // Noise 直接启动，无 envelope
         } else if (definition.runtime === "player") {
@@ -424,13 +392,7 @@ class AudioEngine {
 
       triggerRelease: (note) => {
         if (definition.runtime === "pitchedSource") {
-          const voice = activeVoiceMap.get(note);
-          if (voice) {
-            voice.active = false;
-            voice.releaseTime = Tone.now();
-            voice.note = null;
-            activeVoiceMap.delete(note);
-          }
+          // pitchedSource 无需特殊处理
         } else if (definition.runtime === "noise") {
           // Noise 直接停止，无 envelope
         } else if (definition.runtime === "player") {
@@ -442,14 +404,7 @@ class AudioEngine {
 
       releaseAll: () => {
         if (definition.runtime === "pitchedSource") {
-          voices.forEach((voice) => {
-            if (voice.active) {
-              voice.active = false;
-              voice.releaseTime = Tone.now();
-              voice.note = null;
-            }
-          });
-          activeVoiceMap.clear();
+          // pitchedSource 无需特殊处理
         } else if (definition.runtime === "noise") {
           // Noise 无需处理
         } else if (definition.runtime === "player") {
@@ -460,16 +415,8 @@ class AudioEngine {
       },
 
       dispose: () => {
-        if (definition.runtime === "pitchedSource") {
-          voices.forEach((voice) => {
-            if (voice.oscillator && typeof voice.oscillator.dispose === "function") {
-              voice.oscillator.dispose();
-            }
-          });
-        } else {
-          if (node && typeof node.dispose === "function") {
-            node.dispose();
-          }
+        if (node && typeof node.dispose === "function") {
+          node.dispose();
         }
         volumeNode.dispose();
         panNode.dispose();
@@ -573,14 +520,6 @@ class AudioEngine {
    */
   updateEffect(module) {
     this.updateComponent(module);
-  }
-
-  /**
-   * 更新复音数
-   * @param {number} polyphony - 复音数
-   */
-  updatePolyphony(polyphony) {
-    this.state.global.polyphony = polyphony;
   }
 
   /* -------------------------------------------------------------------------- */

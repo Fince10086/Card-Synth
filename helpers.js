@@ -360,7 +360,7 @@ function normalizePreset(preset = {}) {
 
   const fallback = {
     name: "Untitled Patch",
-    global: { volume: -8, octave: 4, velocity: 0.8, polyphony: 8 },
+    global: { volume: -8, octave: 4, velocity: 0.8 },
     modules: [],
   };
 
@@ -383,7 +383,6 @@ function normalizePreset(preset = {}) {
   merged.global.octave = clamp(Number(merged.global.octave || 4), 1, 7);
   merged.global.velocity = clamp(Number(merged.global.velocity || 0.8), 0.1, 1);
   merged.global.volume = clamp(Number(merged.global.volume || -8), -36, 6);
-  merged.global.polyphony = clamp(Number(merged.global.polyphony || 8), 1, 10);
 
   return merged;
 }

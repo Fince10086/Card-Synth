@@ -265,7 +265,6 @@ const SOURCE_LIBRARY = {
     accent: "source",
     tag: "Osc",
     runtime: "noise",
-    voiceClass: "Noise",
     options: { type: "pink", playbackRate: 1 },
     controls: [
       { path: "options.type", kind: "select", label: "Color", options: NOISE_TYPE_OPTIONS },
@@ -276,7 +275,6 @@ const SOURCE_LIBRARY = {
     accent: "source",
     tag: "Osc",
     runtime: "pitchedSource",
-    voiceClass: "Oscillator",
     options: { type: "sawtooth", detune: 0, phase: 0 },
     controls: [
       { path: "options.type", kind: "select", label: "Wave", options: SHARED_WAVE_OPTIONS },
@@ -288,7 +286,6 @@ const SOURCE_LIBRARY = {
     accent: "source",
     tag: "Osc",
     runtime: "player",
-    voiceClass: "Player",
     moduleDefaults: { rootNote: "C4", assetName: "Factory Pluck" },
     options: { url: DEFAULT_SAMPLE_LIBRARY.pluck, playbackRate: 1, loop: false, reverse: false, fadeIn: 0.005, fadeOut: 0.08, loopStart: 0, loopEnd: 0 },
     controls: [
@@ -306,7 +303,6 @@ const SOURCE_LIBRARY = {
     accent: "source",
     tag: "Osc",
     runtime: "pitchedSource",
-    voiceClass: "PulseOscillator",
     options: { width: 0.22, detune: 0, phase: 0 },
     controls: [
       { path: "options.width", kind: "range", label: "Width", min: 0.01, max: 0.99, step: 0.001, formatter: formatPercent },
