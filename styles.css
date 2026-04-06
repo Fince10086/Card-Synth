@@ -222,14 +222,6 @@ select {
   display: none;
 }
 
-.module-list,
-#filterRack,
-#envelopeRack,
-#componentRack,
-#effectRack {
-  display: contents;
-}
-
 .module-card {
   position: relative;
   display: flex;
