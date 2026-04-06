@@ -156,203 +156,6 @@ function noteFromOffset(baseOctave, offset) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* 调制目标收集器                                                             */
-/* -------------------------------------------------------------------------- */
-
-/**
- * 可调制参数配置表
- * 定义每个参数的标签、范围和调制缩放因子
- */
-const MODULATABLE_PARAM_CONFIG = {
-  "options.harmonicity": { label: "Ratio", min: 0.25, max: 8, scale: () => 2 },
-  "options.phase": { label: "Phase", min: 0, max: 360, scale: () => 90 },
-  "options.detune": { label: "Detune", min: -1200, max: 1200, scale: () => 420 },
-  "options.modulationIndex": { label: "Index", min: 0, max: 60, scale: () => 15 },
-  "options.spread": { label: "Spread", min: 0, max: 60, scale: () => 20 },
-  "options.count": { label: "Count", min: 1, max: 6, scale: () => 2 },
-  "options.grainSize": { label: "Grain", min: 0.01, max: 0.5, scale: () => 0.15 },
-  "options.overlap": { label: "Overlap", min: 0.005, max: 0.3, scale: () => 0.08 },
-  "options.playbackRate": { label: "Rate", min: 0.2, max: 4, scale: () => 1 },
-  "options.width": { label: "Width", min: 0.01, max: 0.99, scale: () => 0.3 },
-  "options.modulationFrequency": { label: "PWM Rate", min: 0.05, max: 24, scale: () => 6 },
-  "options.fadeIn": { label: "Fade In", min: 0, max: 0.2, scale: () => 0.05 },
-  "options.fadeOut": { label: "Fade Out", min: 0.01, max: 0.6, scale: () => 0.15 },
-  "options.loopStart": { label: "Loop In", min: 0, max: 12, scale: () => 3 },
-  "options.loopEnd": { label: "Loop Out", min: 0, max: 12, scale: () => 3 },
-  "options.pitchDecay": { label: "Pitch Dec", min: 0.001, max: 0.6, scale: () => 0.15 },
-  "options.octaves": { label: "Octaves", min: 0.5, max: 10, scale: () => 2 },
-  "options.resonance": { label: "Resonance", min: 50, max: 8000, scale: () => 1500 },
-  "ampEnvelope.attack": { label: "Attack", min: 0.001, max: 1.5, scale: () => 0.3 },
-  "ampEnvelope.decay": { label: "Decay", min: 0.001, max: 2, scale: () => 0.4 },
-  "ampEnvelope.sustain": { label: "Sustain", min: 0, max: 1, scale: () => 0.3 },
-  "ampEnvelope.release": { label: "Release", min: 0.01, max: 4, scale: () => 1 },
-  "options.envelope.attack": { label: "Attack", min: 0.001, max: 1.5, scale: () => 0.3 },
-  "options.envelope.decay": { label: "Decay", min: 0.001, max: 2, scale: () => 0.4 },
-  "options.envelope.sustain": { label: "Sustain", min: 0, max: 1, scale: () => 0.3 },
-  "options.envelope.release": { label: "Release", min: 0.01, max: 4, scale: () => 1 },
-  "options.frequency": { label: "Rate", min: 0.05, max: 18, scale: () => 4 },
-  "options.depth": { label: "Depth", min: 0, max: 1, scale: () => 0.35 },
-  "options.wet": { label: "Wet", min: 0, max: 1, scale: () => 0.35 },
-  "options.delayTime": { label: "Delay", min: 0.01, max: 0.9, scale: () => 0.25 },
-  "options.feedback": { label: "Feedback", min: 0, max: 0.95, scale: () => 0.35 },
-  "options.decay": { label: "Decay", min: 0.3, max: 12, scale: () => 3 },
-  "options.preDelay": { label: "Pre", min: 0, max: 0.25, scale: () => 0.06 },
-  "options.distortion": { label: "Drive", min: 0, max: 1, scale: () => 0.35 },
-  "options.bits": { label: "Bits", min: 1, max: 8, scale: () => 2 },
-  "options.threshold": { label: "Thresh", min: -60, max: 0, scale: () => 18 },
-  "options.ratio": { label: "Ratio", min: 1, max: 20, scale: () => 6 },
-  "options.attack": { label: "Attack", min: 0.001, max: 0.5, scale: () => 0.1 },
-  "options.release": { label: "Release", min: 0.01, max: 1, scale: () => 0.25 },
-  "options.gain": { label: "Gain", min: 0, max: 2, scale: () => 0.6 },
-  "options.pan": { label: "Pan", min: -1, max: 1, scale: () => 0.5 },
-  "options.volume": { label: "Volume", min: -24, max: 12, scale: () => 8 },
-  "options.low": { label: "Low", min: -24, max: 24, scale: () => 8 },
-  "options.mid": { label: "Mid", min: -24, max: 24, scale: () => 8 },
-  "options.high": { label: "High", min: -24, max: 24, scale: () => 8 },
-  "options.lowFrequency": { label: "Lo Freq", min: 80, max: 1200, scale: () => 300 },
-  "options.highFrequency": { label: "Hi Freq", min: 1200, max: 8000, scale: () => 2000 },
-};
-
-/**
- * 获取当前机架中所有可被调制的目标
- * 只返回当前机架里真实存在、并且允许被调制的目标
- * @param {Object} state - 应用状态
- * @returns {Array} - 调制目标列表
- */
-function getModulationTargets(state) {
-  const targets = [];
-
-  // 添加滤波器目标
-  if (state.ui?.visibleModules?.filter !== false) {
-    targets.push(
-      {
-        label: "Filter Cutoff",
-        value: "filter.frequency",
-        stage: "filter",
-        moduleRef: "filter-core",
-        basePath: "filter.frequency",
-        min: 20,
-        max: 18000,
-        scale: (base) => Math.max(120, base * 1.35),
-      },
-      {
-        label: "Filter Resonance",
-        value: "filter.Q",
-        stage: "filter",
-        moduleRef: "filter-core",
-        basePath: "filter.Q",
-        min: 0.001,
-        max: 20,
-        scale: () => 8,
-      },
-    );
-  }
-
-  // 添加声源目标
-  state.sources.forEach((module, index) => {
-    const labelPrefix = `${module.type} ${index + 1}`;
-    targets.push(
-      {
-        label: `${labelPrefix} Level`,
-        value: `source:${module.id}:volume`,
-        stage: "sources",
-        moduleRef: module.id,
-        basePath: `sources.${module.id}.volume`,
-        min: -36,
-        max: 6,
-        scale: () => 14,
-      },
-      {
-        label: `${labelPrefix} Pan`,
-        value: `source:${module.id}:pan`,
-        stage: "sources",
-        moduleRef: module.id,
-        basePath: `sources.${module.id}.pan`,
-        min: -1,
-        max: 1,
-        scale: () => 1,
-      },
-    );
-
-    const definition = SOURCE_LIBRARY[module.type];
-    if (definition?.controls) {
-      definition.controls.forEach((control) => {
-        if (control.kind === "range") {
-          const config = MODULATABLE_PARAM_CONFIG[control.path];
-          if (config) {
-            const targetId = `source:${module.id}:${control.path}`;
-            targets.push({
-              label: `${labelPrefix} ${config.label}`,
-              value: targetId,
-              stage: "sources",
-              moduleRef: module.id,
-              basePath: `sources.${module.id}.${control.path}`,
-              min: control.min,
-              max: control.max,
-              scale: config.scale,
-            });
-          }
-        }
-      });
-    }
-  });
-
-  // 添加组件目标
-  state.components.forEach((module, index) => {
-    const labelPrefix = `${module.type} ${index + 1}`;
-    const definition = COMPONENT_LIBRARY[module.type];
-    if (definition?.controls) {
-      definition.controls.forEach((control) => {
-        if (control.kind === "range") {
-          const config = MODULATABLE_PARAM_CONFIG[control.path];
-          if (config) {
-            const targetId = `component:${module.id}:${control.path.replace("options.", "")}`;
-            targets.push({
-              label: `${labelPrefix} ${config.label}`,
-              value: targetId,
-              stage: "components",
-              moduleRef: module.id,
-              basePath: `components.${module.id}.${control.path}`,
-              min: control.min,
-              max: control.max,
-              scale: config.scale,
-            });
-          }
-        }
-      });
-    }
-  });
-
-  // 添加效果器目标
-  state.effects.forEach((module, index) => {
-    const labelPrefix = `${module.type} ${index + 1}`;
-    const definition = EFFECT_LIBRARY[module.type];
-    if (definition?.controls) {
-      definition.controls.forEach((control) => {
-        if (control.kind === "range") {
-          const config = MODULATABLE_PARAM_CONFIG[control.path];
-          if (config) {
-            const targetId = `effect:${module.id}:${control.path.replace("options.", "")}`;
-            targets.push({
-              label: `${labelPrefix} ${config.label}`,
-              value: targetId,
-              stage: "effects",
-              moduleRef: module.id,
-              basePath: `effects.${module.id}.${control.path}`,
-              min: control.min,
-              max: control.max,
-              scale: config.scale,
-            });
-          }
-        }
-      });
-    }
-  });
-
-  return targets;
-}
-
-/* -------------------------------------------------------------------------- */
 /* 查找工具                                                                   */
 /* -------------------------------------------------------------------------- */
 
@@ -419,21 +222,6 @@ function createComponentModule(type = "Compressor") {
   };
 }
 
-/**
- * 创建调制路由
- * @param {string} target - 目标参数
- * @param {number} amount - 调制量
- * @returns {Object} - 调制路由实例
- */
-function createModRoute(target = "filter.frequency", amount = 0.35) {
-  return {
-    id: createId("route"),
-    target,
-    amount,
-    enabled: true,
-  };
-}
-
 /* -------------------------------------------------------------------------- */
 /* 模块选项生成器                                                             */
 /* -------------------------------------------------------------------------- */
@@ -447,7 +235,6 @@ function getAddableModuleOptions() {
   return [
     { value: "core:filter", label: "Core / Filter" },
     { value: "core:envelope", label: "Core / Amp Envelope" },
-    { value: "core:modEnvelope", label: "Core / Mod Envelope" },
     { value: "core:lfo", label: "Core / LFO" },
     ...Object.keys(SOURCE_LIBRARY).map((type) => ({
       value: `source:${type}`,
@@ -524,20 +311,11 @@ function normalizePreset(preset = {}) {
     global: { volume: -8, octave: 4, velocity: 0.8, polyphony: 8 },
     filter: { enabled: true, type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 },
     envelope: { enabled: true, attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65 },
-    modEnvelope: { enabled: true, attack: 0.01, decay: 0.24, sustain: 0.36, release: 0.8 },
-    lfo: { enabled: true, type: "sine", frequency: 2.1, amount: 1, phase: 0 },
     ui: {
       visibleModules: {
         filter: true,
         envelope: true,
-        modEnvelope: true,
-        lfo: true,
       },
-      cableTension: 0.78,
-    },
-    modulation: {
-      lfoRoutes: [createModRoute("filter.frequency", 0.45)],
-      envelopeRoutes: [createModRoute("filter.frequency", 0.4)],
     },
     sources: [createSourceModule("Oscillator")],
     components: [createComponentModule("Compressor")],
@@ -545,8 +323,6 @@ function normalizePreset(preset = {}) {
   };
 
   const merged = deepMerge(fallback, preset);
-  const legacyLfoTarget = preset?.lfo?.target;
-  const legacyLfoAmount = typeof preset?.lfo?.amount === "number" ? preset.lfo.amount : 0.35;
 
   merged.sources = Array.isArray(preset.sources)
     ? preset.sources.map((module) => normalizeSourceModule(module))
@@ -557,20 +333,9 @@ function normalizePreset(preset = {}) {
   merged.effects = Array.isArray(preset.effects)
     ? preset.effects.map((module) => normalizeEffectModule(module))
     : fallback.effects.map((module) => normalizeEffectModule(module));
-  merged.modEnvelope = deepMerge(fallback.modEnvelope, preset.modEnvelope || {});
-  merged.lfo = deepMerge(fallback.lfo, preset.lfo || {});
   merged.filter = deepMerge(fallback.filter, preset.filter || {});
   merged.envelope = deepMerge(fallback.envelope, preset.envelope || {});
   merged.ui = deepMerge(fallback.ui, preset.ui || {});
-  merged.modulation = deepMerge(fallback.modulation, preset.modulation || {});
-  merged.modulation.lfoRoutes = Array.isArray(preset?.modulation?.lfoRoutes)
-    ? preset.modulation.lfoRoutes.map((route) => ({ ...createModRoute(), ...route, id: route?.id || createId("route") }))
-    : legacyLfoTarget
-      ? [{ ...createModRoute(legacyLfoTarget, legacyLfoAmount), enabled: merged.lfo.enabled }]
-      : fallback.modulation.lfoRoutes.map((route) => ({ ...route, id: createId("route") }));
-  merged.modulation.envelopeRoutes = Array.isArray(preset?.modulation?.envelopeRoutes)
-    ? preset.modulation.envelopeRoutes.map((route) => ({ ...createModRoute(), ...route, id: route?.id || createId("route") }))
-    : fallback.modulation.envelopeRoutes.map((route) => ({ ...route, id: createId("route") }));
   merged.global.octave = clamp(Number(merged.global.octave || 4), 1, 7);
   merged.global.velocity = clamp(Number(merged.global.velocity || 0.8), 0.1, 1);
   merged.global.volume = clamp(Number(merged.global.volume || -8), -36, 6);

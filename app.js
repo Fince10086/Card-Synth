@@ -32,14 +32,6 @@ class ModularSynthApp {
     // 控件绑定映射
     this.controlBindings = new Map();
 
-    // 拖拽连线状态
-    this.dragPatch = null;
-    this.dragHoverTarget = "";
-    this.dragHoverSource = "";
-    this.cableVisuals = new Map();
-    this.patchFrame = 0;
-    this.patchScene = null;
-
     // 性能控制参数
     this.performance = {
       morphA: "init",
@@ -78,7 +70,6 @@ class ModularSynthApp {
     window.addEventListener("resize", () => {
       this.resizeScopeCanvas();
       this.layoutModuleMasonry();
-      this.drawPatchCables();
     });
   }
 
@@ -106,7 +97,6 @@ class ModularSynthApp {
       oscilloscope: document.getElementById("oscilloscope"),
       presetFileInput: document.getElementById("presetFileInput"),
       transportInfo: document.getElementById("transportInfo"),
-      patchCables: document.getElementById("patchCables"),
       signalFlow: document.querySelector(".signal-flow"),
       scopeZoomInH: document.getElementById("scopeZoomInH"),
       scopeZoomOutH: document.getElementById("scopeZoomOutH"),
@@ -133,8 +123,6 @@ class ModularSynthApp {
       brightnessReadout: document.getElementById("brightnessReadout"),
       motionSlider: document.getElementById("motionSlider"),
       motionReadout: document.getElementById("motionReadout"),
-      tensionSlider: document.getElementById("tensionSlider"),
-      tensionReadout: document.getElementById("tensionReadout"),
       voicesSlider: document.getElementById("voicesSlider"),
       voicesReadout: document.getElementById("voicesReadout"),
     };
@@ -156,9 +144,6 @@ class ModularSynthApp {
 
     document.addEventListener("pointerdown", wakeAudio, { passive: true });
     document.addEventListener("keydown", wakeAudio);
-    document.addEventListener("pointermove", (event) => this.onPatchDragMove(event));
-    document.addEventListener("pointerup", (event) => this.onPatchDragEnd(event));
-    document.addEventListener("pointercancel", (event) => this.onPatchDragEnd(event));
 
     window.addEventListener("keydown", (event) => this.onKeyDown(event));
     window.addEventListener("keyup", (event) => this.onKeyUp(event));
@@ -352,18 +337,6 @@ class ModularSynthApp {
       }
     });
 
-    this.elements.tensionSlider?.addEventListener("input", (e) => {
-      const value = Number(e.target.value);
-      this.state.ui.cableTension = value;
-      this.updateTensionReadout(value);
-      this.drawPatchCables();
-      const shell = e.target.closest(".slider-shell");
-      if (shell) {
-        const percent = (value - 0.2) / 0.8;
-        shell.style.setProperty("--percent", percent.toString());
-      }
-    });
-
     this.elements.voicesSlider?.addEventListener("input", (e) => {
       const value = Number(e.target.value);
       this.state.global.polyphony = value;
@@ -435,7 +408,6 @@ class ModularSynthApp {
   updateMacroControls() {
     this.updateBrightnessReadout(this.performance.brightness);
     this.updateMotionReadout(this.performance.motion);
-    this.updateTensionReadout(this.state.ui.cableTension ?? 0.78);
   }
 
   updateBrightnessReadout(value) {
@@ -460,20 +432,6 @@ class ModularSynthApp {
       const shell = this.elements.motionSlider.closest(".slider-shell");
       if (shell) {
         shell.style.setProperty("--percent", value.toString());
-      }
-    }
-  }
-
-  updateTensionReadout(value) {
-    if (this.elements.tensionReadout) {
-      this.elements.tensionReadout.textContent = formatPercent(value);
-    }
-    if (this.elements.tensionSlider) {
-      this.elements.tensionSlider.value = String(value);
-      const shell = this.elements.tensionSlider.closest(".slider-shell");
-      if (shell) {
-        const percent = (value - 0.2) / 0.8;
-        shell.style.setProperty("--percent", percent.toString());
       }
     }
   }
@@ -710,8 +668,6 @@ class ModularSynthApp {
         this.state.filter.enabled = true;
       } else if (type === "envelope") {
         this.state.envelope.enabled = true;
-      } else if (type === "modEnvelope") {
-        this.state.modEnvelope.enabled = true;
       }
     } else if (kind === "source") {
       this.state.sources.push(createSourceModule(type));
@@ -738,7 +694,6 @@ class ModularSynthApp {
    * @param {Object|null} previousState - 之前的状态（用于动画过渡）
    */
   renderAll(previousState = null) {
-    this.sanitizeModulationState();
     this.populateAddModuleDropdown();
     this.controlBindings = new Map();
 
@@ -763,25 +718,10 @@ class ModularSynthApp {
     }
 
     this.layoutModuleMasonry();
-    this.drawPatchCables();
 
     if (previousState) {
       this.animateControlTransition(previousState, this.state);
     }
-  }
-
-  /**
-   * 清理调制状态
-   * 删除或隐藏模块后，连到失效目标的 modulation route 会在这里被清理
-   */
-  sanitizeModulationState() {
-    const validTargets = new Set(getModulationTargets(this.state).map((target) => target.value));
-    const sanitizeList = (routes) =>
-      (routes || [])
-        .filter((route) => route && validTargets.has(route.target))
-        .map((route) => ({ ...route, id: route.id || createId("route") }));
-
-    this.state.modulation.envelopeRoutes = sanitizeList(this.state.modulation?.envelopeRoutes);
   }
 
   /* -------------------------------------------------------------------------- */
@@ -915,7 +855,6 @@ class ModularSynthApp {
           step: 0.1,
           value: module.volume,
           path: `sources.${index}.volume`,
-          patchPoint: { accent: definition.accent, targetId: `source:${module.id}:volume` },
           formatter: formatDb,
           onInput: (value) => {
             module.volume = value;
@@ -931,7 +870,6 @@ class ModularSynthApp {
           step: 0.01,
           value: module.pan,
           path: `sources.${index}.pan`,
-          patchPoint: { accent: definition.accent, targetId: `source:${module.id}:pan` },
           formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}`,
           onInput: (value) => {
             module.pan = value;
@@ -956,10 +894,6 @@ class ModularSynthApp {
 
       // 模块参数控件
       definition.controls.forEach((control) => {
-        let patchTarget = null;
-        if (control.kind === "range") {
-          patchTarget = `source:${module.id}:${control.path}`;
-        }
         controls.append(
           this.renderModuleControl(
             module,
@@ -967,7 +901,6 @@ class ModularSynthApp {
             () => this.engine.updateSource(module),
             definition.accent,
             `sources.${index}.${control.path}`,
-            patchTarget,
           ),
         );
       });
@@ -1181,7 +1114,6 @@ class ModularSynthApp {
         step: 1,
         value: this.state.filter.frequency,
         path: "filter.frequency",
-        patchPoint: { accent: "filter", targetId: "filter.frequency" },
         formatter: formatFrequency,
         onInput: (value) => {
           this.state.filter.frequency = value;
@@ -1197,7 +1129,6 @@ class ModularSynthApp {
         step: 0.001,
         value: this.state.filter.Q,
         path: "filter.Q",
-        patchPoint: { accent: "filter", targetId: "filter.Q" },
         formatter: formatPlain,
         onInput: (value) => {
           this.state.filter.Q = value;
@@ -1275,59 +1206,6 @@ class ModularSynthApp {
       ampCard.append(controls);
       this.elements.envelopeRack.append(ampCard);
     }
-
-    // 调制包络
-    if (this.state.ui.visibleModules.modEnvelope === false) {
-      return;
-    }
-
-    const modCard = this.createModuleCard({
-      accent: "env",
-      kicker: "Modulation",
-      title: "Mod Envelope",
-      moduleRef: "mod-envelope",
-      headerPatchPoint: { accent: "env", sourceKey: "envelopeRoutes" },
-      enabled: this.state.modEnvelope.enabled,
-      onToggleEnabled: () => {
-        this.state.modEnvelope.enabled = !this.state.modEnvelope.enabled;
-        this.selectedPresetId = "custom";
-        this.engine.updateModEnvelope(this.state.modEnvelope);
-        this.renderAll();
-      },
-      removable: this.state.ui.visibleModules.modEnvelope,
-      onRemove: () => {
-        this.state.ui.visibleModules.modEnvelope = false;
-        this.state.modEnvelope.enabled = false;
-        this.selectedPresetId = "custom";
-        this.renderAll();
-        this.engine.fullSync(this.state);
-      },
-    });
-
-    const modControls = document.createElement("div");
-    modControls.className = "module-grid";
-
-    ["attack", "decay", "sustain", "release"].forEach((key) => {
-      modControls.append(
-        this.createRangeControl({
-          label: key.charAt(0).toUpperCase() + key.slice(1),
-          accent: "env",
-          min: key === "sustain" ? 0 : 0.001,
-          max: key === "sustain" ? 1 : 4,
-          step: key === "sustain" ? 0.01 : 0.001,
-          value: this.state.modEnvelope[key],
-          formatter: key === "sustain" ? formatPercent : formatSeconds,
-          onInput: (value) => {
-            this.state.modEnvelope[key] = value;
-            this.selectedPresetId = "custom";
-            this.engine.updateModEnvelope(this.state.modEnvelope);
-          },
-        }),
-      );
-    });
-
-    modCard.append(modControls, this.renderRouteRack("envelopeRoutes", "env"));
-    this.elements.envelopeRack.append(modCard);
   }
 
   /* -------------------------------------------------------------------------- */
@@ -1382,10 +1260,6 @@ class ModularSynthApp {
       controls.className = "module-grid";
 
       definition.controls.forEach((control) => {
-        let patchTarget = null;
-        if (control.kind === "range") {
-          patchTarget = `component:${module.id}:${control.path.replace("options.", "")}`;
-        }
         controls.append(
           this.renderModuleControl(
             module,
@@ -1393,7 +1267,6 @@ class ModularSynthApp {
             () => this.engine.updateComponent(module),
             definition.accent,
             `components.${index}.${control.path}`,
-            patchTarget,
           ),
         );
       });
@@ -1455,10 +1328,6 @@ class ModularSynthApp {
       controls.className = "module-grid";
 
       definition.controls.forEach((control) => {
-        let patchTarget = null;
-        if (control.kind === "range") {
-          patchTarget = `effect:${module.id}:${control.path.replace("options.", "")}`;
-        }
         controls.append(
           this.renderModuleControl(
             module,
@@ -1468,7 +1337,6 @@ class ModularSynthApp {
             },
             definition.accent,
             `effects.${index}.${control.path}`,
-            patchTarget,
           ),
         );
       });
@@ -1564,10 +1432,9 @@ class ModularSynthApp {
    * @param {Function} onCommit - 提交回调
    * @param {string} accent - 强调色
    * @param {string|null} bindingPath - 绑定路径
-   * @param {string|null} patchTarget - 调制目标
    * @returns {HTMLElement} - 控件元素
    */
-  renderModuleControl(module, control, onCommit, accent, bindingPath = null, patchTarget = null) {
+  renderModuleControl(module, control, onCommit, accent, bindingPath = null) {
     const path = control.path;
     const value = getByPath(module, path);
 
@@ -1606,7 +1473,6 @@ class ModularSynthApp {
       step: control.step,
       value,
       path: bindingPath,
-      patchPoint: patchTarget ? { accent, targetId: patchTarget } : null,
       formatter: control.formatter || formatPlain,
       onInput: (nextValue) => {
         setByPath(module, path, nextValue);
@@ -1614,97 +1480,6 @@ class ModularSynthApp {
         onCommit();
       },
     });
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 路由机架渲染                                                               */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 渲染路由机架
-   * 渲染 Mod Envelope 的路由列表，同时提供拖线句柄
-   * @param {string} routeKey - 路由键
-   * @param {string} accent - 强调色
-   * @returns {HTMLElement} - 路由机架元素
-   */
-  renderRouteRack(routeKey, accent) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "route-rack";
-
-    const routeOptions = getModulationTargets(this.state).map((target) => ({
-      label: target.label,
-      value: target.value,
-    }));
-    const routes = this.state.modulation[routeKey];
-
-    routes.forEach((route, index) => {
-      const row = document.createElement("div");
-      row.className = "route-row";
-
-      const stack = document.createElement("div");
-      stack.className = "module-grid compact route-grid";
-      stack.append(
-        this.createSelectControl({
-          label: `Route ${index + 1}`,
-          options: routeOptions,
-          value: route.target,
-          onChange: (value) => {
-            route.target = value;
-            this.selectedPresetId = "custom";
-            this.engine.updateModulation(this.state.modulation);
-            this.drawPatchCables();
-          },
-        }),
-        this.createRangeControl({
-          label: "Amount",
-          accent,
-          variant: "slider",
-          min: -1,
-          max: 1,
-          step: 0.01,
-          value: route.amount,
-          formatter: (value) => `${value >= 0 ? "+" : ""}${Math.round(value * 100)}%`,
-          onInput: (value) => {
-            route.amount = value;
-            this.selectedPresetId = "custom";
-            this.engine.updateModulation(this.state.modulation);
-          },
-        }),
-      );
-
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.className = "route-remove";
-      removeButton.textContent = "Remove";
-      removeButton.addEventListener("click", () => {
-        this.state.modulation[routeKey].splice(index, 1);
-        this.selectedPresetId = "custom";
-        this.renderAll();
-        this.engine.updateModulation(this.state.modulation);
-      });
-
-      row.append(stack, removeButton);
-      wrapper.append(row);
-    });
-
-    const addButton = document.createElement("button");
-    addButton.type = "button";
-    addButton.className = "route-add";
-    addButton.textContent = "Add Route";
-    addButton.addEventListener("click", () => {
-      const firstTarget = routeOptions[0]?.value;
-      if (!firstTarget) {
-        return;
-      }
-      this.state.modulation[routeKey].push(createModRoute(firstTarget, 0.35));
-      this.selectedPresetId = "custom";
-      this.renderAll();
-      this.engine.updateModulation(this.state.modulation);
-      this.drawPatchCables();
-    });
-
-    wrapper.append(addButton);
-    return wrapper;
   }
 
   /* -------------------------------------------------------------------------- */
@@ -1728,7 +1503,6 @@ class ModularSynthApp {
     moduleRef = null,
     enabled = true,
     onToggleEnabled = null,
-    headerPatchPoint = null,
   }) {
     const card = document.createElement("section");
     card.className = "module-card";
@@ -1749,10 +1523,6 @@ class ModularSynthApp {
       const titleNode = document.createElement("h3");
       titleNode.textContent = title;
       titleBlock.append(titleNode);
-    }
-
-    if (headerPatchPoint) {
-      titleBlock.append(this.createPatchPoint(headerPatchPoint));
     }
 
     const actions = document.createElement("div");
@@ -1819,54 +1589,6 @@ class ModularSynthApp {
   }
 
   /* -------------------------------------------------------------------------- */
-  /* 调制点创建                                                                 */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 判断目标是否已被调制
-   * 某个参数是否已被任何调制源连接，用于参数标题后 patch 点的高亮
-   * @param {string} targetValue - 目标值
-   * @returns {boolean} - 是否已被调制
-   */
-  isTargetPatched(targetValue) {
-    return [...(this.state.modulation?.envelopeRoutes || [])].some(
-      (route) => route.enabled !== false && route.target === targetValue,
-    );
-  }
-
-  /**
-   * 创建调制点
-   * patch point 可以表示参数输入端，也可以表示调制源输出端
-   * @param {Object} options - 选项
-   * @returns {HTMLElement} - 调制点元素
-   */
-  createPatchPoint({ accent, targetId = null, sourceKey = null }) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "patch-point";
-    button.style.setProperty("--accent", `var(--${accent})`);
-
-    if (targetId) {
-      button.dataset.modTarget = targetId;
-      if (this.dragHoverTarget === targetId) {
-        button.classList.add("is-hover");
-      }
-      if (this.isTargetPatched(targetId)) {
-        button.classList.add("is-patched");
-      }
-    }
-
-    if (sourceKey) {
-      button.dataset.modSource = sourceKey;
-      if (this.dragHoverSource === sourceKey) {
-        button.classList.add("is-hover");
-      }
-    }
-
-    return button;
-  }
-
-  /* -------------------------------------------------------------------------- */
   /* 控件创建                                                                   */
   /* -------------------------------------------------------------------------- */
 
@@ -1876,21 +1598,15 @@ class ModularSynthApp {
    * @param {Object} options - 选项
    * @returns {HTMLElement} - 控件元素
    */
-  createSelectControl({ label, options, value, onChange, patchPoint = null }) {
+  createSelectControl({ label, options, value, onChange }) {
     const wrapper = document.createElement("label");
     wrapper.className = "control";
 
     const controlLabel = document.createElement("div");
     controlLabel.className = "control-label";
-    const title = document.createElement("div");
-    title.className = "control-title";
     const strong = document.createElement("strong");
     strong.textContent = label;
-    title.append(strong);
-    if (patchPoint) {
-      title.append(this.createPatchPoint(patchPoint));
-    }
-    controlLabel.append(title);
+    controlLabel.append(strong);
 
     const select = document.createElement("select");
     select.className = "select-input";
@@ -1966,7 +1682,6 @@ class ModularSynthApp {
     variant = "slider",
     path = null,
     eventName = "input",
-    patchPoint = null,
   }) {
     const wrapper = document.createElement("label");
     wrapper.className = `control control-${variant}`;
@@ -1974,17 +1689,11 @@ class ModularSynthApp {
 
     const controlLabel = document.createElement("div");
     controlLabel.className = "control-label";
-    const title = document.createElement("div");
-    title.className = "control-title";
     const strong = document.createElement("strong");
     strong.textContent = label;
     const readout = document.createElement("span");
     readout.className = "control-readout";
-    title.append(strong);
-    if (patchPoint) {
-      title.append(this.createPatchPoint(patchPoint));
-    }
-    controlLabel.append(title, readout);
+    controlLabel.append(strong, readout);
 
     const shell = document.createElement("div");
     shell.className = "slider-shell";
@@ -2285,48 +1994,11 @@ class ModularSynthApp {
       return output;
     };
 
-    const blendRouteLists = (listA, listB) => {
-      const max = Math.max(listA.length, listB.length);
-      const output = [];
-      for (let index = 0; index < max; index += 1) {
-        const routeA = listA[index];
-        const routeB = listB[index];
-        if (!routeA) {
-          output.push({ ...deepClone(routeB), id: createId("route") });
-          continue;
-        }
-        if (!routeB) {
-          output.push({ ...deepClone(routeA), id: createId("route") });
-          continue;
-        }
-
-        if (routeA.target === routeB.target) {
-          output.push({
-            id: createId("route"),
-            target: routeA.target,
-            enabled: t < 0.5 ? routeA.enabled !== false : routeB.enabled !== false,
-            amount: blendNumbers(Number(routeA.amount || 0), Number(routeB.amount || 0)),
-          });
-          continue;
-        }
-
-        output.push({ ...(t < 0.5 ? deepClone(routeA) : deepClone(routeB)), id: createId("route") });
-      }
-      return output;
-    };
-
     return normalizePreset({
       name: `Morph ${presetA.name} / ${presetB.name}`,
       global: blendObject(presetA.global, presetB.global),
       filter: blendObject(presetA.filter, presetB.filter),
       envelope: blendObject(presetA.envelope, presetB.envelope),
-      modEnvelope: blendObject(presetA.modEnvelope, presetB.modEnvelope),
-      modulation: {
-        envelopeRoutes: blendRouteLists(
-          presetA.modulation.envelopeRoutes,
-          presetB.modulation.envelopeRoutes,
-        ),
-      },
       sources: blendModuleLists(presetA.sources, presetB.sources, normalizeSourceModule),
       components: blendModuleLists(presetA.components, presetB.components, normalizeComponentModule),
       effects: blendModuleLists(presetA.effects, presetB.effects, normalizeEffectModule),
@@ -2421,18 +2093,6 @@ class ModularSynthApp {
       return min + Math.floor(Math.random() * (steps + 1)) * step;
     };
     const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-    const shuffle = (list) => {
-      const next = [...list];
-      for (let index = next.length - 1; index > 0; index -= 1) {
-        const swapIndex = Math.floor(Math.random() * (index + 1));
-        [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
-      }
-      return next;
-    };
-    const createRandomRoutes = (targets, maxCount, amountScale = 0.75) =>
-      shuffle(targets)
-        .slice(0, Math.min(targets.length, maxCount))
-        .map((target) => createModRoute(target.value, randomRange(-amountScale, amountScale, 0.01)));
 
     const applyDefinitionRandomness = (module, definition) => {
       definition.controls.forEach((control) => {
@@ -2454,11 +2114,6 @@ class ModularSynthApp {
     this.state.envelope.decay = randomRange(0.04, 0.7, 0.001);
     this.state.envelope.sustain = randomRange(0.2, 0.95, 0.01);
     this.state.envelope.release = randomRange(0.08, 2.8, 0.01);
-    this.state.modEnvelope.enabled = Math.random() > 0.15;
-    this.state.modEnvelope.attack = randomRange(0.001, 0.6, 0.001);
-    this.state.modEnvelope.decay = randomRange(0.03, 1.4, 0.001);
-    this.state.modEnvelope.sustain = randomRange(0, 1, 0.01);
-    this.state.modEnvelope.release = randomRange(0.05, 3.2, 0.01);
 
     this.state.sources.forEach((module) => {
       module.volume = randomRange(-18, -4, 0.1);
@@ -2471,13 +2126,6 @@ class ModularSynthApp {
     );
     this.state.effects.forEach((module) =>
       applyDefinitionRandomness(module, EFFECT_LIBRARY[module.type] || EFFECT_LIBRARY.Chorus),
-    );
-
-    const modulationTargets = getModulationTargets(this.state);
-    this.state.modulation.envelopeRoutes = createRandomRoutes(
-      modulationTargets,
-      randomInt(1, Math.min(2, modulationTargets.length || 1)),
-      0.65,
     );
 
     this.selectedPresetId = "custom";
@@ -2507,7 +2155,6 @@ class ModularSynthApp {
       this.midi.access.onstatechange = () => {
         this.refreshMidiInputs();
         this.renderGlobalStrip();
-        this.drawPatchCables();
       };
       this.refreshMidiInputs();
       this.renderGlobalStrip();
@@ -2717,458 +2364,6 @@ class ModularSynthApp {
       return;
     }
     visualKey.classList.toggle("active", active);
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 调制连线拖拽                                                               */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 开始拖拽连线
-   * 开始拖线时只记录临时状态，不立刻修改实际 route
-   * @param {PointerEvent} event - 指针事件
-   * @param {string} routeKey - 路由键
-   * @param {string} routeId - 路由ID
-   * @param {string} accent - 强调色
-   * @param {string} endType - 端点类型
-   */
-  beginPatchDrag(event, routeKey, routeId, accent, endType = "target") {
-    const color = "rgba(192, 160, 62, 0.92)";
-    this.dragPatch = {
-      routeKey,
-      routeId,
-      color,
-      endType,
-      point: this.getRelativePatchPoint(event.clientX, event.clientY),
-    };
-    this.updatePatchHoverState();
-    this.drawPatchCables();
-  }
-
-  /**
-   * 获取相对调制点位置
-   * @param {number} clientX - 客户端X坐标
-   * @param {number} clientY - 客户端Y坐标
-   * @returns {Object} - 相对位置
-   */
-  getRelativePatchPoint(clientX, clientY) {
-    const container = this.elements.signalFlow;
-    if (!container) {
-      return { x: 0, y: 0 };
-    }
-    const rect = container.getBoundingClientRect();
-    return {
-      x: clientX - rect.left + container.scrollLeft,
-      y: clientY - rect.top + container.scrollTop,
-    };
-  }
-
-  /**
-   * 查找悬停的调制目标
-   * @param {number} clientX - 客户端X坐标
-   * @param {number} clientY - 客户端Y坐标
-   * @returns {HTMLElement|null} - 悬停的元素
-   */
-  findHoveredPatchTarget(clientX, clientY) {
-    const element = document.elementFromPoint(clientX, clientY);
-    return element?.closest?.("[data-mod-target]") || null;
-  }
-
-  /**
-   * 查找悬停的调制源
-   * @param {number} clientX - 客户端X坐标
-   * @param {number} clientY - 客户端Y坐标
-   * @returns {HTMLElement|null} - 悬停的元素
-   */
-  findHoveredPatchSource(clientX, clientY) {
-    const element = document.elementFromPoint(clientX, clientY);
-    return element?.closest?.("[data-mod-source]") || null;
-  }
-
-  /**
-   * 更新调制点悬停状态
-   */
-  updatePatchHoverState() {
-    const container = this.elements.signalFlow;
-    if (!container) {
-      return;
-    }
-    container
-      .querySelectorAll("[data-mod-target]")
-      .forEach((element) =>
-        element.classList.toggle("is-hover", element.dataset.modTarget === this.dragHoverTarget),
-      );
-    container
-      .querySelectorAll("[data-mod-source]")
-      .forEach((element) =>
-        element.classList.toggle("is-hover", element.dataset.modSource === this.dragHoverSource),
-      );
-  }
-
-  /**
-   * 处理拖拽移动事件
-   * @param {PointerEvent} event - 指针事件
-   */
-  onPatchDragMove(event) {
-    if (!this.dragPatch) {
-      return;
-    }
-    this.dragPatch.point = this.getRelativePatchPoint(event.clientX, event.clientY);
-    if (this.dragPatch.endType === "target") {
-      const hoveredTarget = this.findHoveredPatchTarget(event.clientX, event.clientY);
-      const nextHoverTarget = hoveredTarget?.dataset.modTarget || "";
-      if (nextHoverTarget !== this.dragHoverTarget) {
-        this.dragHoverTarget = nextHoverTarget;
-        this.updatePatchHoverState();
-      }
-    } else {
-      const hoveredSource = this.findHoveredPatchSource(event.clientX, event.clientY);
-      const nextHoverSource = hoveredSource?.dataset.modSource || "";
-      if (nextHoverSource !== this.dragHoverSource) {
-        this.dragHoverSource = nextHoverSource;
-        this.updatePatchHoverState();
-      }
-    }
-    this.drawPatchCables();
-  }
-
-  /**
-   * 处理拖拽结束事件
-   * @param {PointerEvent} event - 指针事件
-   */
-  onPatchDragEnd(event) {
-    if (!this.dragPatch) {
-      return;
-    }
-
-    let routeChanged = false;
-    let routeDeleted = false;
-
-    if (this.dragPatch.endType === "target") {
-      const hoveredTarget = this.findHoveredPatchTarget(event.clientX, event.clientY);
-      if (hoveredTarget?.dataset.modTarget) {
-        const route = findById(
-          this.state.modulation[this.dragPatch.routeKey],
-          this.dragPatch.routeId,
-        );
-        if (route && route.target !== hoveredTarget.dataset.modTarget) {
-          route.target = hoveredTarget.dataset.modTarget;
-          routeChanged = true;
-        }
-      } else {
-        // 线在没有靠近任何点的时候会自动收回，也就是取消这一调制
-        const list = this.state.modulation[this.dragPatch.routeKey] || [];
-        const routeIndex = list.findIndex((route) => route.id === this.dragPatch.routeId);
-        if (routeIndex >= 0) {
-          list.splice(routeIndex, 1);
-          routeDeleted = true;
-        }
-      }
-    } else {
-      const hoveredSource = this.findHoveredPatchSource(event.clientX, event.clientY);
-      const nextRouteKey = hoveredSource?.dataset.modSource || "";
-      if (nextRouteKey && nextRouteKey !== this.dragPatch.routeKey) {
-        const list = this.state.modulation[this.dragPatch.routeKey] || [];
-        const routeIndex = list.findIndex((route) => route.id === this.dragPatch.routeId);
-        if (routeIndex >= 0) {
-          const [route] = list.splice(routeIndex, 1);
-          this.state.modulation[nextRouteKey].push(route);
-          routeChanged = true;
-        }
-      } else {
-        const list = this.state.modulation[this.dragPatch.routeKey] || [];
-        const routeIndex = list.findIndex((route) => route.id === this.dragPatch.routeId);
-        if (routeIndex >= 0) {
-          list.splice(routeIndex, 1);
-          routeDeleted = true;
-        }
-      }
-    }
-
-    if (routeChanged || routeDeleted) {
-      this.selectedPresetId = "custom";
-      this.engine.updateModulation(this.state.modulation);
-    }
-
-    this.dragPatch = null;
-    this.dragHoverTarget = "";
-    this.dragHoverSource = "";
-    this.updatePatchHoverState();
-    this.renderAll();
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 调制连线绘制                                                               */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 绘制调制连线
-   * 所有连线都会根据当前 DOM 位置重算，但真正绘制时会经过一层弹簧插值
-   * 这样模块重排和拖线时看起来更像一根有张力的线缆
-   */
-  drawPatchCables() {
-    const svg = this.elements.patchCables;
-    const container = this.elements.signalFlow;
-    if (!svg || !container) {
-      return;
-    }
-
-    const containerRect = container.getBoundingClientRect();
-    const width = Math.round(container.scrollWidth || containerRect.width);
-    const height = Math.round(container.scrollHeight || containerRect.height);
-
-    const escapeSelector = (value) => {
-      if (window.CSS?.escape) {
-        return window.CSS.escape(value);
-      }
-      return String(value).replace(/["\\]/g, "\\$&");
-    };
-
-    const anchorSource = (sourceKey) => {
-      const node = container.querySelector(`[data-mod-source="${escapeSelector(sourceKey)}"]`);
-      if (!node) {
-        return null;
-      }
-      const rect = node.getBoundingClientRect();
-      return {
-        x: rect.left - containerRect.left + rect.width * 0.5,
-        y: rect.top - containerRect.top + rect.height * 0.5,
-      };
-    };
-
-    const anchorTarget = (targetId) => {
-      const node = container.querySelector(`[data-mod-target="${escapeSelector(targetId)}"]`);
-      if (!node) {
-        return null;
-      }
-      const rect = node.getBoundingClientRect();
-      return {
-        x: rect.left - containerRect.left + rect.width * 0.5,
-        y: rect.top - containerRect.top + rect.height * 0.5,
-      };
-    };
-
-    const modulationTargets = new Map(
-      getModulationTargets(this.state).map((target) => [target.value, target]),
-    );
-    const routes = [
-      ...(this.state.modulation?.envelopeRoutes || []).map((route) => ({
-        ...route,
-        accent: "env",
-        color: "rgba(192, 160, 62, 0.92)",
-        sourceKey: "envelopeRoutes",
-        sourceEnabled: this.state.modEnvelope.enabled,
-      })),
-    ];
-
-    this.patchScene = {
-      width,
-      height,
-      routes: routes
-        .filter((route) => route.enabled !== false && modulationTargets.has(route.target))
-        .map((route) => ({
-          id: route.id,
-          routeKey: route.sourceKey,
-          accent: route.accent,
-          color: route.color,
-          sourceEnabled: route.sourceEnabled,
-          from: anchorSource(route.sourceKey),
-          to: anchorTarget(route.target),
-        }))
-        .filter((route) => route.from && route.to),
-      drag: null,
-    };
-
-    if (this.dragPatch) {
-      const activeRoute = routes.find((route) => route.id === this.dragPatch.routeId);
-      if (activeRoute) {
-        const fixedFrom = anchorSource(activeRoute.sourceKey);
-        const fixedTo = anchorTarget(activeRoute.target);
-        if (fixedFrom && fixedTo) {
-          this.patchScene.drag = {
-            id: activeRoute.id,
-            routeKey: activeRoute.sourceKey,
-            accent: activeRoute.accent,
-            color: activeRoute.color,
-            sourceEnabled: activeRoute.sourceEnabled,
-            from: this.dragPatch.endType === "source" ? this.dragPatch.point : fixedFrom,
-            to: this.dragPatch.endType === "target" ? this.dragPatch.point : fixedTo,
-          };
-        }
-      }
-    }
-
-    if (!this.patchFrame) {
-      this.animatePatchCables();
-    }
-  }
-
-  /**
-   * 步进线缆锚点
-   * @param {Object} anchorState - 锚点状态
-   * @param {Object} target - 目标位置
-   * @param {number} spring - 弹簧系数
-   * @param {number} damping - 阻尼系数
-   * @returns {boolean} - 是否仍在移动
-   */
-  stepCableAnchor(anchorState, target, spring, damping) {
-    const dx = target.x - anchorState.x;
-    const dy = target.y - anchorState.y;
-    anchorState.vx = (anchorState.vx + dx * spring) * damping;
-    anchorState.vy = (anchorState.vy + dy * spring) * damping;
-    anchorState.x += anchorState.vx;
-    anchorState.y += anchorState.vy;
-
-    const settled =
-      Math.abs(dx) < 0.2 &&
-      Math.abs(dy) < 0.2 &&
-      Math.abs(anchorState.vx) < 0.2 &&
-      Math.abs(anchorState.vy) < 0.2;
-    if (settled) {
-      anchorState.x = target.x;
-      anchorState.y = target.y;
-      anchorState.vx = 0;
-      anchorState.vy = 0;
-    }
-    return !settled;
-  }
-
-  /**
-   * 动画调制连线
-   * 使用二次贝塞尔曲线实现张力效果
-   * 张力 100 = 紧绷/直线
-   * 张力 0 = 最大下垂（受虚拟重力影响）
-   */
-  animatePatchCables() {
-    const svg = this.elements.patchCables;
-    const scene = this.patchScene;
-    if (!svg || !scene) {
-      this.patchFrame = 0;
-      return;
-    }
-
-    this.patchFrame = 0;
-    svg.setAttribute("viewBox", `0 0 ${scene.width} ${scene.height}`);
-    svg.innerHTML = "";
-
-    // 张力控制：张力 1 = 紧绷，张力 0 = 最大下垂
-    const tension = clamp(Number(this.state.ui?.cableTension ?? 0.50), 0, 1);
-    const sagAmount = (1 - tension) * 200; // 下垂幅度
-    let shouldContinue = Boolean(this.dragPatch);
-    const activeKeys = new Set();
-
-    /**
-     * 创建线缆路径
-     * 使用二次贝塞尔曲线实现下垂效果
-     */
-    const createCablePath = (from, to, stroke, opacity) => {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-
-      const midX = (from.x + to.x) / 2;
-      const midY = (from.y + to.y) / 2;
-
-      // 下垂量随距离增加而增加，但有上限
-      const sag = sagAmount * Math.min(1, distance / 200);
-      const controlY = midY + sag;
-
-      // 二次贝塞尔曲线：Q 控制点 终点
-      const pathD = `M ${from.x} ${from.y} Q ${midX} ${controlY} ${to.x} ${to.y}`;
-
-      path.setAttribute("d", pathD);
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", stroke);
-      path.setAttribute("stroke-width", "2.4");
-      path.setAttribute("stroke-linecap", "round");
-      path.setAttribute("opacity", String(opacity));
-      svg.append(path);
-    };
-
-    /**
-     * 创建插座点
-     */
-    const createSocket = (point, fill, meta = null) => {
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      dot.setAttribute("cx", String(point.x));
-      dot.setAttribute("cy", String(point.y));
-      dot.setAttribute("r", "5");
-      dot.setAttribute("fill", fill);
-      dot.setAttribute("opacity", "0.34");
-      if (meta) {
-        dot.setAttribute("class", "cable-socket is-interactive");
-        dot.addEventListener("pointerdown", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          this.beginPatchDrag(event, meta.routeKey, meta.routeId, meta.accent, meta.endType);
-        });
-      }
-      svg.append(dot);
-    };
-
-    /**
-     * 渲染单条线缆
-     */
-    const renderCable = (route, interactive = true) => {
-      activeKeys.add(route.id);
-      const visual = this.cableVisuals.get(route.id) || {
-        from: { x: route.from.x, y: route.from.y, vx: 0, vy: 0 },
-        to: { x: route.to.x, y: route.to.y, vx: 0, vy: 0 },
-      };
-
-      const spring = 0.15;
-      const damping = 0.85;
-      const movingFrom = this.stepCableAnchor(visual.from, route.from, spring, damping);
-      const movingTo = this.stepCableAnchor(visual.to, route.to, spring, damping);
-      this.cableVisuals.set(route.id, visual);
-      if (movingFrom || movingTo) {
-        shouldContinue = true;
-      }
-
-      const opacity = route.sourceEnabled ? 0.46 : 0.18;
-      createCablePath(visual.from, visual.to, route.color, opacity);
-      if (interactive) {
-        createSocket(visual.from, route.color, {
-          routeKey: route.routeKey,
-          routeId: route.id,
-          accent: route.accent,
-          endType: "source",
-        });
-        createSocket(visual.to, route.color, {
-          routeKey: route.routeKey,
-          routeId: route.id,
-          accent: route.accent,
-          endType: "target",
-        });
-      } else {
-        createSocket(visual.from, route.color);
-        createSocket(visual.to, route.color);
-      }
-    };
-
-    scene.routes.forEach((route) => {
-      if (scene.drag?.id === route.id) {
-        return;
-      }
-      renderCable(route, true);
-    });
-
-    if (scene.drag) {
-      renderCable(scene.drag, false);
-    }
-
-    // 清理不再活跃的线缆视觉状态
-    this.cableVisuals.forEach((_value, key) => {
-      if (!activeKeys.has(key)) {
-        this.cableVisuals.delete(key);
-      }
-    });
-
-    if (shouldContinue) {
-      this.patchFrame = requestAnimationFrame(() => this.animatePatchCables());
-    }
   }
 
   /* -------------------------------------------------------------------------- */

@@ -199,26 +199,6 @@ select {
   padding: 2px 0 8px;
 }
 
-/* 连线 SVG 覆盖在模块卡片上方，指针事件仍然交给下面的实际控件。 */
-.patch-cables {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  overflow: visible;
-  z-index: 12;
-}
-
-.cable-socket.is-interactive {
-  pointer-events: auto;
-  cursor: grab;
-}
-
-.cable-socket.is-interactive:active {
-  cursor: grabbing;
-}
-
 /* stage 仅保留语义容器，视觉分组已取消。 */
 .stage {
   display: contents;
@@ -523,37 +503,6 @@ select {
   background: #c94650;
 }
 
-.route-rack {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.route-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.route-grid {
-  gap: 8px;
-}
-
-.route-remove,
-.route-add {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #8c5d69;
-  font-size: 0.7rem;
-  cursor: pointer;
-  align-self: flex-start;
-}
-
-.route-add {
-  color: #5d6482;
-}
-
 .module-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -639,34 +588,6 @@ select {
 
 .file-input {
   display: none;
-}
-
-.patch-point {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  padding: 0;
-  border: 0;
-  outline: none;
-  border-radius: 999px;
-  background: #a0a0a0;
-  box-shadow: 0 0 0 2px rgba(160, 160, 160, 0.18);
-  cursor: crosshair;
-  transition:
-    transform 140ms ease,
-    box-shadow 140ms ease,
-    opacity 140ms ease,
-    background 140ms ease;
-}
-
-.patch-point.is-patched {
-  background: var(--accent, var(--ink));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, var(--ink)) 18%, transparent);
-}
-
-.patch-point.is-active,
-.patch-point.is-hover {
-  transform: scale(1.1);
 }
 
 /* 旋钮采用较轻的立体感，和整体扁平化界面保持平衡。 */

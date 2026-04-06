@@ -23,22 +23,6 @@ class AudioEngine {
     
     // 活跃音符集合
     this.activeNotes = new Set();
-    
-    // 调制循环
-    this.modulationFrame = null;
-    this.lfoStartTime = 0;
-    this.lastModulatedTargets = new Set();
-    
-    // 调制包络状态机
-    this.modEnvelopeState = {
-      stage: "idle",
-      velocity: 1,
-      attackStart: 0,
-      attackFrom: 0,
-      decayStart: 0,
-      releaseStart: 0,
-      releaseFrom: 0,
-    };
   }
 
   /* -------------------------------------------------------------------------- */
@@ -70,7 +54,6 @@ class AudioEngine {
     this.ampBypass = new Tone.Gain(1);
     this.masterVolume = new Tone.Volume(state.global.volume);
     this.analyser = new Tone.Analyser("waveform", 1024);
-    this.lfoStartTime = Tone.now();
 
     // 连接主输出
     this.masterVolume.toDestination();
@@ -79,7 +62,6 @@ class AudioEngine {
     // 重建信号链
     this.rebuildEffects();
     this.rebuildSources();
-    this.startModulationLoop();
   }
 
   /**
@@ -109,19 +91,9 @@ class AudioEngine {
     safeSet(this.filter, getFilterAudioState(state.filter));
     safeSet(this.ampEnvelope, getEnvelopeAudioState(state.envelope));
     rampParam(this.masterVolume.volume, state.global.volume);
-    this.modEnvelopeState = {
-      stage: "idle",
-      velocity: 1,
-      attackStart: 0,
-      attackFrom: 0,
-      decayStart: 0,
-      releaseStart: 0,
-      releaseFrom: 0,
-    };
     this.silenceAll();
     this.rebuildEffects();
     this.rebuildSources();
-    this.applyModulationSnapshot();
   }
 
   /**
@@ -134,7 +106,6 @@ class AudioEngine {
       return;
     }
     rampParam(this.masterVolume.volume, globalState.volume);
-    this.applyModulationSnapshot();
   }
 
   /* -------------------------------------------------------------------------- */
@@ -153,7 +124,6 @@ class AudioEngine {
     }
     safeSet(this.filter, getFilterAudioState(filterState));
     this.rebuildEffects();
-    this.applyModulationSnapshot();
   }
 
   /**
@@ -167,38 +137,6 @@ class AudioEngine {
     }
     safeSet(this.ampEnvelope, getEnvelopeAudioState(envelopeState));
     this.rebuildEffects();
-  }
-
-  /**
-   * 更新调制包络
-   * @param {Object} modEnvelopeState - 调制包络状态
-   */
-  updateModEnvelope(modEnvelopeState) {
-    this.state.modEnvelope = deepClone(modEnvelopeState);
-  }
-
-  /**
-   * 更新 LFO
-   * @param {Object} lfoState - LFO 状态
-   */
-  updateLfo(lfoState) {
-    this.state.lfo = deepClone(lfoState);
-    if (!this.ready) {
-      return;
-    }
-    this.applyModulationSnapshot();
-  }
-
-  /**
-   * 更新调制路由
-   * @param {Object} modulationState - 调制状态
-   */
-  updateModulation(modulationState) {
-    this.state.modulation = deepClone(modulationState);
-    if (!this.ready) {
-      return;
-    }
-    this.applyModulationSnapshot();
   }
 
   /* -------------------------------------------------------------------------- */
@@ -349,7 +287,6 @@ class AudioEngine {
     }
 
     existing.apply(module);
-    this.applyModulationSnapshot();
   }
 
   /**
@@ -372,7 +309,6 @@ class AudioEngine {
     }
 
     this.rebuildEffects();
-    this.applyModulationSnapshot();
   }
 
   /**
@@ -394,369 +330,6 @@ class AudioEngine {
     }
 
     this.rebuildEffects();
-    this.applyModulationSnapshot();
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 调制系统                                                                   */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 启动调制循环
-   * 使用 requestAnimationFrame 做轻量级连续更新，以便同时驱动 LFO 和自定义的 mod envelope
-   */
-  startModulationLoop() {
-    if (this.modulationFrame) {
-      cancelAnimationFrame(this.modulationFrame);
-    }
-
-    const tick = () => {
-      if (this.ready) {
-        this.applyModulationSnapshot();
-      }
-      this.modulationFrame = requestAnimationFrame(tick);
-    };
-
-    this.modulationFrame = requestAnimationFrame(tick);
-  }
-
-  /**
-   * 获取 LFO 值
-   * 直接用数学函数生成 LFO 值，避免额外的 Tone.LFO 节点与复杂绑定管理
-   * @param {number} time - 当前时间
-   * @returns {number} - LFO 值 (-1 到 1)
-   */
-  getLfoValue(time) {
-    if (!this.state.lfo.enabled) {
-      return 0;
-    }
-
-    const phase = ((this.state.lfo.phase || 0) / 360) * Math.PI * 2;
-    const t = (time - this.lfoStartTime) * Number(this.state.lfo.frequency || 0);
-    const cycle = t % 1;
-    const angle = cycle * Math.PI * 2 + phase;
-    const type = this.state.lfo.type || "sine";
-
-    if (type === "triangle") {
-      return 1 - 4 * Math.abs(Math.round(cycle - 0.25) - (cycle - 0.25));
-    }
-    if (type === "square") {
-      return Math.sin(angle) >= 0 ? 1 : -1;
-    }
-    if (type === "sawtooth") {
-      return 2 * cycle - 1;
-    }
-    return Math.sin(angle);
-  }
-
-  /**
-   * 获取调制包络值
-   * 手写一个包络状态机给 modulation 使用
-   * 它和音量包络分离，因此不会受 Tone.AmplitudeEnvelope 内部状态限制
-   * @param {number} time - 当前时间
-   * @returns {number} - 包络值 (0 到 1)
-   */
-  getModEnvelopeValue(time) {
-    if (!this.state.modEnvelope.enabled) {
-      return 0;
-    }
-
-    const envelope = this.state.modEnvelope;
-    const attack = Math.max(0.0001, Number(envelope.attack || 0.0001));
-    const decay = Math.max(0.0001, Number(envelope.decay || 0.0001));
-    const release = Math.max(0.0001, Number(envelope.release || 0.0001));
-    const peak = clamp(Number(this.modEnvelopeState.velocity || 1), 0, 1);
-    const sustainLevel = clamp(Number(envelope.sustain || 0), 0, 1) * peak;
-
-    while (true) {
-      if (this.modEnvelopeState.stage === "idle") {
-        return 0;
-      }
-
-      if (this.modEnvelopeState.stage === "attack") {
-        const elapsed = time - this.modEnvelopeState.attackStart;
-        if (elapsed < attack) {
-          const progress = clamp(elapsed / attack, 0, 1);
-          return this.modEnvelopeState.attackFrom + (peak - this.modEnvelopeState.attackFrom) * progress;
-        }
-        this.modEnvelopeState.stage = "decay";
-        this.modEnvelopeState.decayStart = this.modEnvelopeState.attackStart + attack;
-        continue;
-      }
-
-      if (this.modEnvelopeState.stage === "decay") {
-        const elapsed = time - this.modEnvelopeState.decayStart;
-        if (elapsed < decay) {
-          const progress = clamp(elapsed / decay, 0, 1);
-          return peak + (sustainLevel - peak) * progress;
-        }
-        this.modEnvelopeState.stage = "sustain";
-        continue;
-      }
-
-      if (this.modEnvelopeState.stage === "sustain") {
-        return sustainLevel;
-      }
-
-      if (this.modEnvelopeState.stage === "release") {
-        const elapsed = time - this.modEnvelopeState.releaseStart;
-        if (elapsed < release) {
-          const progress = clamp(elapsed / release, 0, 1);
-          return this.modEnvelopeState.releaseFrom * (1 - progress);
-        }
-        this.modEnvelopeState.stage = "idle";
-        return 0;
-      }
-    }
-  }
-
-  /**
-   * 触发调制包络 Attack
-   * @param {number} velocity - 力度
-   */
-  triggerModEnvelopeAttack(velocity = 1) {
-    const now = Tone.now();
-    const currentValue = this.getModEnvelopeValue(now);
-    this.modEnvelopeState = {
-      stage: "attack",
-      velocity: clamp(velocity, 0.05, 1),
-      attackStart: now,
-      attackFrom: currentValue,
-      decayStart: now,
-      releaseStart: now,
-      releaseFrom: currentValue,
-    };
-  }
-
-  /**
-   * 触发调制包络 Release
-   */
-  triggerModEnvelopeRelease() {
-    const now = Tone.now();
-    this.modEnvelopeState = {
-      ...this.modEnvelopeState,
-      stage: "release",
-      releaseStart: now,
-      releaseFrom: this.getModEnvelopeValue(now),
-    };
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 调制绑定解析                                                               */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 解析调制绑定
-   * @param {string} targetId - 目标ID
-   * @returns {Object|null} - 调制绑定信息
-   */
-  resolveModBinding(targetId) {
-    const targets = getModulationTargets(this.state);
-    const meta = targets.find((entry) => entry.value === targetId);
-    if (!meta) {
-      return null;
-    }
-
-    // 滤波器目标
-    if (targetId === "filter.frequency") {
-      return {
-        ...meta,
-        base: Number(this.state.filter.frequency),
-        apply: (value) => rampParam(this.filter.frequency, value, 0.03),
-      };
-    }
-
-    if (targetId === "filter.Q") {
-      return {
-        ...meta,
-        base: Number(this.state.filter.Q),
-        apply: (value) => rampParam(this.filter.Q, value, 0.03),
-      };
-    }
-
-    // 解析目标ID
-    const [group, moduleId, ...pathParts] = targetId.split(":");
-    const prop = pathParts.join(":");
-
-    // 声源目标
-    if (group === "source") {
-      const module = findById(this.state.sources, moduleId);
-      const runtime = this.sourceRuntimes.get(moduleId);
-      if (!module || !runtime) {
-        return null;
-      }
-
-      if (prop === "volume") {
-        return {
-          ...meta,
-          base: Number(module.volume),
-          apply: (value) => rampParam(runtime.volumeNode.volume, value, 0.03),
-        };
-      }
-      if (prop === "pan") {
-        return {
-          ...meta,
-          base: Number(module.pan),
-          apply: (value) => rampParam(runtime.panNode.pan, value, 0.03),
-        };
-      }
-
-      const paramPath = prop;
-      if (
-        paramPath.startsWith("options.") ||
-        paramPath.startsWith("ampEnvelope.") ||
-        paramPath.startsWith("options.envelope.")
-      ) {
-        const baseValue = getByPath(module, paramPath);
-        if (typeof baseValue === "number") {
-          const toneParam = this.resolveToneParam(runtime.node, paramPath);
-          if (toneParam) {
-            return {
-              ...meta,
-              base: Number(baseValue),
-              apply: (value) => rampParam(toneParam, value, 0.03),
-            };
-          }
-        }
-      }
-      return null;
-    }
-
-    // 组件目标
-    if (group === "component") {
-      const module = findById(this.state.components, moduleId);
-      const runtime = this.componentRuntimes.get(moduleId)?.node;
-      if (!module || !runtime) {
-        return null;
-      }
-
-      const paramPath = `options.${prop}`;
-      const baseValue = getByPath(module, paramPath);
-      if (typeof baseValue === "number") {
-        const toneParam = this.resolveToneParam(runtime, paramPath);
-        if (toneParam) {
-          return {
-            ...meta,
-            base: Number(baseValue),
-            apply: (value) => rampParam(toneParam, value, 0.03),
-          };
-        }
-      }
-      return null;
-    }
-
-    // 效果器目标
-    if (group === "effect") {
-      const module = findById(this.state.effects, moduleId);
-      const runtime = this.effectRuntimes.get(moduleId)?.node;
-      if (!module || !runtime) {
-        return null;
-      }
-
-      const paramPath = `options.${prop}`;
-      const baseValue = getByPath(module, paramPath);
-      if (typeof baseValue === "number") {
-        const toneParam = this.resolveToneParam(runtime, paramPath);
-        if (toneParam) {
-          return {
-            ...meta,
-            base: Number(baseValue),
-            apply: (value) => rampParam(toneParam, value, 0.03),
-          };
-        }
-      }
-      return null;
-    }
-
-    return null;
-  }
-
-  /**
-   * 解析 Tone.js 参数
-   * @param {Object} node - Tone 节点
-   * @param {string} path - 参数路径
-   * @returns {Object|null} - Tone 参数对象
-   */
-  resolveToneParam(node, path) {
-    if (!node) return null;
-    const parts = path.split(".");
-    let current = node;
-    for (let i = 0; i < parts.length; i++) {
-      if (current == null) return null;
-      const part = parts[i];
-      if (i === parts.length - 1) {
-        const param = current[part];
-        if (param && typeof param.setValueAtTime === "function") {
-          return param;
-        }
-        return null;
-      }
-      current = current[part];
-    }
-    return null;
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 调制应用                                                                   */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 应用调制快照
-   * 每一帧把所有启用中的 route 累积成目标参数偏移，并应用到真实 Tone 节点上
-   */
-  applyModulationSnapshot() {
-    if (!this.ready) {
-      return;
-    }
-
-    const now = Tone.now();
-    const lfoSignal = this.getLfoValue(now) * clamp(Number(this.state.lfo.amount ?? 1), 0, 1);
-    const envelopeSignal = this.getModEnvelopeValue(now);
-
-    // 合并所有活跃路由
-    const activeRoutes = [
-      ...(this.state.modulation?.lfoRoutes || []).map((route) => ({
-        ...route,
-        source: "lfo",
-        signal: lfoSignal,
-      })),
-      ...(this.state.modulation?.envelopeRoutes || []).map((route) => ({
-        ...route,
-        source: "envelope",
-        signal: envelopeSignal,
-      })),
-    ].filter((route) => route.enabled !== false);
-
-    // 累积调制值
-    const accumulator = new Map();
-    const targetsToRefresh = new Set([
-      ...this.lastModulatedTargets,
-      ...activeRoutes.map((route) => route.target),
-    ]);
-
-    activeRoutes.forEach((route) => {
-      const binding = this.resolveModBinding(route.target);
-      if (!binding) {
-        return;
-      }
-
-      const current = accumulator.get(route.target) || { binding, delta: 0 };
-      current.delta += Number(route.amount || 0) * Number(route.signal || 0) * binding.scale(binding.base);
-      accumulator.set(route.target, current);
-    });
-
-    // 应用调制值
-    targetsToRefresh.forEach((targetId) => {
-      const entry = accumulator.get(targetId);
-      const binding = entry?.binding || this.resolveModBinding(targetId);
-      if (!binding) {
-        return;
-      }
-      const nextValue = clamp(binding.base + (entry?.delta || 0), binding.min, binding.max);
-      binding.apply(nextValue);
-    });
-
-    this.lastModulatedTargets = targetsToRefresh;
   }
 
   /* -------------------------------------------------------------------------- */
@@ -1081,7 +654,7 @@ class AudioEngine {
 
   /**
    * 触发音符 Attack
-   * 全局音量包络和 mod envelope 只在"第一个音开始"时触发一次
+   * 全局音量包络只在"第一个音开始"时触发一次
    * 避免和多音 source 的内部包络重复冲突
    * @param {string} note - 音符
    * @param {number} velocity - 力度
@@ -1094,9 +667,6 @@ class AudioEngine {
     if (!this.activeNotes.size) {
       if (this.state.envelope.enabled !== false) {
         this.ampEnvelope.triggerAttack(Tone.now(), velocity);
-      }
-      if (this.state.modEnvelope.enabled) {
-        this.triggerModEnvelopeAttack(velocity);
       }
     }
 
@@ -1120,9 +690,6 @@ class AudioEngine {
       if (this.state.envelope.enabled !== false) {
         this.ampEnvelope.triggerRelease(Tone.now());
       }
-      if (this.state.modEnvelope.enabled) {
-        this.triggerModEnvelopeRelease();
-      }
     }
   }
 
@@ -1138,15 +705,6 @@ class AudioEngine {
     if (this.state.envelope.enabled !== false) {
       this.ampEnvelope.triggerRelease(Tone.now());
     }
-    this.modEnvelopeState = {
-      stage: "idle",
-      velocity: 1,
-      attackStart: 0,
-      attackFrom: 0,
-      decayStart: 0,
-      releaseStart: 0,
-      releaseFrom: 0,
-    };
   }
 
   /**
