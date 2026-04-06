@@ -529,19 +529,6 @@ select {
   background: #c94650;
 }
 
-/* 用于 ADSR / filter 等轻量级可视化。 */
-.module-visual {
-  width: 100%;
-  height: 84px;
-  color: var(--accent, var(--ink));
-}
-
-.module-visual svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
 .route-rack {
   display: flex;
   flex-direction: column;

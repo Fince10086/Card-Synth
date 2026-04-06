@@ -31,7 +31,6 @@ class ModularSynthApp {
 
     // 控件绑定映射
     this.controlBindings = new Map();
-    this.filterVisualizationBinding = null;
 
     // 拖拽连线状态
     this.dragPatch = null;
@@ -1126,7 +1125,6 @@ class ModularSynthApp {
       return;
     }
     this.elements.filterRack.innerHTML = "";
-    this.filterVisualizationBinding = null;
 
     if (this.state.ui.visibleModules.filter === false) {
       return;
@@ -1154,10 +1152,6 @@ class ModularSynthApp {
       },
     });
 
-    const filterVisualization = this.createFilterVisualization(this.state.filter);
-    // 保存 update 引用，方便宏控制直接刷新可视化而不重建整个模块
-    this.filterVisualizationBinding = filterVisualization.update;
-
     const headGrid = document.createElement("div");
     headGrid.className = "module-grid compact";
     headGrid.append(
@@ -1168,7 +1162,6 @@ class ModularSynthApp {
         onChange: (value) => {
           this.state.filter.type = value;
           this.selectedPresetId = "custom";
-          filterVisualization.update(this.state.filter);
           this.engine.updateFilter(this.state.filter);
         },
       }),
@@ -1184,7 +1177,6 @@ class ModularSynthApp {
         onChange: (value) => {
           this.state.filter.rolloff = Number(value);
           this.selectedPresetId = "custom";
-          filterVisualization.update(this.state.filter);
           this.engine.updateFilter(this.state.filter);
         },
       }),
@@ -1192,7 +1184,6 @@ class ModularSynthApp {
 
     const controls = document.createElement("div");
     controls.className = "module-grid";
-    card.append(filterVisualization.element);
     controls.append(
       this.createRangeControl({
         label: "Cutoff",
@@ -1207,7 +1198,6 @@ class ModularSynthApp {
         onInput: (value) => {
           this.state.filter.frequency = value;
           this.selectedPresetId = "custom";
-          filterVisualization.update(this.state.filter);
           this.engine.updateFilter(this.state.filter);
         },
       }),
@@ -1224,7 +1214,6 @@ class ModularSynthApp {
         onInput: (value) => {
           this.state.filter.Q = value;
           this.selectedPresetId = "custom";
-          filterVisualization.update(this.state.filter);
           this.engine.updateFilter(this.state.filter);
         },
       }),
@@ -1274,8 +1263,6 @@ class ModularSynthApp {
 
       const controls = document.createElement("div");
       controls.className = "module-grid";
-      const ampEnvVisualization = this.createEnvelopeVisualization(this.state.envelope, "env");
-      ampCard.append(ampEnvVisualization.element);
 
       ["attack", "decay", "sustain", "release"].forEach((key) => {
         controls.append(
@@ -1291,7 +1278,6 @@ class ModularSynthApp {
             onInput: (value) => {
               this.state.envelope[key] = value;
               this.selectedPresetId = "custom";
-              ampEnvVisualization.update(this.state.envelope);
               this.engine.updateEnvelope(this.state.envelope);
             },
           }),
@@ -1332,8 +1318,6 @@ class ModularSynthApp {
 
     const modControls = document.createElement("div");
     modControls.className = "module-grid";
-    const modEnvVisualization = this.createEnvelopeVisualization(this.state.modEnvelope, "env");
-    modCard.append(modEnvVisualization.element);
 
     ["attack", "decay", "sustain", "release"].forEach((key) => {
       modControls.append(
@@ -1348,7 +1332,6 @@ class ModularSynthApp {
           onInput: (value) => {
             this.state.modEnvelope[key] = value;
             this.selectedPresetId = "custom";
-            modEnvVisualization.update(this.state.modEnvelope);
             this.engine.updateModEnvelope(this.state.modEnvelope);
           },
         }),
@@ -2005,330 +1988,6 @@ class ModularSynthApp {
   }
 
   /* -------------------------------------------------------------------------- */
-  /* 可视化创建                                                                 */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 创建包络可视化
-   * 显示 ADSR 曲线，支持动态更新
-   * @param {Object} envelopeState - 包络状态
-   * @param {string} accent - 强调色
-   * @returns {Object} - 包含元素和更新函数的对象
-   */
-  createEnvelopeVisualization(envelopeState, accent = "env") {
-    const wrap = document.createElement("div");
-    wrap.className = "module-visual envelope-visual";
-    wrap.style.setProperty("--accent", `var(--${accent})`);
-
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 220 90");
-
-    const config = {
-      left: 16,
-      right: 204,
-      top: 14,
-      floor: 76,
-      labelY: 86,
-    };
-
-    const grid = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    grid.setAttribute("fill", "none");
-    grid.setAttribute("stroke", "currentColor");
-    grid.setAttribute("stroke-opacity", "0.12");
-    grid.setAttribute("stroke-width", "1");
-
-    const area = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    area.setAttribute("fill", "currentColor");
-    area.setAttribute("opacity", "0.16");
-
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    line.setAttribute("fill", "none");
-    line.setAttribute("stroke", "currentColor");
-    line.setAttribute("stroke-width", "2.2");
-    line.setAttribute("stroke-linecap", "round");
-    line.setAttribute("stroke-linejoin", "round");
-
-    const phaseLabels = ["A", "D", "S", "R"].map((text, index) => {
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      label.setAttribute("y", "12");
-      label.setAttribute("text-anchor", "middle");
-      label.setAttribute("font-size", "9");
-      label.setAttribute("font-weight", "600");
-      label.setAttribute("fill", "currentColor");
-      label.setAttribute("opacity", "0.5");
-      label.textContent = text;
-      return label;
-    });
-
-    const valueLabels = [0, 1, 2, 3].map(() => {
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      label.setAttribute("y", String(config.labelY));
-      label.setAttribute("text-anchor", "middle");
-      label.setAttribute("font-size", "8");
-      label.setAttribute("fill", "currentColor");
-      label.setAttribute("opacity", "0.6");
-      return label;
-    });
-
-    const update = (state) => {
-      const attack = Math.max(0.001, Number(state.attack || 0.01));
-      const decay = Math.max(0.001, Number(state.decay || 0.2));
-      const sustain = clamp(Number(state.sustain || 0.5), 0, 1);
-      const release = Math.max(0.001, Number(state.release || 0.4));
-
-      const sustainDuration = Math.max(attack + decay, 0.1) * 0.8;
-      const total = attack + decay + sustainDuration + release;
-
-      const width = config.right - config.left;
-      const height = config.floor - config.top;
-
-      const xA = config.left;
-      const xPeak = config.left + (attack / total) * width;
-      const xSustainStart = xPeak + (decay / total) * width;
-      const xSustainEnd = config.left + ((attack + decay + sustainDuration) / total) * width;
-      const xR = config.right;
-
-      const yPeak = config.top;
-      const ySustain = config.floor - sustain * height;
-      const yFloor = config.floor;
-
-      const pathD = [
-        `M ${xA} ${yFloor}`,
-        `L ${xPeak} ${yPeak}`,
-        `L ${xSustainStart} ${ySustain}`,
-        `L ${xSustainEnd} ${ySustain}`,
-        `L ${xR} ${yFloor}`,
-      ].join(" ");
-
-      const fillD = `${pathD} L ${config.right} ${config.floor + 4} L ${config.left} ${config.floor + 4} Z`;
-
-      const gridD = [
-        `M ${config.left} ${yFloor} H ${config.right}`,
-        `M ${config.left} ${ySustain} H ${config.right}`,
-        `M ${config.left} ${yPeak} H ${config.right}`,
-      ].join(" ");
-
-      line.setAttribute("d", pathD);
-      area.setAttribute("d", fillD);
-      grid.setAttribute("d", gridD);
-
-      const labelPositions = [
-        (xA + xPeak) / 2,
-        (xPeak + xSustainStart) / 2,
-        (xSustainStart + xSustainEnd) / 2,
-        (xSustainEnd + xR) / 2,
-      ];
-
-      phaseLabels.forEach((label, i) => {
-        label.setAttribute("x", String(labelPositions[i]));
-      });
-
-      const values = [
-        formatSeconds(attack),
-        formatSeconds(decay),
-        `${Math.round(sustain * 100)}%`,
-        formatSeconds(release),
-      ];
-      valueLabels.forEach((label, i) => {
-        label.setAttribute("x", String(labelPositions[i]));
-        label.textContent = values[i];
-      });
-
-      wrap.style.opacity = state.enabled === false ? "0.42" : "1";
-    };
-
-    svg.append(grid, area, line, ...phaseLabels, ...valueLabels);
-    wrap.append(svg);
-    update(envelopeState);
-    return { element: wrap, update };
-  }
-
-  /**
-   * 创建滤波器可视化
-   * 显示滤波器响应曲线，支持动态更新
-   * @param {Object} filterState - 滤波器状态
-   * @returns {Object} - 包含元素和更新函数的对象
-   */
-  createFilterVisualization(filterState) {
-    const wrap = document.createElement("div");
-    wrap.className = "module-visual filter-visual";
-    wrap.style.setProperty("--accent", "var(--filter)");
-
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 220 90");
-
-    const config = {
-      left: 16,
-      right: 204,
-      top: 14,
-      floor: 76,
-      plateau: 48,
-    };
-
-    const grid = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    grid.setAttribute("fill", "none");
-    grid.setAttribute("stroke", "currentColor");
-    grid.setAttribute("stroke-opacity", "0.12");
-    grid.setAttribute("stroke-width", "1");
-
-    const area = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    area.setAttribute("fill", "currentColor");
-    area.setAttribute("opacity", "0.16");
-
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    line.setAttribute("fill", "none");
-    line.setAttribute("stroke", "currentColor");
-    line.setAttribute("stroke-width", "2.2");
-    line.setAttribute("stroke-linecap", "round");
-    line.setAttribute("stroke-linejoin", "round");
-
-    const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    marker.setAttribute("r", "3.5");
-    marker.setAttribute("fill", "currentColor");
-
-    const markerRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    markerRing.setAttribute("r", "6");
-    markerRing.setAttribute("fill", "none");
-    markerRing.setAttribute("stroke", "currentColor");
-    markerRing.setAttribute("stroke-opacity", "0.3");
-    markerRing.setAttribute("stroke-width", "1.4");
-
-    const freqLabels = ["20", "100", "1k", "10k"].map((text, index) => {
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      const freqLog = Math.log10([20, 100, 1000, 10000][index]);
-      const minLog = Math.log10(20);
-      const maxLog = Math.log10(12000);
-      const x = config.left + ((freqLog - minLog) / (maxLog - minLog)) * (config.right - config.left);
-      label.setAttribute("x", String(x));
-      label.setAttribute("y", "88");
-      label.setAttribute("text-anchor", "middle");
-      label.setAttribute("font-size", "7");
-      label.setAttribute("fill", "currentColor");
-      label.setAttribute("opacity", "0.4");
-      label.textContent = text;
-      return label;
-    });
-
-    const typeLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    typeLabel.setAttribute("x", String(config.left));
-    typeLabel.setAttribute("y", "12");
-    typeLabel.setAttribute("font-size", "8");
-    typeLabel.setAttribute("font-weight", "600");
-    typeLabel.setAttribute("fill", "currentColor");
-    typeLabel.setAttribute("opacity", "0.6");
-
-    const infoLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    infoLabel.setAttribute("x", String(config.right));
-    infoLabel.setAttribute("y", "12");
-    infoLabel.setAttribute("text-anchor", "end");
-    infoLabel.setAttribute("font-size", "8");
-    infoLabel.setAttribute("fill", "currentColor");
-    infoLabel.setAttribute("opacity", "0.5");
-
-    const update = (state) => {
-      const type = state.type || "lowpass";
-      const frequency = Math.max(20, Number(state.frequency || 1000));
-      const Q = Math.max(0.1, Number(state.Q || 1));
-      const rolloff = Number(state.rolloff || -24);
-
-      const minLog = Math.log10(20);
-      const maxLog = Math.log10(12000);
-      const cutoffNorm = clamp((Math.log10(frequency) - minLog) / (maxLog - minLog), 0, 1);
-      const cutoffX = config.left + cutoffNorm * (config.right - config.left);
-
-      const resonance = clamp(Q / 20, 0, 1);
-      const slopeFactor = clamp(Math.abs(rolloff) / 48, 0.3, 1);
-      const bumpHeight = resonance * 20;
-
-      const width = config.right - config.left;
-      const shoulder = (1 - slopeFactor) * 30 + 10;
-      const halfShoulder = shoulder / 2;
-
-      let pathD;
-      let fillD;
-      let markerY = config.plateau;
-
-      const safeLeft = Math.max(config.left, cutoffX - shoulder);
-      const safeRight = Math.min(config.right, cutoffX + shoulder);
-
-      if (type === "highpass") {
-        const peakY = config.plateau - bumpHeight;
-        markerY = peakY;
-        pathD = [
-          `M ${config.left} ${config.floor}`,
-          `L ${safeLeft} ${config.floor}`,
-          `Q ${cutoffX - halfShoulder * 0.5} ${config.floor} ${cutoffX - halfShoulder * 0.3} ${(config.floor + peakY) / 2}`,
-          `Q ${cutoffX - halfShoulder * 0.1} ${peakY} ${cutoffX} ${peakY}`,
-          `L ${safeRight} ${config.plateau}`,
-          `L ${config.right} ${config.plateau}`,
-        ].join(" ");
-        fillD = `${pathD} L ${config.right} ${config.floor + 4} L ${config.left} ${config.floor + 4} Z`;
-      } else if (type === "bandpass") {
-        const bandWidth = Math.max(15, 40 - slopeFactor * 20);
-        const peakY = config.top + 5 + (1 - resonance) * 10;
-        markerY = peakY;
-        const leftEdge = Math.max(config.left, cutoffX - bandWidth);
-        const rightEdge = Math.min(config.right, cutoffX + bandWidth);
-        pathD = [
-          `M ${config.left} ${config.floor}`,
-          `L ${leftEdge} ${config.floor}`,
-          `Q ${(leftEdge + cutoffX) / 2} ${config.floor} ${cutoffX} ${peakY}`,
-          `Q ${(rightEdge + cutoffX) / 2} ${config.floor} ${rightEdge} ${config.floor}`,
-          `L ${config.right} ${config.floor}`,
-        ].join(" ");
-        fillD = `${pathD} L ${config.right} ${config.floor + 4} L ${config.left} ${config.floor + 4} Z`;
-      } else if (type === "notch") {
-        const notchWidth = Math.max(10, 25 - slopeFactor * 12);
-        const notchDepth = 15 + resonance * 15;
-        markerY = Math.min(config.floor, config.plateau + notchDepth);
-        const leftEdge = Math.max(config.left, cutoffX - notchWidth);
-        const rightEdge = Math.min(config.right, cutoffX + notchWidth);
-        pathD = [
-          `M ${config.left} ${config.plateau}`,
-          `L ${leftEdge} ${config.plateau}`,
-          `Q ${(leftEdge + cutoffX) / 2} ${config.plateau} ${cutoffX} ${markerY}`,
-          `Q ${(rightEdge + cutoffX) / 2} ${config.plateau} ${rightEdge} ${config.plateau}`,
-          `L ${config.right} ${config.plateau}`,
-        ].join(" ");
-        fillD = `${pathD} L ${config.right} ${config.floor + 4} L ${config.left} ${config.floor + 4} Z`;
-      } else {
-        const peakY = config.plateau - bumpHeight;
-        markerY = peakY;
-        pathD = [
-          `M ${config.left} ${config.plateau}`,
-          `L ${safeLeft} ${config.plateau}`,
-          `Q ${cutoffX - halfShoulder * 0.3} ${config.plateau} ${cutoffX - halfShoulder * 0.1} ${(config.plateau + peakY) / 2}`,
-          `Q ${cutoffX} ${peakY} ${cutoffX + halfShoulder * 0.3} ${(config.plateau + config.floor) / 2}`,
-          `L ${safeRight} ${config.floor}`,
-          `L ${config.right} ${config.floor}`,
-        ].join(" ");
-        fillD = `${pathD} L ${config.right} ${config.floor + 4} L ${config.left} ${config.floor + 4} Z`;
-      }
-
-      const gridD = `M ${config.left} ${config.floor} H ${config.right} M ${config.left} ${config.plateau} H ${config.right} M ${config.left} ${config.top} H ${config.right}`;
-
-      line.setAttribute("d", pathD);
-      area.setAttribute("d", fillD);
-      grid.setAttribute("d", gridD);
-      marker.setAttribute("cx", String(cutoffX));
-      marker.setAttribute("cy", String(markerY));
-      markerRing.setAttribute("cx", String(cutoffX));
-      markerRing.setAttribute("cy", String(markerY));
-
-      const typeNames = { lowpass: "LP", highpass: "HP", bandpass: "BP", notch: "NT" };
-      typeLabel.textContent = typeNames[type] || "LP";
-      infoLabel.textContent = `${formatFrequency(frequency)} Q:${Q.toFixed(1)} ${rolloff}dB`;
-
-      wrap.style.opacity = state.enabled === false ? "0.42" : "1";
-    };
-
-    svg.append(grid, area, line, markerRing, marker, ...freqLabels, typeLabel, infoLabel);
-    wrap.append(svg);
-    update(filterState);
-    return { element: wrap, update };
-  }
-
-  /* -------------------------------------------------------------------------- */
   /* 控件创建                                                                   */
   /* -------------------------------------------------------------------------- */
 
@@ -2843,7 +2502,6 @@ class ModularSynthApp {
     );
     this.state.filter.Q = clamp(this.state.filter.Q + delta * 5, 0.001, 20);
 
-    this.filterVisualizationBinding?.(this.state.filter);
     this.engine.updateFilter(this.state.filter);
     this.syncControlsFromState();
   }
