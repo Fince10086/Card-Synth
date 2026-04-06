@@ -18,53 +18,54 @@
 
 class ModularSynthApp {
   constructor() {
-    // state 是 UI 与音频引擎共享的唯一数据源
     this.state = createBasePreset();
     this.engine = new AudioEngine();
     this.selectedPresetId = "init";
     this.audioBooted = false;
 
-    // 键盘和指针输入状态
-    this.heldComputerKeys = new Map();
     this.heldPointerNotes = new Set();
-    this.activeNoteRefs = new Map();
 
-    // 控件绑定映射
     this.controlBindings = new Map();
 
-    // 性能控制参数
     this.performance = {
       morphA: "init",
       morphB: "fmBell",
       morph: 0,
     };
 
-    // 示波器缩放参数
     this.scopeZoom = {
       horizontal: 1,
       vertical: 1,
     };
 
-    // MIDI 状态
-    this.midi = {
-      supported: typeof navigator !== "undefined" && "requestMIDIAccess" in navigator,
-      access: null,
-      inputs: [],
-      selectedInputId: "",
-      status: "MIDI idle",
-      activeNotes: new Map(),
-    };
+    this.inputManager = new InputManager({
+      onAttack: (note, velocity) => this.engine.attack(note, velocity),
+      onRelease: (note) => this.engine.release(note),
+      onEnsureAudioStarted: () => this.ensureAudioStarted(),
+      onOctaveChange: (octave) => {
+        this.state.global.octave = octave;
+        this.renderKeyboard();
+      },
+      onVelocityChange: (velocity) => {
+        this.state.global.velocity = velocity;
+      },
+      onUpdateKeyboardKeyState: (key, active) => this.updateKeyboardKeyState(key, active),
+      onRenderGlobalStrip: () => this.renderGlobalStrip(),
+      getGlobalState: () => this.state.global,
+      getKeyboardElement: () => this.elements.keyboard,
+      getTransportInfoElement: () => this.elements.transportInfo,
+      onSetCustomPreset: () => {
+        this.selectedPresetId = "custom";
+      },
+    });
 
-    // 初始化
     this.cacheElements();
     this.bindEvents();
 
-    // 应用初始化时只构建界面与动画循环，不主动启动音频上下文
     this.renderAll();
     this.resizeScopeCanvas();
     this.drawOscilloscope();
 
-    // 监听窗口大小变化
     window.addEventListener("resize", () => {
       this.resizeScopeCanvas();
       this.layoutModuleMasonry();
@@ -124,7 +125,6 @@ class ModularSynthApp {
    * 绑定所有事件监听器
    */
   bindEvents() {
-    // 所有可能的首次用户手势都尝试唤醒音频，兼容浏览器自动播放限制
     const wakeAudio = () => {
       this.ensureAudioStarted();
     };
@@ -132,8 +132,7 @@ class ModularSynthApp {
     document.addEventListener("pointerdown", wakeAudio, { passive: true });
     document.addEventListener("keydown", wakeAudio);
 
-    window.addEventListener("keydown", (event) => this.onKeyDown(event));
-    window.addEventListener("keyup", (event) => this.onKeyUp(event));
+    this.inputManager.bindEvents();
 
     this.populateAddModuleDropdown();
     this.elements.addModuleCard?.addEventListener("click", (e) => {
@@ -265,7 +264,7 @@ class ModularSynthApp {
     });
 
     this.elements.midiBtn?.addEventListener("click", () => {
-      this.requestMidiAccess();
+      this.inputManager.requestMidiAccess();
     });
 
     this.elements.masterFader?.addEventListener("input", (e) => {
@@ -330,10 +329,14 @@ class ModularSynthApp {
 
   updateMidiStatus() {
     if (this.elements.midiStatus) {
-      this.elements.midiStatus.textContent = this.midi.supported ? this.midi.status : "MIDI unsupported";
+      this.elements.midiStatus.textContent = this.inputManager.getMidiSupported()
+        ? this.inputManager.getMidiStatus()
+        : "MIDI unsupported";
     }
     if (this.elements.midiBtn) {
-      this.elements.midiBtn.textContent = this.midi.access ? "Refresh MIDI" : "Enable MIDI";
+      this.elements.midiBtn.textContent = this.inputManager.getMidiInputs().length > 0
+        ? "Refresh MIDI"
+        : "Enable MIDI";
     }
   }
 
@@ -584,7 +587,7 @@ class ModularSynthApp {
       ["global strip", () => this.renderGlobalStrip()],
       ["modules", () => this.renderModulesRack()],
       ["keyboard", () => this.renderKeyboard()],
-      ["transport", () => this.updateTransportInfo()],
+      ["transport", () => this.inputManager.updateTransportInfo()],
     ];
 
     for (const [label, task] of sections) {
@@ -1003,26 +1006,26 @@ class ModularSynthApp {
 
       key.addEventListener("pointerdown", async () => {
         await this.ensureAudioStarted();
-        this.pressNote(note);
+        this.inputManager.pressNote(note);
         this.heldPointerNotes.add(note);
         key.classList.add("active");
       });
 
       key.addEventListener("pointerup", () => {
-        this.releaseNote(note);
+        this.inputManager.releaseNote(note);
         this.heldPointerNotes.delete(note);
         key.classList.remove("active");
       });
 
       key.addEventListener("pointerleave", () => {
         if (this.heldPointerNotes.has(note)) {
-          this.releaseNote(note);
+          this.inputManager.releaseNote(note);
           this.heldPointerNotes.delete(note);
           key.classList.remove("active");
         }
       });
 
-      if (this.heldComputerKeys.has(entry.key)) {
+      if (this.inputManager.heldComputerKeys.has(entry.key)) {
         key.classList.add("active");
       }
 
@@ -1691,201 +1694,6 @@ class ModularSynthApp {
     this.setStatus("Randomized the current patch.", this.audioBooted ? "live" : "neutral");
   }
 
-  /* -------------------------------------------------------------------------- */
-  /* MIDI 支持                                                                  */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 请求 MIDI 访问权限
-   */
-  async requestMidiAccess() {
-    if (!this.midi.supported) {
-      this.midi.status = "Web MIDI unsupported";
-      this.renderGlobalStrip();
-      return;
-    }
-
-
-
-    this.midi.inputs = Array.from(this.midi.access.inputs.values());
-    if (!this.midi.inputs.length) {
-      this.midi.selectedInputId = "";
-      this.midi.status = "No MIDI inputs";
-      return;
-    }
-
-    if (!this.midi.inputs.some((input) => input.id === this.midi.selectedInputId)) {
-      this.midi.selectedInputId = this.midi.inputs[0].id;
-    }
-
-    this.selectMidiInput(this.midi.selectedInputId, false);
-  }
-
-  /**
-   * 选择 MIDI 输入设备
-   * @param {string} inputId - 输入设备ID
-   * @param {boolean} rerender - 是否重新渲染
-   */
-  selectMidiInput(inputId, rerender = true) {
-    this.midi.selectedInputId = inputId;
-    this.midi.inputs.forEach((input) => {
-      input.onmidimessage = input.id === inputId ? (event) => this.handleMidiMessage(event) : null;
-    });
-
-    const selected = this.midi.inputs.find((input) => input.id === inputId);
-    this.midi.status = selected ? `MIDI ${selected.name || selected.id}` : "No MIDI input";
-    if (rerender) {
-      this.renderGlobalStrip();
-    }
-  }
-
-  /**
-   * 处理 MIDI 消息
-   * 当前只处理音符开/关消息，控制器映射可以后续继续扩展
-   * @param {MIDIMessageEvent} event - MIDI 消息事件
-   */
-  async handleMidiMessage(event) {
-    const [status, data1, data2] = event.data;
-    const command = status & 0xf0;
-    const note = Tone.Frequency(data1, "midi").toNote();
-
-    if (command === 0x90 && data2 > 0) {
-      await this.ensureAudioStarted();
-      const velocity = clamp(data2 / 127, 0.05, 1);
-      this.midi.activeNotes.set(data1, note);
-      this.pressNote(note, velocity);
-      return;
-    }
-
-    if (command === 0x80 || (command === 0x90 && data2 === 0)) {
-      this.midi.activeNotes.delete(data1);
-      this.releaseNote(note);
-    }
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 传输信息更新                                                               */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 更新传输信息显示
-   */
-  updateTransportInfo() {
-    if (this.elements.transportInfo) {
-      this.elements.transportInfo.textContent = `Oct ${this.state.global.octave} / Vel ${Math.round(this.state.global.velocity * 100)}%`;
-    }
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 键盘输入处理                                                               */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 处理键盘按下事件
-   * 电脑键盘映射：A-K 演奏音高，Z/X 调整八度，C/V 调整默认力度
-   * @param {KeyboardEvent} event - 键盘事件
-   */
-  async onKeyDown(event) {
-    const targetTag = event.target?.tagName;
-    if (targetTag === "INPUT" || targetTag === "SELECT" || event.repeat) {
-      return;
-    }
-
-    const key = event.key.toLowerCase();
-    if (key === "z") {
-      this.state.global.octave = clamp(this.state.global.octave - 1, 1, 7);
-      this.selectedPresetId = "custom";
-      this.renderKeyboard();
-      this.updateTransportInfo();
-      return;
-    }
-    if (key === "x") {
-      this.state.global.octave = clamp(this.state.global.octave + 1, 1, 7);
-      this.selectedPresetId = "custom";
-      this.renderKeyboard();
-      this.updateTransportInfo();
-      return;
-    }
-    if (key === "c") {
-      this.state.global.velocity = clamp(Number((this.state.global.velocity - 0.05).toFixed(2)), 0.1, 1);
-      this.selectedPresetId = "custom";
-      this.updateTransportInfo();
-      return;
-    }
-    if (key === "v") {
-      this.state.global.velocity = clamp(Number((this.state.global.velocity + 0.05).toFixed(2)), 0.1, 1);
-      this.selectedPresetId = "custom";
-      this.updateTransportInfo();
-      return;
-    }
-
-    const entry = KEYBOARD_LAYOUT.find((item) => item.key === key);
-    if (!entry) {
-      return;
-    }
-
-    await this.ensureAudioStarted();
-    const note = noteFromOffset(this.state.global.octave, entry.offset);
-    if (!this.heldComputerKeys.has(key)) {
-      this.heldComputerKeys.set(key, note);
-      this.pressNote(note);
-      this.updateKeyboardKeyState(key, true);
-    }
-  }
-
-  /**
-   * 处理键盘释放事件
-   * @param {KeyboardEvent} event - 键盘事件
-   */
-  onKeyUp(event) {
-    const key = event.key.toLowerCase();
-    const note = this.heldComputerKeys.get(key);
-    if (!note) {
-      return;
-    }
-
-    this.heldComputerKeys.delete(key);
-    this.releaseNote(note);
-    this.updateKeyboardKeyState(key, false);
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 音符触发                                                                   */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 按下音符
-   * activeNoteRefs 是简单的引用计数器，用来处理多输入源重复按住同一个音的情况
-   * @param {string} note - 音符
-   * @param {number} velocity - 力度
-   */
-  pressNote(note, velocity = this.state.global.velocity) {
-    const count = this.activeNoteRefs.get(note) || 0;
-    this.activeNoteRefs.set(note, count + 1);
-    if (!count) {
-      this.engine.attack(note, velocity);
-    }
-  }
-
-  /**
-   * 释放音符
-   * @param {string} note - 音符
-   */
-  releaseNote(note) {
-    const count = this.activeNoteRefs.get(note) || 0;
-    if (count <= 1) {
-      this.activeNoteRefs.delete(note);
-      this.engine.release(note);
-      return;
-    }
-    this.activeNoteRefs.set(note, count - 1);
-  }
-
-  /**
-   * 更新键盘按键状态
-   * @param {string} boundKey - 绑定的键
-   * @param {boolean} active - 是否激活
-   */
   updateKeyboardKeyState(boundKey, active) {
     const visualKey = this.elements.keyboard.querySelector(`[data-key="${boundKey}"]`);
     if (!visualKey) {
