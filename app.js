@@ -1133,7 +1133,7 @@ class ModularSynthApp {
     if (index !== null) {
       const indexBadge = document.createElement("span");
       indexBadge.className = "module-index";
-      indexBadge.textContent = `#${index}`;
+      indexBadge.textContent = `${index}`;
       titleBlock.append(indexBadge);
     }
 
