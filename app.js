@@ -84,16 +84,13 @@ class ModularSynthApp {
       statusDot: document.getElementById("statusDot"),
       presetControls: document.getElementById("presetControls"),
       masterControls: document.getElementById("masterControls"),
-      sourceRack: document.getElementById("sourceRack"),
-      componentRack: document.getElementById("componentRack"),
-      effectRack: document.getElementById("effectRack"),
+      signalFlow: document.querySelector(".signal-flow"),
       addModuleCard: document.getElementById("addModuleCard"),
       addModuleDropdown: document.getElementById("addModuleDropdown"),
       keyboard: document.getElementById("virtualKeyboard"),
       oscilloscope: document.getElementById("oscilloscope"),
       presetFileInput: document.getElementById("presetFileInput"),
       transportInfo: document.getElementById("transportInfo"),
-      signalFlow: document.querySelector(".signal-flow"),
       scopeZoomInH: document.getElementById("scopeZoomInH"),
       scopeZoomOutH: document.getElementById("scopeZoomOutH"),
       scopeZoomInV: document.getElementById("scopeZoomInV"),
@@ -459,14 +456,13 @@ class ModularSynthApp {
     const options = getAddableModuleOptions();
 
     const groups = {
-      core: { title: "核心模块", items: [] },
       source: { title: "声源", items: [] },
       component: { title: "组件", items: [] },
       effect: { title: "效果器", items: [] },
     };
 
     options.forEach((option) => {
-      const kind = option.value.split(":")[0];
+      const kind = option.category;
       if (groups[kind]) {
         groups[kind].items.push(option);
       }
@@ -580,7 +576,7 @@ class ModularSynthApp {
 
   /**
    * 处理添加模块
-   * 根据下拉值把模块加回机架，并同步重建音频链
+   * 根据下拉值把模块添加到 modules 数组，并同步重建音频链
    * @param {string} value - 模块值 (如 "source:Oscillator", "component:Filter")
    */
   handleAddModule(value) {
@@ -588,17 +584,9 @@ class ModularSynthApp {
       return;
     }
 
-    const [kind, type] = value.split(":");
-    if (kind === "source") {
-      this.state.sources.push(createSourceModule(type));
-    } else if (kind === "component") {
-      this.state.components.push(createComponentModule(type));
-    } else if (kind === "effect") {
-      this.state.effects.push(createEffectModule(type));
-    } else {
-      return;
-    }
-
+    const [category, type] = value.split(":");
+    const newModule = createModule(category, type);
+    this.state.modules.push(newModule);
     this.selectedPresetId = "custom";
     this.renderAll();
     this.engine.fullSync(this.state);
@@ -619,9 +607,7 @@ class ModularSynthApp {
 
     const sections = [
       ["global strip", () => this.renderGlobalStrip()],
-      ["sources", () => this.renderSourceRack()],
-      ["components", () => this.renderComponentsRack()],
-      ["effects", () => this.renderEffectRack()],
+      ["modules", () => this.renderModulesRack()],
       ["keyboard", () => this.renderKeyboard()],
       ["transport", () => this.updateTransportInfo()],
     ];
@@ -713,65 +699,96 @@ class ModularSynthApp {
   }
 
   /* -------------------------------------------------------------------------- */
-  /* 声源机架渲染                                                               */
+  /* 统一模块渲染                                                               */
   /* -------------------------------------------------------------------------- */
 
   /**
-   * 渲染声源机架
-   * Source rack 负责把所有声源实例渲染成模块卡片
+   * 渲染所有模块到 signalFlow 容器
+   * 模块按编号顺序渲染，每个模块显示其编号
    */
-  renderSourceRack() {
-    if (!this.elements.sourceRack) {
+  renderModulesRack() {
+    const container = this.elements.signalFlow;
+    if (!container) {
       return;
     }
-    this.elements.sourceRack.innerHTML = "";
 
-    this.state.sources.forEach((module, index) => {
-      const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
-      const card = this.createModuleCard({
-        accent: definition.accent,
-        kicker: definition.tag,
-        title: module.type,
-        titleOptions: Object.keys(SOURCE_LIBRARY).map((type) => ({ label: type, value: type })),
-        onTitleChange: (value) => {
-          const replacement = createSourceModule(value);
-          replacement.id = module.id;
+    // 保留 addModuleCard，清空其他内容
+    const addCard = container.querySelector(".add-module-card");
+    container.innerHTML = "";
+    if (addCard) {
+      container.appendChild(addCard);
+    }
+
+    const modules = this.state.modules || [];
+    modules.forEach((module, index) => {
+      const card = this.renderModuleCard(module, index);
+      if (card) {
+        container.insertBefore(card, addCard);
+      }
+    });
+  }
+
+  /**
+   * 渲染单个模块卡片
+   * @param {Object} module - 模块对象
+   * @param {number} index - 模块索引
+   * @returns {HTMLElement} - 模块卡片元素
+   */
+  renderModuleCard(module, index) {
+    const definition = getModuleDefinition(module);
+    const accent = getModuleAccent(module);
+    const kicker = getModuleTag(module);
+
+    const card = this.createModuleCard({
+      accent,
+      kicker,
+      title: module.type,
+      titleOptions: this.getTitleOptions(module.category),
+      onTitleChange: (value) => {
+        const replacement = createModule(module.category, value);
+        replacement.id = module.id;
+        replacement.enabled = module.enabled;
+        if (module.category === "source") {
           replacement.volume = module.volume;
           replacement.pan = module.pan;
-          replacement.enabled = module.enabled;
-          this.state.sources[index] = replacement;
-          this.selectedPresetId = "custom";
-          this.renderAll();
-          this.engine.fullSync(this.state);
-        },
-        moduleRef: module.id,
-        enabled: module.enabled,
-        onToggleEnabled: () => {
-          module.enabled = !module.enabled;
-          this.selectedPresetId = "custom";
-          this.engine.updateSource(module);
-          this.renderAll();
-        },
-        onRemove: () => {
-          this.state.sources.splice(index, 1);
-          this.selectedPresetId = "custom";
-          this.renderAll();
-          this.engine.fullSync(this.state);
-        },
-        removable: true,
-      });
+        }
+        this.state.modules[index] = replacement;
+        this.selectedPresetId = "custom";
+        this.renderAll();
+        this.engine.fullSync(this.state);
+      },
+      moduleRef: module.id,
+      enabled: module.enabled,
+      onToggleEnabled: () => {
+        module.enabled = !module.enabled;
+        this.selectedPresetId = "custom";
+        this.engine.fullSync(this.state);
+        this.renderAll();
+      },
+      onRemove: () => {
+        this.state.modules.splice(index, 1);
+        this.selectedPresetId = "custom";
+        this.renderAll();
+        this.engine.fullSync(this.state);
+      },
+      removable: true,
+      index: index + 1,
+    });
 
-      const controls = document.createElement("div");
-      controls.className = "module-grid";
+    const controls = document.createElement("div");
+    controls.className = "module-grid";
+
+    // Source 模块显示音量和声像控件
+    if (module.category === "source") {
       controls.append(
         this.createRangeControl({
           label: "Level",
-          accent: definition.accent,
+          accent,
           min: -36,
           max: 6,
           step: 0.1,
           value: module.volume,
-          path: `sources.${index}.volume`,
+          path: `modules.${index}.volume`,
           formatter: formatDb,
           onInput: (value) => {
             module.volume = value;
@@ -781,12 +798,12 @@ class ModularSynthApp {
         }),
         this.createRangeControl({
           label: "Pan",
-          accent: definition.accent,
+          accent,
           min: -1,
           max: 1,
           step: 0.01,
           value: module.pan,
-          path: `sources.${index}.pan`,
+          path: `modules.${index}.pan`,
           formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}`,
           onInput: (value) => {
             module.pan = value;
@@ -808,23 +825,38 @@ class ModularSynthApp {
           }),
         );
       });
+    }
 
-      // 模块参数控件
-      definition.controls.forEach((control) => {
-        controls.append(
-          this.renderModuleControl(
-            module,
-            control,
-            () => this.engine.updateSource(module),
-            definition.accent,
-            `sources.${index}.${control.path}`,
-          ),
-        );
-      });
-
-      card.append(controls);
-      this.elements.sourceRack.append(card);
+    // 模块参数控件
+    definition.controls.forEach((control) => {
+      controls.append(
+        this.renderModuleControl(
+          module,
+          control,
+          () => this.engine.updateModule(module.id, module),
+          accent,
+          `modules.${index}.${control.path}`,
+        ),
+      );
     });
+
+    card.append(controls);
+    return card;
+  }
+
+  /**
+   * 获取标题选项
+   * @param {string} category - 模块类别
+   * @returns {Array} - 选项列表
+   */
+  getTitleOptions(category) {
+    if (category === "source") {
+      return Object.keys(SOURCE_LIBRARY).map((type) => ({ label: type, value: type }));
+    }
+    if (category === "effect") {
+      return Object.keys(EFFECT_LIBRARY).map((type) => ({ label: type, value: type }));
+    }
+    return Object.keys(COMPONENT_LIBRARY).map((type) => ({ label: type, value: type }));
   }
 
   /**
@@ -892,7 +924,7 @@ class ModularSynthApp {
     const dataUrl = await readFileAsDataUrl(file);
     setByPath(module, slot.path, dataUrl);
     setByPath(module, slot.namePath, file.name);
-    this.state.sources[index] = normalizeSourceModule(module);
+    this.state.modules[index] = normalizeSourceModule(module);
     this.selectedPresetId = "custom";
     this.renderAll();
     this.engine.fullSync(this.state);
@@ -948,144 +980,6 @@ class ModularSynthApp {
     row.append(fileName, trigger, input);
     wrapper.append(controlLabel, row);
     return wrapper;
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 组件机架渲染                                                               */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 渲染组件机架
-   * Component rack 用于串接压缩、增益、EQ、Filter、AmplitudeEnvelope 等工具型节点
-   */
-  renderComponentsRack() {
-    if (!this.elements.componentRack) {
-      return;
-    }
-    this.elements.componentRack.innerHTML = "";
-
-    this.state.components.forEach((module, index) => {
-      const definition = COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.Compressor;
-      const card = this.createModuleCard({
-        accent: definition.accent,
-        kicker: definition.tag,
-        title: module.type,
-        titleOptions: Object.keys(COMPONENT_LIBRARY).map((type) => ({ label: type, value: type })),
-        onTitleChange: (value) => {
-          const replacement = createComponentModule(value);
-          replacement.id = module.id;
-          replacement.enabled = module.enabled;
-          this.state.components[index] = replacement;
-          this.selectedPresetId = "custom";
-          this.renderAll();
-          this.engine.fullSync(this.state);
-        },
-        moduleRef: module.id,
-        enabled: module.enabled,
-        onToggleEnabled: () => {
-          module.enabled = !module.enabled;
-          this.selectedPresetId = "custom";
-          this.state.components[index] = module;
-          this.engine.fullSync(this.state);
-          this.renderAll();
-        },
-        onRemove: () => {
-          this.state.components.splice(index, 1);
-          this.selectedPresetId = "custom";
-          this.renderAll();
-          this.engine.fullSync(this.state);
-        },
-        removable: true,
-      });
-
-      const controls = document.createElement("div");
-      controls.className = "module-grid";
-
-      definition.controls.forEach((control) => {
-        controls.append(
-          this.renderModuleControl(
-            module,
-            control,
-            () => this.engine.updateComponent(module),
-            definition.accent,
-            `components.${index}.${control.path}`,
-          ),
-        );
-      });
-
-      card.append(controls);
-      this.elements.componentRack.append(card);
-    });
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 效果器机架渲染                                                             */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 渲染效果器机架
-   * Effect rack 用于串接带 wet/feedback 等空间与调制效果
-   */
-  renderEffectRack() {
-    if (!this.elements.effectRack) {
-      return;
-    }
-    this.elements.effectRack.innerHTML = "";
-
-    this.state.effects.forEach((module, index) => {
-      const definition = EFFECT_LIBRARY[module.type] || EFFECT_LIBRARY.Chorus;
-      const card = this.createModuleCard({
-        accent: definition.accent,
-        kicker: definition.tag,
-        title: module.type,
-        titleOptions: Object.keys(EFFECT_LIBRARY).map((type) => ({ label: type, value: type })),
-        onTitleChange: (value) => {
-          const replacement = createEffectModule(value);
-          replacement.id = module.id;
-          replacement.enabled = module.enabled;
-          this.state.effects[index] = replacement;
-          this.selectedPresetId = "custom";
-          this.renderAll();
-          this.engine.fullSync(this.state);
-        },
-        moduleRef: module.id,
-        enabled: module.enabled,
-        onToggleEnabled: () => {
-          module.enabled = !module.enabled;
-          this.selectedPresetId = "custom";
-          this.state.effects[index] = module;
-          this.engine.fullSync(this.state);
-          this.renderAll();
-        },
-        onRemove: () => {
-          this.state.effects.splice(index, 1);
-          this.selectedPresetId = "custom";
-          this.renderAll();
-          this.engine.fullSync(this.state);
-        },
-        removable: true,
-      });
-
-      const controls = document.createElement("div");
-      controls.className = "module-grid";
-
-      definition.controls.forEach((control) => {
-        controls.append(
-          this.renderModuleControl(
-            module,
-            control,
-            () => {
-              this.engine.updateEffect(module);
-            },
-            definition.accent,
-            `effects.${index}.${control.path}`,
-          ),
-        );
-      });
-
-      card.append(controls);
-      this.elements.effectRack.append(card);
-    });
   }
 
   /* -------------------------------------------------------------------------- */
@@ -1245,6 +1139,7 @@ class ModularSynthApp {
     moduleRef = null,
     enabled = true,
     onToggleEnabled = null,
+    index = null,
   }) {
     const card = document.createElement("section");
     card.className = "module-card";
@@ -1258,6 +1153,14 @@ class ModularSynthApp {
 
     const titleBlock = document.createElement("div");
     titleBlock.className = "module-title-row";
+
+    // 显示模块编号
+    if (index !== null) {
+      const indexBadge = document.createElement("span");
+      indexBadge.className = "module-index";
+      indexBadge.textContent = `#${index}`;
+      titleBlock.append(indexBadge);
+    }
 
     if (titleOptions && onTitleChange) {
       titleBlock.append(this.createTitleSelect({ accent, title, options: titleOptions, value: title, onChange: onTitleChange }));
@@ -1697,38 +1600,40 @@ class ModularSynthApp {
       return t < 0.5 ? deepClone(a) : deepClone(b);
     };
 
-    const blendModuleLists = (listA, listB, normalizer) => {
+    const blendModuleLists = (listA, listB) => {
       const max = Math.max(listA.length, listB.length);
       const output = [];
       for (let index = 0; index < max; index += 1) {
         const modA = listA[index];
         const modB = listB[index];
         if (!modA) {
-          output.push(normalizer(modB));
+          output.push(normalizeAnyModule(modB));
           continue;
         }
         if (!modB) {
-          output.push(normalizer(modA));
+          output.push(normalizeAnyModule(modA));
           continue;
         }
 
-        if (modA.type === modB.type) {
+        if (modA.type === modB.type && modA.category === modB.category) {
           const blended = blendObject(modA, modB);
           blended.id = createId("morph");
-          output.push(normalizer(blended));
+          blended.category = modA.category;
+          output.push(normalizeAnyModule(blended));
         } else {
           const chosen = t < 0.5 ? deepClone(modA) : deepClone(modB);
           chosen.id = createId("morph");
           if (
+            chosen.category === "source" &&
             typeof chosen.volume === "number" &&
             typeof (t < 0.5 ? modB.volume : modA.volume) === "number"
           ) {
             chosen.volume = blendNumbers(modA.volume ?? chosen.volume, modB.volume ?? chosen.volume);
           }
-          if (typeof chosen.pan === "number" && typeof (t < 0.5 ? modB.pan : modA.pan) === "number") {
+          if (chosen.category === "source" && typeof chosen.pan === "number" && typeof (t < 0.5 ? modB.pan : modA.pan) === "number") {
             chosen.pan = blendNumbers(modA.pan ?? chosen.pan, modB.pan ?? chosen.pan);
           }
-          output.push(normalizer(chosen));
+          output.push(normalizeAnyModule(chosen));
         }
       }
       return output;
@@ -1737,11 +1642,7 @@ class ModularSynthApp {
     return normalizePreset({
       name: `Morph ${presetA.name} / ${presetB.name}`,
       global: blendObject(presetA.global, presetB.global),
-      filter: blendObject(presetA.filter, presetB.filter),
-      envelope: blendObject(presetA.envelope, presetB.envelope),
-      sources: blendModuleLists(presetA.sources, presetB.sources, normalizeSourceModule),
-      components: blendModuleLists(presetA.components, presetB.components, normalizeComponentModule),
-      effects: blendModuleLists(presetA.effects, presetB.effects, normalizeEffectModule),
+      modules: blendModuleLists(presetA.modules || [], presetB.modules || []),
     });
   }
 
@@ -1799,18 +1700,15 @@ class ModularSynthApp {
     this.state.global.volume = randomRange(-16, -4, 0.1);
     this.state.global.velocity = randomRange(0.55, 1, 0.01);
 
-    this.state.sources.forEach((module) => {
-      module.volume = randomRange(-18, -4, 0.1);
-      module.pan = randomRange(-0.45, 0.45, 0.01);
-      applyDefinitionRandomness(module, SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator);
+    const modules = this.state.modules || [];
+    modules.forEach((module) => {
+      const definition = getModuleDefinition(module);
+      if (module.category === "source") {
+        module.volume = randomRange(-18, -4, 0.1);
+        module.pan = randomRange(-0.45, 0.45, 0.01);
+      }
+      applyDefinitionRandomness(module, definition);
     });
-
-    this.state.components.forEach((module) =>
-      applyDefinitionRandomness(module, COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.Compressor),
-    );
-    this.state.effects.forEach((module) =>
-      applyDefinitionRandomness(module, EFFECT_LIBRARY[module.type] || EFFECT_LIBRARY.Chorus),
-    );
 
     this.selectedPresetId = "custom";
     this.resetPerformanceControls();

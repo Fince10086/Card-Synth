@@ -7,7 +7,6 @@
  * - 深拷贝和深合并工具
  * - 数值钳制工具
  * - 路径访问工具
- * - 调制目标收集器
  * - 模块工厂函数
  * - 预设标准化函数
  * - 音频工具函数
@@ -30,12 +29,19 @@ function createId(prefix) {
   return id;
 }
 
+/**
+ * 重置模块计数器
+ */
+function resetModuleCounter() {
+  moduleCounter = 1;
+}
+
 /* -------------------------------------------------------------------------- */
 /* 深拷贝和深合并工具                                                         */
 /* -------------------------------------------------------------------------- */
 
 /**
- * 深拷贝只用于可 JSON 化的数据结构，避免直接共享对象引用
+ * 深拷贝只用于可 JSON 化的数据结构
  * @param {*} value - 要拷贝的值
  * @returns {*} - 拷贝后的值
  */
@@ -57,7 +63,7 @@ function isObject(value) {
 }
 
 /**
- * 深合并用于把用户导入的 preset 补成完整结构，同时保留已有字段
+ * 深合并用于把用户导入的 preset 补成完整结构
  * @param {*} base - 基础对象
  * @param {*} override - 覆盖对象
  * @returns {*} - 合并后的对象
@@ -94,7 +100,7 @@ function deepMerge(base, override) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * 数值钳制工具，避免 UI 和调制系统把参数推到非法范围之外
+ * 数值钳制工具
  * @param {number} value - 要钳制的值
  * @param {number} min - 最小值
  * @param {number} max - 最大值
@@ -109,7 +115,7 @@ function clamp(value, min, max) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * 通过 "a.b.c" 的路径读取深层字段
+ * 通过路径读取深层字段
  * @param {Object} object - 目标对象
  * @param {string} path - 路径字符串
  * @returns {*} - 找到的值
@@ -119,7 +125,7 @@ function getByPath(object, path) {
 }
 
 /**
- * 通过路径写入深层字段，如果中间层不存在则自动补对象
+ * 通过路径写入深层字段
  * @param {Object} object - 目标对象
  * @param {string} path - 路径字符串
  * @param {*} value - 要写入的值
@@ -144,7 +150,7 @@ function setByPath(object, path, value) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * 根据基础八度和键位偏移，生成 Tone.js 可识别的音名
+ * 根据基础八度和键位偏移，生成音名
  * @param {number} baseOctave - 基础八度
  * @param {number} offset - 半音偏移
  * @returns {string} - 音名
@@ -183,9 +189,11 @@ function createSourceModule(type = "Oscillator") {
   return {
     id: createId("src"),
     type,
+    category: "source",
     enabled: true,
     volume: -8,
     pan: 0,
+    index: moduleCounter - 1,
     ...(definition.moduleDefaults ? deepClone(definition.moduleDefaults) : {}),
     options: deepClone(definition.options),
   };
@@ -201,7 +209,9 @@ function createEffectModule(type = "Chorus") {
   return {
     id: createId("fx"),
     type,
+    category: "effect",
     enabled: true,
+    index: moduleCounter - 1,
     options: deepClone(definition.options),
   };
 }
@@ -216,9 +226,27 @@ function createComponentModule(type = "Compressor") {
   return {
     id: createId("cmp"),
     type,
+    category: "component",
     enabled: true,
+    index: moduleCounter - 1,
     options: deepClone(definition.options),
   };
+}
+
+/**
+ * 创建模块实例（统一入口）
+ * @param {string} category - 模块类别 (source/component/effect)
+ * @param {string} type - 模块类型
+ * @returns {Object} - 模块实例
+ */
+function createModule(category, type) {
+  if (category === "source") {
+    return createSourceModule(type);
+  }
+  if (category === "effect") {
+    return createEffectModule(type);
+  }
+  return createComponentModule(type);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -227,23 +255,24 @@ function createComponentModule(type = "Compressor") {
 
 /**
  * 获取可添加模块选项列表
- * 用于顶部 "Add Module" 下拉菜单
  * @returns {Array} - 模块选项列表
  */
 function getAddableModuleOptions() {
   return [
-    { value: "core:lfo", label: "Core / LFO" },
     ...Object.keys(SOURCE_LIBRARY).map((type) => ({
       value: `source:${type}`,
       label: `OSC / ${type}`,
+      category: "source",
     })),
     ...Object.keys(COMPONENT_LIBRARY).map((type) => ({
       value: `component:${type}`,
       label: `Component / ${type}`,
+      category: "component",
     })),
     ...Object.keys(EFFECT_LIBRARY).map((type) => ({
       value: `effect:${type}`,
       label: `Effect / ${type}`,
+      category: "effect",
     })),
   ];
 }
@@ -253,15 +282,28 @@ function getAddableModuleOptions() {
 /* -------------------------------------------------------------------------- */
 
 /**
+ * 标准化模块
+ * @param {Object} module - 模块对象
+ * @param {string} defaultCategory - 默认类别
+ * @param {Function} defaultCreator - 默认创建函数
+ * @returns {Object} - 标准化后的模块
+ */
+function normalizeModule(module, defaultCategory, defaultCreator) {
+  const base = defaultCreator(module?.type);
+  const merged = deepMerge(base, module || {});
+  merged.id = module?.id || base.id;
+  merged.category = module?.category || defaultCategory;
+  merged.index = module?.index ?? base.index;
+  return merged;
+}
+
+/**
  * 标准化声源模块
  * @param {Object} module - 声源模块
  * @returns {Object} - 标准化后的模块
  */
 function normalizeSourceModule(module) {
-  const base = createSourceModule(module?.type || "Oscillator");
-  const merged = deepMerge(base, module || {});
-  merged.id = module?.id || base.id;
-  return merged;
+  return normalizeModule(module, "source", (type) => createSourceModule(type || "Oscillator"));
 }
 
 /**
@@ -270,10 +312,7 @@ function normalizeSourceModule(module) {
  * @returns {Object} - 标准化后的模块
  */
 function normalizeEffectModule(module) {
-  const base = createEffectModule(module?.type || "Chorus");
-  const merged = deepMerge(base, module || {});
-  merged.id = module?.id || base.id;
-  return merged;
+  return normalizeModule(module, "effect", (type) => createEffectModule(type || "Chorus"));
 }
 
 /**
@@ -282,10 +321,23 @@ function normalizeEffectModule(module) {
  * @returns {Object} - 标准化后的模块
  */
 function normalizeComponentModule(module) {
-  const base = createComponentModule(module?.type || "Compressor");
-  const merged = deepMerge(base, module || {});
-  merged.id = module?.id || base.id;
-  return merged;
+  return normalizeModule(module, "component", (type) => createComponentModule(type || "Compressor"));
+}
+
+/**
+ * 标准化模块（统一入口）
+ * @param {Object} module - 模块对象
+ * @returns {Object} - 标准化后的模块
+ */
+function normalizeAnyModule(module) {
+  const category = module?.category || "component";
+  if (category === "source") {
+    return normalizeSourceModule(module);
+  }
+  if (category === "effect") {
+    return normalizeEffectModule(module);
+  }
+  return normalizeComponentModule(module);
 }
 
 /**
@@ -298,34 +350,41 @@ function createBasePreset() {
 
 /**
  * 标准化预设
- * 把任意导入预设、内置预设或半成品状态统一整形成稳定结构
+ * 支持新格式（modules 数组）和旧格式（sources/components/effects）
  * @param {Object} preset - 预设对象
  * @returns {Object} - 标准化后的预设
  */
 function normalizePreset(preset = {}) {
+  // 重置计数器，确保每次标准化都从 1 开始
+  resetModuleCounter();
+
   const fallback = {
     name: "Untitled Patch",
     global: { volume: -8, octave: 4, velocity: 0.8, polyphony: 8 },
-    sources: [createSourceModule("Oscillator")],
-    components: [createComponentModule("Filter"), createComponentModule("AmplitudeEnvelope")],
-    effects: [createEffectModule("Chorus")],
+    modules: [],
   };
 
   const merged = deepMerge(fallback, preset);
 
-  merged.sources = Array.isArray(preset.sources)
-    ? preset.sources.map((module) => normalizeSourceModule(module))
-    : fallback.sources.map((module) => normalizeSourceModule(module));
-  merged.components = Array.isArray(preset.components)
-    ? preset.components.map((module) => normalizeComponentModule(module))
-    : fallback.components.map((module) => normalizeComponentModule(module));
-  merged.effects = Array.isArray(preset.effects)
-    ? preset.effects.map((module) => normalizeEffectModule(module))
-    : fallback.effects.map((module) => normalizeEffectModule(module));
+  // 标准化模块数组
+  if (Array.isArray(preset.modules) && preset.modules.length > 0) {
+    merged.modules = preset.modules.map((module) => normalizeAnyModule(module));
+  } else {
+    // 使用默认值
+    merged.modules = [
+      createSourceModule("Oscillator"),
+      createComponentModule("Filter"),
+      createComponentModule("AmplitudeEnvelope"),
+      createEffectModule("Chorus"),
+    ];
+  }
+
+  // 标准化全局参数
   merged.global.octave = clamp(Number(merged.global.octave || 4), 1, 7);
   merged.global.velocity = clamp(Number(merged.global.velocity || 0.8), 0.1, 1);
   merged.global.volume = clamp(Number(merged.global.volume || -8), -36, 6);
   merged.global.polyphony = clamp(Number(merged.global.polyphony || 8), 1, 10);
+
   return merged;
 }
 
@@ -355,7 +414,6 @@ function downloadJson(filename, data) {
 
 /**
  * 安全调用 Tone 节点的 set()
- * 避免空对象或不支持 set 的节点报错
  * @param {Object} target - Tone 节点
  * @param {Object} options - 设置选项
  */
@@ -434,7 +492,6 @@ function applyPlayersOptions(bank, options = {}) {
 
 /**
  * 参数平滑更新封装
- * Tone.Param 优先使用 rampTo，否则回退到直接赋值
  * @param {Object} param - Tone 参数
  * @param {number} value - 目标值
  * @param {number} time - 过渡时间
@@ -448,4 +505,43 @@ function rampParam(param, value, time = 0.12) {
   } else if ("value" in param) {
     param.value = value;
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 模块分类工具                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 获取模块定义
+ * @param {Object} module - 模块对象
+ * @returns {Object} - 模块定义
+ */
+function getModuleDefinition(module) {
+  if (module.category === "source" || SOURCE_LIBRARY[module.type]) {
+    return SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
+  }
+  if (module.category === "effect" || EFFECT_LIBRARY[module.type]) {
+    return EFFECT_LIBRARY[module.type] || EFFECT_LIBRARY.Chorus;
+  }
+  return COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.Compressor;
+}
+
+/**
+ * 获取模块强调色
+ * @param {Object} module - 模块对象
+ * @returns {string} - 强调色
+ */
+function getModuleAccent(module) {
+  const definition = getModuleDefinition(module);
+  return definition.accent || "component";
+}
+
+/**
+ * 获取模块标签
+ * @param {Object} module - 模块对象
+ * @returns {string} - 标签
+ */
+function getModuleTag(module) {
+  const definition = getModuleDefinition(module);
+  return definition.tag || "Module";
 }
