@@ -37,8 +37,6 @@ class ModularSynthApp {
       morphA: "init",
       morphB: "fmBell",
       morph: 0,
-      brightness: 0.5,
-      motion: 0.5,
     };
 
     // 示波器缩放参数
@@ -119,10 +117,6 @@ class ModularSynthApp {
       morphBSelect: document.getElementById("morphBSelect"),
       morphSlider: document.getElementById("morphSlider"),
       morphReadout: document.getElementById("morphReadout"),
-      brightnessSlider: document.getElementById("brightnessSlider"),
-      brightnessReadout: document.getElementById("brightnessReadout"),
-      motionSlider: document.getElementById("motionSlider"),
-      motionReadout: document.getElementById("motionReadout"),
       voicesSlider: document.getElementById("voicesSlider"),
       voicesReadout: document.getElementById("voicesReadout"),
     };
@@ -315,28 +309,6 @@ class ModularSynthApp {
       }
     });
 
-    this.elements.brightnessSlider?.addEventListener("input", (e) => {
-      const value = Number(e.target.value);
-      this.performance.brightness = value;
-      this.updateBrightnessReadout(value);
-      this.applyBrightnessMacro(value);
-      const shell = e.target.closest(".slider-shell");
-      if (shell) {
-        shell.style.setProperty("--percent", value.toString());
-      }
-    });
-
-    this.elements.motionSlider?.addEventListener("input", (e) => {
-      const value = Number(e.target.value);
-      this.performance.motion = value;
-      this.updateMotionReadout(value);
-      this.applyMotionMacro(value);
-      const shell = e.target.closest(".slider-shell");
-      if (shell) {
-        shell.style.setProperty("--percent", value.toString());
-      }
-    });
-
     this.elements.voicesSlider?.addEventListener("input", (e) => {
       const value = Number(e.target.value);
       this.state.global.polyphony = value;
@@ -349,7 +321,6 @@ class ModularSynthApp {
     this.updateMasterReadout(this.state.global.volume);
     this.updateMidiStatus();
     this.updateMorphControls();
-    this.updateMacroControls();
     this.updateVoicesReadout(this.state.global.polyphony);
   }
 
@@ -399,37 +370,6 @@ class ModularSynthApp {
     if (this.elements.morphSlider) {
       this.elements.morphSlider.value = String(value);
       const shell = this.elements.morphSlider.closest(".slider-shell");
-      if (shell) {
-        shell.style.setProperty("--percent", value.toString());
-      }
-    }
-  }
-
-  updateMacroControls() {
-    this.updateBrightnessReadout(this.performance.brightness);
-    this.updateMotionReadout(this.performance.motion);
-  }
-
-  updateBrightnessReadout(value) {
-    if (this.elements.brightnessReadout) {
-      this.elements.brightnessReadout.textContent = formatPercent(value);
-    }
-    if (this.elements.brightnessSlider) {
-      this.elements.brightnessSlider.value = String(value);
-      const shell = this.elements.brightnessSlider.closest(".slider-shell");
-      if (shell) {
-        shell.style.setProperty("--percent", value.toString());
-      }
-    }
-  }
-
-  updateMotionReadout(value) {
-    if (this.elements.motionReadout) {
-      this.elements.motionReadout.textContent = formatPercent(value);
-    }
-    if (this.elements.motionSlider) {
-      this.elements.motionSlider.value = String(value);
-      const shell = this.elements.motionSlider.closest(".slider-shell");
       if (shell) {
         shell.style.setProperty("--percent", value.toString());
       }
@@ -1903,8 +1843,6 @@ class ModularSynthApp {
    */
   resetPerformanceControls() {
     this.performance.morph = 0;
-    this.performance.brightness = 0.5;
-    this.performance.motion = 0.5;
   }
 
   /* -------------------------------------------------------------------------- */
@@ -2028,54 +1966,6 @@ class ModularSynthApp {
       `Morph ${Math.round(this.performance.morph * 100)}% between presets.`,
       this.audioBooted ? "live" : "neutral",
     );
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 宏控制                                                                     */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 应用亮度宏
-   * Brightness 宏优先映射到滤波器亮度感最强的两个参数：cutoff 与 Q
-   * @param {number} value - 亮度值
-   */
-  applyBrightnessMacro(value) {
-    const delta = value - this.performance.brightness;
-    this.performance.brightness = value;
-    this.selectedPresetId = "custom";
-
-    this.state.filter.frequency = clamp(
-      this.state.filter.frequency * Math.pow(2, delta * 2.4),
-      40,
-      12000,
-    );
-    this.state.filter.Q = clamp(this.state.filter.Q + delta * 5, 0.001, 20);
-
-    this.engine.updateFilter(this.state.filter);
-    this.syncControlsFromState();
-  }
-
-  /**
-   * 应用运动宏
-   * Motion 宏优先映射到 effect wet / feedback
-   * @param {number} value - 运动值
-   */
-  applyMotionMacro(value) {
-    const delta = value - this.performance.motion;
-    this.performance.motion = value;
-    this.selectedPresetId = "custom";
-
-    this.state.effects.forEach((module) => {
-      if (typeof module.options.wet === "number") {
-        module.options.wet = clamp(module.options.wet + delta * 0.35, 0, 1);
-      }
-      if (typeof module.options.feedback === "number") {
-        module.options.feedback = clamp(module.options.feedback + delta * 0.22, 0, 0.95);
-      }
-    });
-
-    this.state.effects.forEach((module) => this.engine.updateEffect(module));
-    this.syncControlsFromState();
   }
 
   /* -------------------------------------------------------------------------- */
