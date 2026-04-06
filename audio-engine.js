@@ -206,22 +206,12 @@ class AudioEngine {
       }
     }
 
-    // 检查从 Source 到目标之间是否有 AmpEnv
+    // 检查 Source 之后的整个信号链中是否有 AmpEnv
     let hasAmpEnvInPath = false;
-    if (targetIndex > sourceIndex) {
-      for (let i = sourceIndex + 1; i <= targetIndex; i++) {
-        if (ampEnvIndices.has(i)) {
-          hasAmpEnvInPath = true;
-          break;
-        }
-      }
-    } else {
-      // 如果没有目标模块，检查 Source 之后是否有 AmpEnv
-      for (let i = sourceIndex + 1; i < modules.length; i++) {
-        if (ampEnvIndices.has(i)) {
-          hasAmpEnvInPath = true;
-          break;
-        }
+    for (let i = sourceIndex + 1; i < modules.length; i++) {
+      if (ampEnvIndices.has(i)) {
+        hasAmpEnvInPath = true;
+        break;
       }
     }
 
