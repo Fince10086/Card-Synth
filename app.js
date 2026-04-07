@@ -1367,19 +1367,23 @@ class ModularSynthApp {
     let targetCard = null;
     let targetIndex = -1;
 
-    // 遍历查找鼠标悬停的目标卡片
-    // 判断规则：鼠标 X 坐标 < 卡片中心 X 坐标，则插入到该卡片前面
+    // 遍历查找鼠标所在位置的卡片
+    // 判断规则：鼠标在卡片矩形范围内，则插入到该卡片前面
     for (let i = 0; i < moduleCards.length; i++) {
-      const targetRect = moduleCards[i].getBoundingClientRect();
-      const centerX = targetRect.left + targetRect.width / 2;
-      if (event.clientX < centerX) {
+      const rect = moduleCards[i].getBoundingClientRect();
+      if (
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+      ) {
         targetCard = moduleCards[i];
         targetIndex = i;
         break;
       }
     }
 
-    // 如果鼠标在所有卡片右侧，则插入到最后
+    // 如果鼠标不在任何卡片范围内，则插入到最后
     if (targetIndex === -1 && moduleCards.length > 0) {
       targetCard = moduleCards[moduleCards.length - 1];
       targetIndex = moduleCards.length;
