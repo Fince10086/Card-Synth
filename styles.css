@@ -449,6 +449,26 @@ select {
   background: var(--disabled);
 }
 
+.module-card.dragging {
+  position: fixed;
+  opacity: 0.9;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.drag-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #8a8a8a;
+  border-radius: 2px;
+  z-index: 100;
+  pointer-events: none;
+}
+
 .module-grid {
   display: grid;
   grid-template-columns: 1fr;

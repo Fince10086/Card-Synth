@@ -36,6 +36,21 @@ class ModularSynthApp {
       vertical: 1,
     };
 
+    this.dragState = {
+      isDragging: false,
+      isDragStarted: false,
+      hasPointerCapture: false,
+      dragCard: null,
+      dragIndex: -1,
+      pointerId: 0,
+      indicator: null,
+      startX: 0,
+      startY: 0,
+      offsetX: 0,
+      offsetY: 0,
+      placeholder: null,
+    };
+
     this.inputManager = new InputManager({
       onAttack: (note, velocity) => this.engine.attack(note, velocity),
       onRelease: (note) => this.engine.release(note),
@@ -1210,6 +1225,9 @@ class ModularSynthApp {
       if (onToggleEnabled) {
         indexBadge.addEventListener("click", onToggleEnabled);
       }
+      indexBadge.addEventListener("pointerdown", (e) => {
+        this.initModuleDrag(e, card, index - 1);
+      });
       head.append(indexBadge);
     }
 
@@ -1233,6 +1251,234 @@ class ModularSynthApp {
     card.append(head);
 
     return card;
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* 模块拖拽排序                                                               */
+  /* -------------------------------------------------------------------------- */
+
+  /**
+   * 初始化模块拖拽
+   * @param {PointerEvent} event - pointerdown 事件
+   * @param {HTMLElement} card - 被拖拽的卡片元素
+   * @param {number} moduleIndex - 模块在数组中的索引
+   */
+  initModuleDrag(event, card, moduleIndex) {
+    const modules = this.state.modules || [];
+    if (modules.length <= 1) {
+      return;
+    }
+
+    const rect = card.getBoundingClientRect();
+    this.dragState = {
+      isDragging: false,
+      isDragStarted: false,
+      hasPointerCapture: false,
+      dragCard: card,
+      dragIndex: moduleIndex,
+      pointerId: event.pointerId,
+      indicator: null,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      originalRect: rect,
+      targetIndex: -1,
+    };
+
+    card.addEventListener("pointermove", this.handleDragMove.bind(this));
+    card.addEventListener("pointerup", this.handleDragEnd.bind(this));
+    card.addEventListener("pointercancel", this.handleDragEnd.bind(this));
+  }
+
+  /**
+   * 处理拖拽移动
+   * @param {PointerEvent} event - pointermove 事件
+   */
+  handleDragMove(event) {
+    if (!this.dragState.dragCard) {
+      return;
+    }
+
+    const card = this.dragState.dragCard;
+    const dx = event.clientX - this.dragState.startX;
+    const dy = event.clientY - this.dragState.startY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (!this.dragState.isDragStarted) {
+      if (distance < 5) {
+        return;
+      }
+      this.dragState.isDragStarted = true;
+      this.dragState.isDragging = true;
+      card.setPointerCapture(this.dragState.pointerId);
+      this.dragState.hasPointerCapture = true;
+    }
+
+    const container = this.elements.signalFlow;
+
+    card.classList.add("dragging");
+    card.style.left = `${event.clientX - this.dragState.offsetX}px`;
+    card.style.top = `${event.clientY - this.dragState.offsetY}px`;
+
+    const containerRect = container.getBoundingClientRect();
+    const isOutsideContainer =
+      event.clientX < containerRect.left ||
+      event.clientX > containerRect.right ||
+      event.clientY < containerRect.top ||
+      event.clientY > containerRect.bottom;
+
+    if (isOutsideContainer) {
+      this.removeDragIndicator();
+      this.dragState.targetIndex = -1;
+      return;
+    }
+
+    const moduleCards = [...container.querySelectorAll(".module-card:not(.dragging)")];
+    let targetCard = null;
+    let targetIndex = -1;
+
+    for (let i = 0; i < moduleCards.length; i++) {
+      const targetRect = moduleCards[i].getBoundingClientRect();
+      const centerX = targetRect.left + targetRect.width / 2;
+      if (event.clientX < centerX) {
+        targetCard = moduleCards[i];
+        targetIndex = i;
+        break;
+      }
+    }
+
+    if (targetIndex === -1 && moduleCards.length > 0) {
+      targetCard = moduleCards[moduleCards.length - 1];
+      targetIndex = moduleCards.length;
+    }
+
+    this.dragState.targetIndex = targetIndex;
+    this.updateDragIndicator(targetCard, targetIndex);
+  }
+
+  /**
+   * 更新拖拽指示线位置
+   * @param {HTMLElement} targetCard - 目标卡片元素
+   * @param {number} targetIndex - 目标索引
+   */
+  updateDragIndicator(targetCard, targetIndex) {
+    if (!targetCard && targetIndex !== this.state.modules.length) {
+      this.removeDragIndicator();
+      return;
+    }
+
+    if (!this.dragState.indicator) {
+      this.dragState.indicator = document.createElement("div");
+      this.dragState.indicator.className = "drag-indicator";
+      this.elements.signalFlow.appendChild(this.dragState.indicator);
+    }
+
+    const container = this.elements.signalFlow;
+    const containerRect = container.getBoundingClientRect();
+
+    if (targetCard) {
+      const targetRect = targetCard.getBoundingClientRect();
+      this.dragState.indicator.style.left = `${targetRect.left - containerRect.left}px`;
+      this.dragState.indicator.style.top = `${targetRect.top - containerRect.top}px`;
+      this.dragState.indicator.style.height = `${targetRect.height}px`;
+    } else {
+      const lastCard = container.querySelector(".module-card:not(.dragging):last-of-type");
+      if (lastCard) {
+        const lastRect = lastCard.getBoundingClientRect();
+        this.dragState.indicator.style.left = `${lastRect.right - containerRect.left}px`;
+        this.dragState.indicator.style.top = `${lastRect.top - containerRect.top}px`;
+        this.dragState.indicator.style.height = `${lastRect.height}px`;
+      }
+    }
+  }
+
+  /**
+   * 移除拖拽指示线
+   */
+  removeDragIndicator() {
+    if (this.dragState.indicator) {
+      this.dragState.indicator.remove();
+      this.dragState.indicator = null;
+    }
+  }
+
+  /**
+   * 处理拖拽结束
+   * @param {PointerEvent} event - pointerup 或 pointercancel 事件
+   */
+  handleDragEnd(event) {
+    if (!this.dragState.dragCard) {
+      return;
+    }
+
+    const card = this.dragState.dragCard;
+    if (this.dragState.hasPointerCapture) {
+      card.releasePointerCapture(event.pointerId);
+    }
+    card.removeEventListener("pointermove", this.handleDragMove.bind(this));
+    card.removeEventListener("pointerup", this.handleDragEnd.bind(this));
+    card.removeEventListener("pointercancel", this.handleDragEnd.bind(this));
+
+    if (this.dragState.isDragStarted) {
+      card.classList.remove("dragging");
+      card.style.left = "";
+      card.style.top = "";
+
+      this.removeDragIndicator();
+
+      const container = this.elements.signalFlow;
+      const containerRect = container.getBoundingClientRect();
+      const isOutsideContainer =
+        event.clientX < containerRect.left ||
+        event.clientX > containerRect.right ||
+        event.clientY < containerRect.top ||
+        event.clientY > containerRect.bottom;
+
+      if (!isOutsideContainer && this.dragState.targetIndex >= 0) {
+        let toIndex = this.dragState.targetIndex;
+        if (toIndex > this.dragState.dragIndex) {
+          toIndex--;
+        }
+        if (toIndex !== this.dragState.dragIndex) {
+          this.reorderModule(this.dragState.dragIndex, toIndex);
+        }
+      }
+    }
+
+    this.dragState = {
+      isDragging: false,
+      isDragStarted: false,
+      hasPointerCapture: false,
+      dragCard: null,
+      dragIndex: -1,
+      pointerId: 0,
+      indicator: null,
+      startX: 0,
+      startY: 0,
+      offsetX: 0,
+      offsetY: 0,
+      placeholder: null,
+    };
+  }
+
+  /**
+   * 重排序模块
+   * @param {number} fromIndex - 源索引
+   * @param {number} toIndex - 目标索引
+   */
+  reorderModule(fromIndex, toIndex) {
+    const modules = this.state.modules;
+    if (fromIndex < 0 || fromIndex >= modules.length || toIndex < 0 || toIndex >= modules.length) {
+      return;
+    }
+
+    const [module] = modules.splice(fromIndex, 1);
+    modules.splice(toIndex, 0, module);
+
+    this.selectedPresetId = "custom";
+    this.renderAll();
+    this.engine.fullSync(this.state);
   }
 
   /**
