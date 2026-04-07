@@ -611,6 +611,27 @@ class ModularSynthApp {
   /**
    * 手工瀑布流布局
    * 从左到右、从上到下布局，带智能回绕
+   *
+   * 布局规则：
+   * 1. 默认从左到右依次填充各列
+   * 2. 当满足回绕条件时，保持在当前列继续向下填充
+   * 3. 到达最后一列后，回到第一列继续
+   *
+   * 回绕条件（非最后一列）：
+   * - 右侧列高度 > 当前列高度 - 卡片高度/2
+   * - 且满足以下之一：
+   *   a) 当前列比右侧列矮或等高（heightDiff <= 0）
+   *   b) 卡片高度 <= 2 × 高度差（避免大卡片错误回绕）
+   *
+   * 回绕条件（最后一列）：
+   * - 第一列高度 > 当前列高度 + 卡片高度/2
+   * - 且满足以下之一：
+   *   a) 当前列比第一列矮或等高（heightDiff <= 0）
+   *   b) 卡片高度 <= 2 × 高度差
+   *
+   * 特殊处理：
+   * - addCard 使用前一个实际模块的高度进行回绕判断
+   * - 当没有模块时，addCard 强制放在第一列
    */
   layoutModuleMasonry() {
     const container = this.elements.signalFlow;
@@ -618,6 +639,7 @@ class ModularSynthApp {
       return;
     }
 
+    // 收集所有模块卡片和添加按钮
     const moduleCards = [...container.querySelectorAll(".module-card")];
     const addCard = container.querySelector(".add-module-card");
     const cards = [...moduleCards];
@@ -630,14 +652,19 @@ class ModularSynthApp {
       return;
     }
 
+    // 计算列数和列宽
     const gap = 10;
     const containerWidth = Math.max(240, container.clientWidth);
     const minColumnWidth = 246;
     const columnCount = Math.max(1, Math.floor((containerWidth + gap) / (minColumnWidth + gap)));
     const columnWidth = Math.floor((containerWidth - gap * (columnCount - 1)) / columnCount);
+
+    // 记录每列的累计高度
     const columnHeights = new Array(columnCount).fill(0);
 
+    // 当前列索引
     let currentColumn = 0;
+    // 上一个实际模块的高度（用于 addCard 的回绕判断）
     let lastModuleHeight = 0;
 
     cards.forEach((card) => {
@@ -648,45 +675,64 @@ class ModularSynthApp {
       const isAddCard = card === addCard;
       const isLastColumn = currentColumn === columnCount - 1;
 
+      // 回绕判断使用的高度：addCard 用前一个模块高度，否则用自身高度
       const judgeHeight = isAddCard ? lastModuleHeight : cardHeight;
 
       let shouldWrap = false;
 
       if (isAddCard && lastModuleHeight === 0) {
+        // 特殊情况：没有模块时，addCard 强制放在第一列
         currentColumn = 0;
       } else if (isLastColumn) {
+        // 最后一列：检查是否回绕到第一列下方
         const firstColumnHeight = columnHeights[0];
+        // 高度差：当前列比第一列高出多少（正数表示当前列更高）
         const heightDiff = columnHeights[currentColumn] - firstColumnHeight;
+        // 基本回绕条件：第一列高度 > 当前列高度 + 卡片高度/2
         const shouldWrapByHeight = firstColumnHeight > columnHeights[currentColumn] + judgeHeight / 2;
+        // 完整条件：满足基本条件，且（当前列不比第一列高 或 卡片不会导致布局失衡）
         if (shouldWrapByHeight && (heightDiff <= 0 || judgeHeight <= 2 * heightDiff)) {
           shouldWrap = true;
         }
       } else {
+        // 非最后一列：检查是否回绕到当前列下方
         const rightColumnHeight = columnHeights[currentColumn + 1];
+        // 高度差：当前列比右侧列高出多少（正数表示当前列更高）
         const heightDiff = columnHeights[currentColumn] - rightColumnHeight;
+        // 基本回绕条件：右侧列高度 > 当前列高度 - 卡片高度/2
         const shouldWrapByHeight = rightColumnHeight > columnHeights[currentColumn] - judgeHeight / 2;
+        // 完整条件：满足基本条件，且（当前列不比右侧列高 或 卡片不会导致布局失衡）
         if (shouldWrapByHeight && (heightDiff <= 0 || judgeHeight <= 2 * heightDiff)) {
           shouldWrap = true;
         }
       }
 
+      // 根据回绕结果调整列索引
       if (!shouldWrap && !isLastColumn && !(isAddCard && lastModuleHeight === 0)) {
+        // 不回绕且不是最后一列：移动到下一列
         currentColumn += 1;
       } else if (!shouldWrap && isLastColumn) {
+        // 不回绕且是最后一列：回到第一列
         currentColumn = 0;
       }
+      // 回绕时：保持在当前列（currentColumn 不变）
 
+      // 计算并设置卡片位置
       const left = currentColumn * (columnWidth + gap);
       const top = columnHeights[currentColumn];
       card.style.left = `${left}px`;
       card.style.top = `${top}px`;
+
+      // 更新当前列的累计高度
       columnHeights[currentColumn] += cardHeight + gap;
 
+      // 记录实际模块的高度（不记录 addCard）
       if (!isAddCard) {
         lastModuleHeight = cardHeight;
       }
     });
 
+    // 设置容器高度为最高列的高度
     container.style.height = `${Math.max(...columnHeights) - gap}px`;
   }
 
