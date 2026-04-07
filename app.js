@@ -656,12 +656,16 @@ class ModularSynthApp {
         currentColumn = 0;
       } else if (isLastColumn) {
         const firstColumnHeight = columnHeights[0];
-        if (firstColumnHeight > columnHeights[currentColumn] + judgeHeight / 2) {
+        const heightDiff = columnHeights[currentColumn] - firstColumnHeight;
+        const shouldWrapByHeight = firstColumnHeight > columnHeights[currentColumn] + judgeHeight / 2;
+        if (shouldWrapByHeight && (heightDiff <= 0 || judgeHeight <= 2 * heightDiff)) {
           shouldWrap = true;
         }
       } else {
         const rightColumnHeight = columnHeights[currentColumn + 1];
-        if (rightColumnHeight > columnHeights[currentColumn] - judgeHeight / 2) {
+        const heightDiff = columnHeights[currentColumn] - rightColumnHeight;
+        const shouldWrapByHeight = rightColumnHeight > columnHeights[currentColumn] - judgeHeight / 2;
+        if (shouldWrapByHeight && (heightDiff <= 0 || judgeHeight <= 2 * heightDiff)) {
           shouldWrap = true;
         }
       }
