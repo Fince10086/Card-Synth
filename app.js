@@ -419,7 +419,7 @@ class ModularSynthApp {
   /* -------------------------------------------------------------------------- */
 
   /**
-   * 填充 "Add Module" 下拉菜单
+   * 填充下拉菜单
    */
   populateAddModuleDropdown() {
     const dropdown = this.elements.addModuleDropdown;
@@ -638,24 +638,28 @@ class ModularSynthApp {
     const columnHeights = new Array(columnCount).fill(0);
 
     let currentColumn = 0;
+    let lastModuleHeight = 0;
 
     cards.forEach((card) => {
       card.style.position = "absolute";
       card.style.width = `${columnWidth}px`;
 
       const cardHeight = card.offsetHeight;
+      const isAddCard = card === addCard;
       const isLastColumn = currentColumn === columnCount - 1;
+
+      const judgeHeight = isAddCard ? lastModuleHeight : cardHeight;
 
       let shouldWrap = false;
 
       if (isLastColumn) {
         const firstColumnHeight = columnHeights[0];
-        if (firstColumnHeight > columnHeights[currentColumn] + cardHeight / 2) {
+        if (firstColumnHeight > columnHeights[currentColumn] + judgeHeight / 2) {
           shouldWrap = true;
         }
       } else {
         const rightColumnHeight = columnHeights[currentColumn + 1];
-        if (rightColumnHeight > columnHeights[currentColumn] - cardHeight / 2) {
+        if (rightColumnHeight > columnHeights[currentColumn] - judgeHeight / 2) {
           shouldWrap = true;
         }
       }
@@ -671,6 +675,10 @@ class ModularSynthApp {
       card.style.left = `${left}px`;
       card.style.top = `${top}px`;
       columnHeights[currentColumn] += cardHeight + gap;
+
+      if (!isAddCard) {
+        lastModuleHeight = cardHeight;
+      }
     });
 
     container.style.height = `${Math.max(...columnHeights) - gap}px`;
