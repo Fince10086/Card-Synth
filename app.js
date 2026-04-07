@@ -610,7 +610,7 @@ class ModularSynthApp {
 
   /**
    * 手工瀑布流布局
-   * 把不同高度的卡片按最短列依次摆放，减少留白
+   * 从左到右、从上到下布局，带智能回绕
    */
   layoutModuleMasonry() {
     const container = this.elements.signalFlow;
@@ -637,27 +637,41 @@ class ModularSynthApp {
     const columnWidth = Math.floor((containerWidth - gap * (columnCount - 1)) / columnCount);
     const columnHeights = new Array(columnCount).fill(0);
 
-    moduleCards.forEach((card) => {
+    let currentColumn = 0;
+
+    cards.forEach((card) => {
       card.style.position = "absolute";
       card.style.width = `${columnWidth}px`;
-      const shortestColumn = columnHeights.indexOf(Math.min(...columnHeights));
-      const left = shortestColumn * (columnWidth + gap);
-      const top = columnHeights[shortestColumn];
+
+      const cardHeight = card.offsetHeight;
+      const isLastColumn = currentColumn === columnCount - 1;
+
+      let shouldWrap = false;
+
+      if (isLastColumn) {
+        const firstColumnHeight = columnHeights[0];
+        if (firstColumnHeight > columnHeights[currentColumn] + cardHeight / 2) {
+          shouldWrap = true;
+        }
+      } else {
+        const rightColumnHeight = columnHeights[currentColumn + 1];
+        if (rightColumnHeight > columnHeights[currentColumn] - cardHeight / 2) {
+          shouldWrap = true;
+        }
+      }
+
+      if (!shouldWrap && !isLastColumn) {
+        currentColumn += 1;
+      } else if (!shouldWrap && isLastColumn) {
+        currentColumn = 0;
+      }
+
+      const left = currentColumn * (columnWidth + gap);
+      const top = columnHeights[currentColumn];
       card.style.left = `${left}px`;
       card.style.top = `${top}px`;
-      columnHeights[shortestColumn] += card.offsetHeight + gap;
+      columnHeights[currentColumn] += cardHeight + gap;
     });
-
-    if (addCard) {
-      addCard.style.position = "absolute";
-      addCard.style.width = `${columnWidth}px`;
-      const shortestColumn = columnHeights.indexOf(Math.min(...columnHeights));
-      const left = shortestColumn * (columnWidth + gap);
-      const top = columnHeights[shortestColumn];
-      addCard.style.left = `${left}px`;
-      addCard.style.top = `${top}px`;
-      columnHeights[shortestColumn] += addCard.offsetHeight + gap;
-    }
 
     container.style.height = `${Math.max(...columnHeights) - gap}px`;
   }
