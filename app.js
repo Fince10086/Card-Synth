@@ -1259,33 +1259,47 @@ class ModularSynthApp {
 
   /**
    * 初始化模块拖拽
+   *
+   * 拖拽流程：
+   * 1. pointerdown 时记录初始状态，但不立即设置指针捕获
+   * 2. pointermove 时检测移动距离，超过阈值开始拖拽
+   * 3. 拖拽开始后设置指针捕获，避免阻止 click 事件
+   *
+   * 为什么延迟设置指针捕获：
+   * - setPointerCapture 会将后续指针事件的目标改为捕获元素
+   * - click 事件由 pointerdown + pointerup 合成，目标会变成 card 而非 indexBadge
+   * - 延迟捕获可确保单击时 click 事件正常触发
+   *
    * @param {PointerEvent} event - pointerdown 事件
    * @param {HTMLElement} card - 被拖拽的卡片元素
    * @param {number} moduleIndex - 模块在数组中的索引
    */
   initModuleDrag(event, card, moduleIndex) {
+    // 单模块时禁用拖拽
     const modules = this.state.modules || [];
     if (modules.length <= 1) {
       return;
     }
 
+    // 记录卡片初始位置和鼠标偏移量
     const rect = card.getBoundingClientRect();
     this.dragState = {
-      isDragging: false,
-      isDragStarted: false,
-      hasPointerCapture: false,
-      dragCard: card,
-      dragIndex: moduleIndex,
-      pointerId: event.pointerId,
-      indicator: null,
-      startX: event.clientX,
-      startY: event.clientY,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-      originalRect: rect,
-      targetIndex: -1,
+      isDragging: false,        // 是否正在拖拽（移动超过阈值后为 true）
+      isDragStarted: false,     // 是否已开始拖拽（用于区分单击和拖拽）
+      hasPointerCapture: false, // 是否已设置指针捕获
+      dragCard: card,           // 被拖拽的卡片元素
+      dragIndex: moduleIndex,   // 源模块在数组中的索引
+      pointerId: event.pointerId, // 指针 ID，用于后续设置/释放捕获
+      indicator: null,          // 插入指示线元素
+      startX: event.clientX,    // 拖拽起始 X 坐标
+      startY: event.clientY,    // 拖拽起始 Y 坐标
+      offsetX: event.clientX - rect.left,  // 鼠标相对卡片左边缘的 X 偏移
+      offsetY: event.clientY - rect.top,   // 鼠标相对卡片上边缘的 Y 偏移
+      originalRect: rect,       // 卡片原始位置（用于动画回弹）
+      targetIndex: -1,          // 目标插入位置索引
     };
 
+    // 添加后续事件监听（不立即设置指针捕获）
     card.addEventListener("pointermove", this.handleDragMove.bind(this));
     card.addEventListener("pointerup", this.handleDragEnd.bind(this));
     card.addEventListener("pointercancel", this.handleDragEnd.bind(this));
@@ -1293,6 +1307,12 @@ class ModularSynthApp {
 
   /**
    * 处理拖拽移动
+   *
+   * 核心逻辑：
+   * 1. 计算移动距离，判断是否真正开始拖拽
+   * 2. 拖拽开始后设置指针捕获，更新卡片位置
+   * 3. 检测悬停目标，显示插入指示线
+   *
    * @param {PointerEvent} event - pointermove 事件
    */
   handleDragMove(event) {
@@ -1301,26 +1321,33 @@ class ModularSynthApp {
     }
 
     const card = this.dragState.dragCard;
+
+    // 计算鼠标移动距离
     const dx = event.clientX - this.dragState.startX;
     const dy = event.clientY - this.dragState.startY;
     const distance = Math.sqrt(dx * dx + dy * dy);
 
+    // 拖拽阈值判断：移动距离 < 5px 视为单击，不触发拖拽
     if (!this.dragState.isDragStarted) {
       if (distance < 5) {
         return;
       }
+      // 超过阈值，正式开始拖拽
       this.dragState.isDragStarted = true;
       this.dragState.isDragging = true;
+      // 设置指针捕获，确保后续事件发送到 card 元素
       card.setPointerCapture(this.dragState.pointerId);
       this.dragState.hasPointerCapture = true;
     }
 
     const container = this.elements.signalFlow;
 
+    // 设置卡片为 fixed 定位并跟随鼠标
     card.classList.add("dragging");
     card.style.left = `${event.clientX - this.dragState.offsetX}px`;
     card.style.top = `${event.clientY - this.dragState.offsetY}px`;
 
+    // 检测是否拖出容器范围
     const containerRect = container.getBoundingClientRect();
     const isOutsideContainer =
       event.clientX < containerRect.left ||
@@ -1328,16 +1355,20 @@ class ModularSynthApp {
       event.clientY < containerRect.top ||
       event.clientY > containerRect.bottom;
 
+    // 拖出容器时隐藏指示线，标记无效位置
     if (isOutsideContainer) {
       this.removeDragIndicator();
       this.dragState.targetIndex = -1;
       return;
     }
 
+    // 获取所有非拖拽中的模块卡片
     const moduleCards = [...container.querySelectorAll(".module-card:not(.dragging)")];
     let targetCard = null;
     let targetIndex = -1;
 
+    // 遍历查找鼠标悬停的目标卡片
+    // 判断规则：鼠标 X 坐标 < 卡片中心 X 坐标，则插入到该卡片前面
     for (let i = 0; i < moduleCards.length; i++) {
       const targetRect = moduleCards[i].getBoundingClientRect();
       const centerX = targetRect.left + targetRect.width / 2;
@@ -1348,6 +1379,7 @@ class ModularSynthApp {
       }
     }
 
+    // 如果鼠标在所有卡片右侧，则插入到最后
     if (targetIndex === -1 && moduleCards.length > 0) {
       targetCard = moduleCards[moduleCards.length - 1];
       targetIndex = moduleCards.length;
@@ -1359,15 +1391,20 @@ class ModularSynthApp {
 
   /**
    * 更新拖拽指示线位置
-   * @param {HTMLElement} targetCard - 目标卡片元素
+   *
+   * 指示线显示在目标卡片左侧，表示模块将插入到该位置
+   *
+   * @param {HTMLElement} targetCard - 目标卡片元素（null 表示插入到最后）
    * @param {number} targetIndex - 目标索引
    */
   updateDragIndicator(targetCard, targetIndex) {
+    // 无目标卡片且不是插入到最后，则移除指示线
     if (!targetCard && targetIndex !== this.state.modules.length) {
       this.removeDragIndicator();
       return;
     }
 
+    // 创建指示线元素（首次）
     if (!this.dragState.indicator) {
       this.dragState.indicator = document.createElement("div");
       this.dragState.indicator.className = "drag-indicator";
@@ -1378,11 +1415,13 @@ class ModularSynthApp {
     const containerRect = container.getBoundingClientRect();
 
     if (targetCard) {
+      // 指示线显示在目标卡片左侧
       const targetRect = targetCard.getBoundingClientRect();
       this.dragState.indicator.style.left = `${targetRect.left - containerRect.left}px`;
       this.dragState.indicator.style.top = `${targetRect.top - containerRect.top}px`;
       this.dragState.indicator.style.height = `${targetRect.height}px`;
     } else {
+      // 插入到最后：指示线显示在最后一个卡片右侧
       const lastCard = container.querySelector(".module-card:not(.dragging):last-of-type");
       if (lastCard) {
         const lastRect = lastCard.getBoundingClientRect();
@@ -1405,6 +1444,13 @@ class ModularSynthApp {
 
   /**
    * 处理拖拽结束
+   *
+   * 结束流程：
+   * 1. 释放指针捕获（如果已设置）
+   * 2. 移除事件监听器
+   * 3. 如果是拖拽操作（非单击），执行重排序
+   * 4. 重置拖拽状态
+   *
    * @param {PointerEvent} event - pointerup 或 pointercancel 事件
    */
   handleDragEnd(event) {
@@ -1413,20 +1459,27 @@ class ModularSynthApp {
     }
 
     const card = this.dragState.dragCard;
+
+    // 释放指针捕获（只有设置了才需要释放）
     if (this.dragState.hasPointerCapture) {
       card.releasePointerCapture(event.pointerId);
     }
+
+    // 移除事件监听器
     card.removeEventListener("pointermove", this.handleDragMove.bind(this));
     card.removeEventListener("pointerup", this.handleDragEnd.bind(this));
     card.removeEventListener("pointercancel", this.handleDragEnd.bind(this));
 
+    // 只有真正开始拖拽才执行重排序逻辑
     if (this.dragState.isDragStarted) {
+      // 清理卡片拖拽样式
       card.classList.remove("dragging");
       card.style.left = "";
       card.style.top = "";
 
       this.removeDragIndicator();
 
+      // 检测是否在容器内释放
       const container = this.elements.signalFlow;
       const containerRect = container.getBoundingClientRect();
       const isOutsideContainer =
@@ -1435,17 +1488,21 @@ class ModularSynthApp {
         event.clientY < containerRect.top ||
         event.clientY > containerRect.bottom;
 
+      // 在容器内且有有效目标位置，执行重排序
       if (!isOutsideContainer && this.dragState.targetIndex >= 0) {
         let toIndex = this.dragState.targetIndex;
+        // 向后移动时，由于先移除了源模块，目标索引需要 -1
         if (toIndex > this.dragState.dragIndex) {
           toIndex--;
         }
+        // 位置未变化则不执行重排序
         if (toIndex !== this.dragState.dragIndex) {
           this.reorderModule(this.dragState.dragIndex, toIndex);
         }
       }
     }
 
+    // 重置拖拽状态
     this.dragState = {
       isDragging: false,
       isDragStarted: false,
@@ -1464,18 +1521,25 @@ class ModularSynthApp {
 
   /**
    * 重排序模块
+   *
+   * 通过数组操作改变模块顺序，然后重新渲染和同步音频引擎
+   *
    * @param {number} fromIndex - 源索引
    * @param {number} toIndex - 目标索引
    */
   reorderModule(fromIndex, toIndex) {
     const modules = this.state.modules;
+
+    // 边界检查
     if (fromIndex < 0 || fromIndex >= modules.length || toIndex < 0 || toIndex >= modules.length) {
       return;
     }
 
+    // 从数组中移除源模块并插入到目标位置
     const [module] = modules.splice(fromIndex, 1);
     modules.splice(toIndex, 0, module);
 
+    // 更新 UI 和音频引擎
     this.selectedPresetId = "custom";
     this.renderAll();
     this.engine.fullSync(this.state);
