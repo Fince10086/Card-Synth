@@ -390,6 +390,7 @@ select {
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    user-select: none;
     z-index: 5;
 }
 
@@ -452,7 +453,6 @@ select {
 .module-card.dragging {
   position: fixed;
   opacity: 0.9;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   z-index: 1000;
   pointer-events: none;
 }
@@ -464,7 +464,6 @@ select {
   bottom: 0;
   width: 3px;
   background: #8a8a8a;
-  border-radius: 2px;
   z-index: 100;
   pointer-events: none;
 }
