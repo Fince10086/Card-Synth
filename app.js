@@ -1496,7 +1496,13 @@ class ModularSynthApp {
         // 位置未变化则不执行重排序
         if (toIndex !== this.dragState.dragIndex) {
           this.reorderModule(this.dragState.dragIndex, toIndex);
+        } else {
+          // 位置未变化，仍需重新布局以恢复卡片位置
+          this.layoutModuleMasonry();
         }
+      } else {
+        // 拖出容器或无有效目标，重新布局恢复原位
+        this.layoutModuleMasonry();
       }
     }
 
