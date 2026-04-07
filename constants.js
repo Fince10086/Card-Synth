@@ -268,7 +268,7 @@ const SOURCE_LIBRARY = {
     options: { type: "pink", playbackRate: 1 },
     controls: [
       { path: "options.type", kind: "select", label: "Color", options: NOISE_TYPE_OPTIONS },
-      { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.2, max: 4, step: 0.01, formatter: formatMultiplier },
+      { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.1, max: 1, step: 0.01, formatter: formatMultiplier },
     ],
   },
   Oscillator: {
@@ -287,15 +287,13 @@ const SOURCE_LIBRARY = {
     tag: "Osc",
     runtime: "player",
     moduleDefaults: { rootNote: "C4", assetName: "Factory Pluck" },
-    options: { url: DEFAULT_SAMPLE_LIBRARY.pluck, playbackRate: 1, loop: false, reverse: false, fadeIn: 0.005, fadeOut: 0.08, loopStart: 0, loopEnd: 0 },
+    options: { url: DEFAULT_SAMPLE_LIBRARY.pluck, playbackRate: 1, loop: false, reverse: false, loopStart: 0, loopEnd: 0 },
     controls: [
       { path: "rootNote", kind: "select", label: "Root", options: ROOT_NOTE_OPTIONS },
-      { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.2, max: 3, step: 0.01, formatter: formatMultiplier },
-      { path: "options.fadeIn", kind: "range", label: "Fade In", min: 0, max: 0.2, step: 0.001, formatter: formatSeconds },
-      { path: "options.fadeOut", kind: "range", label: "Fade Out", min: 0.01, max: 0.6, step: 0.001, formatter: formatSeconds },
+      { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.1, max: 3, step: 0.01, formatter: formatMultiplier },
+      { path: "options.loop", kind: "toggle", label: "Loop" },
       { path: "options.loopStart", kind: "range", label: "Loop In", min: 0, max: 12, step: 0.01, formatter: formatSeconds },
       { path: "options.loopEnd", kind: "range", label: "Loop Out", min: 0, max: 12, step: 0.01, formatter: formatSeconds },
-      { path: "options.loop", kind: "toggle", label: "Loop" },
       { path: "options.reverse", kind: "toggle", label: "Reverse" },
     ],
   },
@@ -469,7 +467,7 @@ const EFFECT_LIBRARY = {
   PitchShift: {
     accent: "fx",
     tag: "Effect",
-    options: { pitch: 0, windowSize: 0.1, feedback: 0, wet: 0.3 },
+    options: { pitch: 0, windowSize: 0.1, feedback: 0, wet: 1 },
     controls: [
       { path: "options.pitch", kind: "range", label: "Pitch", min: -24, max: 24, step: 1, formatter: (value) => `${value > 0 ? "+" : ""}${value} st` },
       { path: "options.windowSize", kind: "range", label: "Window", min: 0.01, max: 0.5, step: 0.01, formatter: formatSeconds },
