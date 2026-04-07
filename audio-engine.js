@@ -190,7 +190,8 @@ class AudioEngine {
 
   /**
    * 连接 Source 模块
-   * Source 需要绕过后续 Source，并判断是否启用隐藏 AmpEnv
+   * 当模块链中有 AmpEnv 时：Voice[i] → AmpEnv.voices[i]
+   * 当模块链中没有 AmpEnv 时：Voice[i] → hiddenAmpEnv → 目标模块
    * @param {Array} modules - 模块数组
    * @param {number} sourceIndex - Source 索引
    * @param {Object} runtime - Source 运行时
@@ -207,39 +208,46 @@ class AudioEngine {
     }
 
     // 检查 Source 之后的整个信号链中是否有 AmpEnv
-    let hasAmpEnvInPath = false;
+    let ampEnvIndex = -1;
     for (let i = sourceIndex + 1; i < modules.length; i++) {
       if (ampEnvIndices.has(i)) {
-        hasAmpEnvInPath = true;
+        ampEnvIndex = i;
         break;
       }
     }
 
-    // 决定是否启用隐藏 AmpEnv
-    const useHiddenAmpEnv = !hasAmpEnvInPath;
-    runtime.hiddenAmpEnvEnabled = useHiddenAmpEnv;
+    const hasAmpEnv = ampEnvIndex >= 0;
+    runtime.hasAmpEnv = hasAmpEnv;
 
-    // 确定输出节点：如果使用隐藏 AmpEnv，需要先连接 panNode → hiddenAmpEnv
-    let outputNode;
-    if (useHiddenAmpEnv && runtime.hiddenAmpEnv) {
-      // 连接 panNode → hiddenAmpEnv
-      runtime.panNode.connect(runtime.hiddenAmpEnv);
-      outputNode = runtime.hiddenAmpEnv;
+    if (hasAmpEnv) {
+      // 有 AmpEnv：Voice[i] → AmpEnv.voices[i]
+      const ampEnvModule = modules[ampEnvIndex];
+      const ampEnvRuntime = this.moduleRuntimes.get(ampEnvModule.id);
+      runtime.ampEnvRuntime = ampEnvRuntime;
+
+      runtime.voices.forEach((voice, i) => {
+        if (ampEnvRuntime && ampEnvRuntime.voices && ampEnvRuntime.voices[i]) {
+          voice.panNode.connect(ampEnvRuntime.voices[i]);
+        }
+      });
     } else {
-      // 不使用隐藏 AmpEnv，直接从 panNode 输出
-      outputNode = runtime.panNode;
-    }
+      // 无 AmpEnv：Voice[i] → hiddenAmpEnv → 目标模块
+      runtime.ampEnvRuntime = null;
 
-    if (targetIndex >= 0) {
-      // 连接到目标模块
-      const targetModule = modules[targetIndex];
-      const targetRuntime = this.moduleRuntimes.get(targetModule.id);
-      if (targetRuntime && targetRuntime.node) {
-        outputNode.connect(targetRuntime.node);
+      let targetNode;
+      if (targetIndex >= 0) {
+        const targetModule = modules[targetIndex];
+        const targetRuntime = this.moduleRuntimes.get(targetModule.id);
+        targetNode = targetRuntime && targetRuntime.node;
+      } else {
+        targetNode = this.masterVolume;
       }
-    } else {
-      // 没有目标模块，连接到 masterVolume
-      outputNode.connect(this.masterVolume);
+
+      runtime.voices.forEach((voice) => {
+        if (targetNode) {
+          voice.hiddenAmpEnv.connect(targetNode);
+        }
+      });
     }
   }
 
@@ -250,6 +258,31 @@ class AudioEngine {
    * @param {Object} runtime - 模块运行时
    */
   connectNonSourceModule(modules, moduleIndex, runtime) {
+    // AmplitudeEnvelope 特殊处理：所有 voices 连接到目标
+    if (runtime.type === "AmplitudeEnvelope" && runtime.voices) {
+      let targetIndex = -1;
+      for (let i = moduleIndex + 1; i < modules.length; i++) {
+        if (!this.isSourceModule(modules[i]) && modules[i].enabled) {
+          targetIndex = i;
+          break;
+        }
+      }
+
+      let targetNode;
+      if (targetIndex >= 0) {
+        const targetModule = modules[targetIndex];
+        const targetRuntime = this.moduleRuntimes.get(targetModule.id);
+        targetNode = targetRuntime && targetRuntime.node;
+      } else {
+        targetNode = this.masterVolume;
+      }
+
+      if (targetNode) {
+        runtime.voices.forEach((env) => env.connect(targetNode));
+      }
+      return;
+    }
+
     // 查找下一个非 Source 模块
     let targetIndex = -1;
     for (let i = moduleIndex + 1; i < modules.length; i++) {
@@ -290,28 +323,14 @@ class AudioEngine {
 
   /**
    * 创建 Source 运行时
-   * Source 需要额外的 volumeNode、panNode 和隐藏 AmpEnv
+   * 使用 Voice 池实现复音，每个 Voice 独立连接到目标模块
    * @param {Object} module - Source 模块
    * @returns {Object} - 运行时对象
    */
   createSourceRuntime(module) {
     const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
     let moduleState = deepClone(module);
-
-    // 创建音量和声像节点
-    const volumeNode = new Tone.Volume(module.enabled ? module.volume : -48);
-    const panNode = new Tone.Panner(module.pan);
-    volumeNode.connect(panNode);
-
-    // 创建隐藏的 AmpEnv（固定 0.05s Attack/Release）
-    const hiddenAmpEnv = new Tone.AmplitudeEnvelope({
-      attack: 0.05,
-      decay: 0.1,
-      sustain: 1,
-      release: 0.05,
-    });
-
-    let node;
+    const VOICE_COUNT = 8;
 
     const getNoteFrequency = (note) => Tone.Frequency(note).toFrequency();
     const getPitchRatio = (note) => {
@@ -319,118 +338,272 @@ class AudioEngine {
       return getNoteFrequency(note) / root;
     };
 
-    // 根据 runtime 类型创建不同的声源节点
-    if (definition.runtime === "pitchedSource") {
-      node = new Tone[module.type](module.options);
-      node.connect(volumeNode);
-      node.start();
-    } else if (definition.runtime === "noise") {
-      node = new Tone.Noise(module.options);
-      node.connect(volumeNode);
-      node.start();
-    } else if (definition.runtime === "player") {
-      node = new Tone.Player(moduleState.options);
-      applyPlayerLikeOptions(node, moduleState.options);
-      node.connect(volumeNode);
-    } else {
-      node = new Tone.Oscillator(module.options);
-      node.connect(volumeNode);
-      node.start();
-    }
+    /**
+     * 创建单个 Voice
+     * hiddenAmpEnv 始终作为 gate，空闲时关闭输出
+     * @returns {Object} - Voice 对象
+     */
+    const createVoice = () => {
+      const volumeNode = new Tone.Volume(module.enabled ? module.volume : -48);
+      const panNode = new Tone.Panner(module.pan);
+      volumeNode.connect(panNode);
 
-    return {
+      const hiddenAmpEnv = new Tone.AmplitudeEnvelope({
+        attack: 0.005,
+        decay: 0.01,
+        sustain: 1,
+        release: 0.005,
+      });
+      panNode.connect(hiddenAmpEnv);
+
+      let node;
+      if (definition.runtime === "pitchedSource") {
+        node = new Tone[module.type](module.options);
+        node.connect(volumeNode);
+        node.start();
+      } else if (definition.runtime === "noise") {
+        node = new Tone.Noise(module.options);
+        node.connect(volumeNode);
+        node.start();
+      } else if (definition.runtime === "player") {
+        node = new Tone.Player(moduleState.options);
+        applyPlayerLikeOptions(node, moduleState.options);
+        node.connect(volumeNode);
+      } else {
+        node = new Tone.Oscillator(module.options);
+        node.connect(volumeNode);
+        node.start();
+      }
+
+      return {
+        node,
+        volumeNode,
+        panNode,
+        hiddenAmpEnv,
+        note: null,
+        startTime: 0,
+      };
+    };
+
+    const voices = Array.from({ length: VOICE_COUNT }, createVoice);
+
+    /**
+     * 查找可用 Voice：优先空闲，无空闲时复用最旧
+     * @returns {Object|null} - { voice, index } 或 null
+     */
+    const findAvailableVoice = () => {
+      let oldest = null;
+      let oldestIndex = -1;
+      for (let i = 0; i < voices.length; i++) {
+        if (!voices[i].note) {
+          return { voice: voices[i], index: i };
+        }
+        if (!oldest || voices[i].startTime < oldest.startTime) {
+          oldest = voices[i];
+          oldestIndex = i;
+        }
+      }
+      return oldest ? { voice: oldest, index: oldestIndex } : null;
+    };
+
+    /**
+     * 根据音符查找 Voice
+     * @param {string} note - 音符
+     * @returns {Object|null} - { voice, index } 或 null
+     */
+    const findVoiceByNote = (note) => {
+      const index = voices.findIndex((v) => v.note === note);
+      return index >= 0 ? { voice: voices[index], index } : null;
+    };
+
+    /**
+     * 触发 AmpEnv 包络（带引用计数）
+     * @param {number} voiceIndex - Voice 索引
+     * @param {number} velocity - 力度
+     */
+    const triggerAmpEnvAttack = (voiceIndex, velocity) => {
+      const ampEnv = runtime.ampEnvRuntime;
+      if (!ampEnv || !ampEnv.voices || !ampEnv.voiceRefCount) {
+        return;
+      }
+      ampEnv.voiceRefCount[voiceIndex] += 1;
+      if (ampEnv.voiceRefCount[voiceIndex] === 1) {
+        ampEnv.voices[voiceIndex].triggerAttack(Tone.now(), velocity);
+      }
+    };
+
+    /**
+     * 释放 AmpEnv 包络（带引用计数）
+     * @param {number} voiceIndex - Voice 索引
+     */
+    const triggerAmpEnvRelease = (voiceIndex) => {
+      const ampEnv = runtime.ampEnvRuntime;
+      if (!ampEnv || !ampEnv.voices || !ampEnv.voiceRefCount) {
+        return;
+      }
+      ampEnv.voiceRefCount[voiceIndex] = Math.max(0, ampEnv.voiceRefCount[voiceIndex] - 1);
+      if (ampEnv.voiceRefCount[voiceIndex] === 0) {
+        ampEnv.voices[voiceIndex].triggerRelease(Tone.now());
+      }
+    };
+
+    const runtime = {
       type: module.type,
       category: "source",
-      node,
-      volumeNode,
-      panNode,
-      hiddenAmpEnv,
-      hiddenAmpEnvEnabled: false,  // 默认禁用，由 connectSourceModule 决定
-      outputNode: panNode,         // 默认输出节点指向 panNode
+      voices,
       definition,
       moduleState,
+      hasAmpEnv: false,
+      ampEnvRuntime: null,
 
       apply: (nextModule) => {
         moduleState = deepClone(nextModule);
-        rampParam(volumeNode.volume, moduleState.enabled ? moduleState.volume : -48);
-        rampParam(panNode.pan, moduleState.pan);
+        voices.forEach((voice) => {
+          rampParam(voice.volumeNode.volume, moduleState.enabled ? moduleState.volume : -48);
+          rampParam(voice.panNode.pan, moduleState.pan);
 
-        if (definition.runtime === "pitchedSource") {
-          safeSet(node, moduleState.options);
-        } else if (definition.runtime === "noise") {
-          safeSet(node, moduleState.options);
-        } else if (definition.runtime === "player") {
-          safeSet(node, moduleState.options);
-          applyPlayerLikeOptions(node, moduleState.options);
-        }
+          if (definition.runtime === "pitchedSource") {
+            safeSet(voice.node, moduleState.options);
+          } else if (definition.runtime === "noise") {
+            safeSet(voice.node, moduleState.options);
+          } else if (definition.runtime === "player") {
+            safeSet(voice.node, moduleState.options);
+            applyPlayerLikeOptions(voice.node, moduleState.options);
+          }
+        });
       },
 
       triggerAttack: (note, velocity) => {
         if (!moduleState.enabled) {
           return;
         }
+        const result = findAvailableVoice();
+        if (!result) {
+          return;
+        }
+        const { voice, index } = result;
+
+        voice.note = note;
+        voice.startTime = Tone.now();
+
+        if (runtime.hasAmpEnv) {
+          triggerAmpEnvAttack(index, velocity);
+        } else {
+          voice.hiddenAmpEnv.triggerAttack(Tone.now(), velocity);
+        }
 
         if (definition.runtime === "pitchedSource") {
-          if (node.frequency) {
-            node.frequency.rampTo(getNoteFrequency(note), 0.02);
+          if (voice.node.frequency) {
+            voice.node.frequency.rampTo(getNoteFrequency(note), 0.02);
           }
         } else if (definition.runtime === "noise") {
-          // Noise 直接启动，无 envelope
+          // Noise 无需特殊处理
         } else if (definition.runtime === "player") {
-          if (!node.loaded) {
+          if (!voice.node.loaded) {
+            voice.note = null;
+            if (runtime.hasAmpEnv) {
+              triggerAmpEnvRelease(index);
+            } else {
+              voice.hiddenAmpEnv.triggerRelease(Tone.now());
+            }
             return;
           }
-          if ("playbackRate" in node) {
-            node.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
+          if ("playbackRate" in voice.node) {
+            voice.node.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
           }
           try {
-            node.stop(Tone.now());
+            voice.node.stop(Tone.now());
           } catch {}
-          node.start(Tone.now());
+          voice.node.start(Tone.now());
         }
       },
 
       triggerRelease: (note) => {
+        const result = findVoiceByNote(note);
+        if (!result) {
+          return;
+        }
+        const { voice, index } = result;
+        voice.note = null;
+
+        if (runtime.hasAmpEnv) {
+          triggerAmpEnvRelease(index);
+        } else {
+          voice.hiddenAmpEnv.triggerRelease(Tone.now());
+        }
+
         if (definition.runtime === "pitchedSource") {
           // pitchedSource 无需特殊处理
         } else if (definition.runtime === "noise") {
-          // Noise 直接停止，无 envelope
+          // Noise 无需特殊处理
         } else if (definition.runtime === "player") {
           try {
-            node.stop(Tone.now());
+            voice.node.stop(Tone.now());
           } catch {}
         }
       },
 
       releaseAll: () => {
-        if (definition.runtime === "pitchedSource") {
-          // pitchedSource 无需特殊处理
-        } else if (definition.runtime === "noise") {
-          // Noise 无需处理
-        } else if (definition.runtime === "player") {
-          try {
-            node.stop(Tone.now());
-          } catch {}
-        }
+        voices.forEach((voice, index) => {
+          if (voice.note) {
+            voice.note = null;
+            if (runtime.hasAmpEnv) {
+              triggerAmpEnvRelease(index);
+            } else {
+              voice.hiddenAmpEnv.triggerRelease(Tone.now());
+            }
+          }
+          if (definition.runtime === "player") {
+            try {
+              voice.node.stop(Tone.now());
+            } catch {}
+          }
+        });
       },
 
       dispose: () => {
-        if (node && typeof node.dispose === "function") {
-          node.dispose();
-        }
-        volumeNode.dispose();
-        panNode.dispose();
-        hiddenAmpEnv.dispose();
+        voices.forEach((voice) => {
+          if (voice.node && typeof voice.node.dispose === "function") {
+            voice.node.dispose();
+          }
+          voice.volumeNode.dispose();
+          voice.panNode.dispose();
+          voice.hiddenAmpEnv.dispose();
+        });
       },
     };
+
+    return runtime;
   }
 
   /**
    * 创建效果器/组件运行时
+   * AmplitudeEnvelope 特殊处理：创建 8 个包络节点
    * @param {Object} module - 模块对象
    * @returns {Object} - 运行时对象
    */
   createEffectRuntime(module) {
+    // AmplitudeEnvelope 特殊处理：创建 8 个包络节点
+    if (module.type === "AmplitudeEnvelope") {
+      const VOICE_COUNT = 8;
+      const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.AmplitudeEnvelope(module.options));
+      const voiceRefCount = new Array(VOICE_COUNT).fill(0);
+
+      return {
+        type: module.type,
+        category: module.category || "component",
+        voices,
+        voiceRefCount,
+        node: null,
+        apply: (nextModule) => {
+          voices.forEach((env) => safeSet(env, nextModule.options));
+        },
+        dispose: () => {
+          voices.forEach((env) => env.dispose());
+        },
+      };
+    }
+
     const RuntimeCtor = Tone[module.type];
     if (!RuntimeCtor) {
       return {
@@ -443,7 +616,6 @@ class AudioEngine {
 
     const node = new RuntimeCtor(module.options);
 
-    // 某些 Tone 节点需要 start() 才能工作
     if (typeof node.start === "function") {
       node.start();
     }
@@ -531,7 +703,7 @@ class AudioEngine {
 
   /**
    * 触发音符 Attack
-   * 触发所有启用的 AmplitudeEnvelope（显式和隐藏的）
+   * AmpEnv 由 Source Voice per-voice 触发，此处不再全局触发
    * @param {string} note - 音符
    * @param {number} velocity - 力度
    */
@@ -540,23 +712,9 @@ class AudioEngine {
       return;
     }
 
-    // 如果没有任何活跃音符，触发所有 AmpEnv 的 attack
-    if (!this.activeNotes.size) {
-      this.moduleRuntimes.forEach((runtime) => {
-        // 触发显式的 AmplitudeEnvelope
-        if (runtime.type === "AmplitudeEnvelope" && runtime.node) {
-          runtime.node.triggerAttack(Tone.now(), velocity);
-        }
-        // 触发启用的隐藏 AmpEnv
-        if (runtime.hiddenAmpEnvEnabled && runtime.hiddenAmpEnv) {
-          runtime.hiddenAmpEnv.triggerAttack(Tone.now(), velocity);
-        }
-      });
-    }
-
     this.activeNotes.add(note);
 
-    // 触发所有 Source 的 attack
+    // 触发所有 Source 的 attack（AmpEnv 或 hiddenAmpEnv 在此触发）
     this.moduleRuntimes.forEach((runtime) => {
       if (runtime.category === "source" && runtime.triggerAttack) {
         runtime.triggerAttack(note, velocity);
@@ -566,6 +724,7 @@ class AudioEngine {
 
   /**
    * 触发音符 Release
+   * AmpEnv 由 Source Voice per-voice 触发，此处不再全局触发
    * @param {string} note - 音符
    */
   release(note) {
@@ -575,30 +734,17 @@ class AudioEngine {
 
     this.activeNotes.delete(note);
 
-    // 触发所有 Source 的 release
+    // 触发所有 Source 的 release（AmpEnv 或 hiddenAmpEnv 在此触发）
     this.moduleRuntimes.forEach((runtime) => {
       if (runtime.category === "source" && runtime.triggerRelease) {
         runtime.triggerRelease(note);
       }
     });
-
-    // 当所有音符都释放后，触发所有 AmpEnv 的 release
-    if (!this.activeNotes.size) {
-      this.moduleRuntimes.forEach((runtime) => {
-        // 触发显式的 AmplitudeEnvelope
-        if (runtime.type === "AmplitudeEnvelope" && runtime.node) {
-          runtime.node.triggerRelease(Tone.now());
-        }
-        // 触发启用的隐藏 AmpEnv
-        if (runtime.hiddenAmpEnvEnabled && runtime.hiddenAmpEnv) {
-          runtime.hiddenAmpEnv.triggerRelease(Tone.now());
-        }
-      });
-    }
   }
 
   /**
    * 静音所有音符
+   * AmpEnv 由 Source Voice per-voice 触发，此处不再全局触发
    */
   silenceAll() {
     this.activeNotes.clear();
@@ -606,20 +752,10 @@ class AudioEngine {
       return;
     }
 
-    // 释放所有 Source
+    // 释放所有 Source（AmpEnv 或 hiddenAmpEnv 在此触发）
     this.moduleRuntimes.forEach((runtime) => {
       if (runtime.category === "source" && runtime.releaseAll) {
         runtime.releaseAll();
-      }
-    });
-
-    // 强制释放所有 AmpEnv
-    this.moduleRuntimes.forEach((runtime) => {
-      if (runtime.type === "AmplitudeEnvelope" && runtime.node) {
-        runtime.node.triggerRelease(Tone.now());
-      }
-      if (runtime.hiddenAmpEnvEnabled && runtime.hiddenAmpEnv) {
-        runtime.hiddenAmpEnv.triggerRelease(Tone.now());
       }
     });
   }
