@@ -1383,12 +1383,6 @@ class ModularSynthApp {
       }
     }
 
-    // 如果鼠标不在任何卡片范围内，则插入到最后
-    if (targetIndex === -1 && moduleCards.length > 0) {
-      targetCard = moduleCards[moduleCards.length - 1];
-      targetIndex = moduleCards.length;
-    }
-
     this.dragState.targetIndex = targetIndex;
     this.updateDragIndicator(targetCard, targetIndex);
   }
