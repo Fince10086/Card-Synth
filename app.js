@@ -25,12 +25,6 @@ class ModularSynthApp {
 
     this.controlBindings = new Map();
 
-    this.performance = {
-      morphA: "init",
-      morphB: "fmBell",
-      morph: 0,
-    };
-
     this.scopeZoom = {
       horizontal: 1,
       vertical: 1,
@@ -122,10 +116,6 @@ class ModularSynthApp {
       midiStatus: document.getElementById("midiStatus"),
       masterFader: document.getElementById("masterFader"),
       masterReadout: document.getElementById("masterReadout"),
-      morphASelect: document.getElementById("morphASelect"),
-      morphBSelect: document.getElementById("morphBSelect"),
-      morphSlider: document.getElementById("morphSlider"),
-      morphReadout: document.getElementById("morphReadout"),
     };
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
   }
@@ -169,12 +159,10 @@ class ModularSynthApp {
 
       try {
         const text = await file.text();
-        // 导入文件后仍然要走 normalize，保证旧格式和缺省字段都能被兼容
         const preset = normalizePreset(JSON.parse(text));
         const previousState = deepClone(this.state);
         this.state = preset;
         this.selectedPresetId = "custom";
-        this.resetPerformanceControls();
         this.renderAll(previousState);
         this.engine.fullSync(this.state);
         this.setStatus(`Imported preset from ${file.name}.`, "live");
@@ -293,31 +281,9 @@ class ModularSynthApp {
       }
     });
 
-    this.elements.morphASelect?.addEventListener("change", (e) => {
-      this.performance.morphA = e.target.value;
-      this.applyMorphState();
-    });
-
-    this.elements.morphBSelect?.addEventListener("change", (e) => {
-      this.performance.morphB = e.target.value;
-      this.applyMorphState();
-    });
-
-    this.elements.morphSlider?.addEventListener("input", (e) => {
-      const value = Number(e.target.value);
-      this.performance.morph = value;
-      this.updateMorphReadout(value);
-      this.applyMorphState();
-      const shell = e.target.closest(".slider-shell");
-      if (shell) {
-        shell.style.setProperty("--percent", value.toString());
-      }
-    });
-
     this.updatePresetSelect();
     this.updateMasterReadout(this.state.global.volume);
     this.updateMidiStatus();
-    this.updateMorphControls();
   }
 
   updatePresetSelect() {
@@ -350,29 +316,6 @@ class ModularSynthApp {
       this.elements.midiBtn.textContent = this.inputManager.getMidiInputs().length > 0
         ? "Refresh MIDI"
         : "Enable MIDI";
-    }
-  }
-
-  updateMorphControls() {
-    if (this.elements.morphASelect) {
-      this.elements.morphASelect.value = this.performance.morphA;
-    }
-    if (this.elements.morphBSelect) {
-      this.elements.morphBSelect.value = this.performance.morphB;
-    }
-    this.updateMorphReadout(this.performance.morph);
-  }
-
-  updateMorphReadout(value) {
-    if (this.elements.morphReadout) {
-      this.elements.morphReadout.textContent = formatPercent(value);
-    }
-    if (this.elements.morphSlider) {
-      this.elements.morphSlider.value = String(value);
-      const shell = this.elements.morphSlider.closest(".slider-shell");
-      if (shell) {
-        shell.style.setProperty("--percent", value.toString());
-      }
     }
   }
 
@@ -759,7 +702,6 @@ class ModularSynthApp {
     this.updatePresetSelect();
     this.updateMasterReadout(this.state.global.volume);
     this.updateMidiStatus();
-    this.updateMorphControls();
   }
 
   /* -------------------------------------------------------------------------- */
@@ -1816,7 +1758,6 @@ class ModularSynthApp {
     const previousState = deepClone(this.state);
     this.state = normalizePreset(template);
     this.selectedPresetId = presetId;
-    this.resetPerformanceControls();
     this.renderAll(previousState);
     this.engine.fullSync(this.state);
     this.setStatus(`LOADED PRESET: ${this.state.name}.`, this.audioBooted ? "live" : "neutral");
@@ -1837,7 +1778,7 @@ class ModularSynthApp {
 
   /**
    * 动画控件过渡
-   * 预设切换和 morph 时，对数值控件做一次短暂过渡，避免界面瞬间跳变
+   * 预设切换时，对数值控件做一次短暂过渡，避免界面瞬间跳变
    * @param {Object} fromState - 起始状态
    * @param {Object} toState - 目标状态
    */
@@ -1883,134 +1824,6 @@ class ModularSynthApp {
     requestAnimationFrame(frame);
   }
 
-  /**
-   * 重置性能控制参数
-   */
-  resetPerformanceControls() {
-    this.performance.morph = 0;
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /* 预设混合                                                                   */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * 混合预设
-   * 数值字段线性插值，布尔/字符串按 morph 所在半区择一
-   * 模块列表则尽量保留顺序并为结果生成新的临时 id
-   * @param {string} aId - 预设A ID
-   * @param {string} bId - 预设B ID
-   * @param {number} morph - 混合比例
-   * @returns {Object} - 混合后的预设
-   */
-  blendPresets(aId, bId, morph) {
-    const presetA = normalizePreset(BUILTIN_PRESET_TEMPLATES[aId]);
-    const presetB = normalizePreset(BUILTIN_PRESET_TEMPLATES[bId]);
-    const t = clamp(morph, 0, 1);
-
-    const blendNumbers = (a, b) => a + (b - a) * t;
-
-    const blendObject = (a, b) => {
-      if (typeof a === "number" && typeof b === "number") {
-        return blendNumbers(a, b);
-      }
-      if (typeof a === "boolean" || typeof b === "boolean") {
-        return t < 0.5 ? a : b;
-      }
-      if (typeof a === "string" || typeof b === "string") {
-        return t < 0.5 ? a : b;
-      }
-      if (Array.isArray(a) && Array.isArray(b)) {
-        return t < 0.5 ? deepClone(a) : deepClone(b);
-      }
-      if (isObject(a) && isObject(b)) {
-        const result = {};
-        const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-        keys.forEach((key) => {
-          if (a[key] === undefined) {
-            result[key] = deepClone(b[key]);
-          } else if (b[key] === undefined) {
-            result[key] = deepClone(a[key]);
-          } else {
-            result[key] = blendObject(a[key], b[key]);
-          }
-        });
-        return result;
-      }
-      return t < 0.5 ? deepClone(a) : deepClone(b);
-    };
-
-    const blendModuleLists = (listA, listB) => {
-      const max = Math.max(listA.length, listB.length);
-      const output = [];
-      for (let index = 0; index < max; index += 1) {
-        const modA = listA[index];
-        const modB = listB[index];
-        if (!modA) {
-          output.push(normalizeAnyModule(modB));
-          continue;
-        }
-        if (!modB) {
-          output.push(normalizeAnyModule(modA));
-          continue;
-        }
-
-        if (modA.type === modB.type && modA.category === modB.category) {
-          const blended = blendObject(modA, modB);
-          blended.id = createId("morph");
-          blended.category = modA.category;
-          output.push(normalizeAnyModule(blended));
-        } else {
-          const chosen = t < 0.5 ? deepClone(modA) : deepClone(modB);
-          chosen.id = createId("morph");
-          if (
-            chosen.category === "source" &&
-            typeof chosen.volume === "number" &&
-            typeof (t < 0.5 ? modB.volume : modA.volume) === "number"
-          ) {
-            chosen.volume = blendNumbers(modA.volume ?? chosen.volume, modB.volume ?? chosen.volume);
-          }
-          if (chosen.category === "source" && typeof chosen.pan === "number" && typeof (t < 0.5 ? modB.pan : modA.pan) === "number") {
-            chosen.pan = blendNumbers(modA.pan ?? chosen.pan, modB.pan ?? chosen.pan);
-          }
-          output.push(normalizeAnyModule(chosen));
-        }
-      }
-      return output;
-    };
-
-    return normalizePreset({
-      name: `Morph ${presetA.name} / ${presetB.name}`,
-      global: blendObject(presetA.global, presetB.global),
-      modules: blendModuleLists(presetA.modules || [], presetB.modules || []),
-    });
-  }
-
-  /**
-   * 应用混合状态
-   */
-  applyMorphState() {
-    const nextState = this.blendPresets(
-      this.performance.morphA,
-      this.performance.morphB,
-      this.performance.morph,
-    );
-    const previousState = deepClone(this.state);
-    this.state = nextState;
-    this.selectedPresetId =
-      this.performance.morph === 0
-        ? this.performance.morphA
-        : this.performance.morph === 1
-          ? this.performance.morphB
-          : "custom";
-    this.renderAll(previousState);
-    this.engine.fullSync(this.state);
-    this.setStatus(
-      `Morph ${Math.round(this.performance.morph * 100)}% between presets.`,
-      this.audioBooted ? "live" : "neutral",
-    );
-  }
-
   /* -------------------------------------------------------------------------- */
   /* 随机化                                                                     */
   /* -------------------------------------------------------------------------- */
@@ -2051,7 +1864,6 @@ class ModularSynthApp {
     });
 
     this.selectedPresetId = "custom";
-    this.resetPerformanceControls();
     this.renderAll(previousState);
     this.engine.fullSync(this.state);
     this.setStatus("Randomized the current patch.", this.audioBooted ? "live" : "neutral");

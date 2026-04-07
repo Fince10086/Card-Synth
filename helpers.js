@@ -162,20 +162,6 @@ function noteFromOffset(baseOctave, offset) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* 查找工具                                                                   */
-/* -------------------------------------------------------------------------- */
-
-/**
- * 通过 id 在模块数组里查找具体实例
- * @param {Array} list - 模块数组
- * @param {string} id - 模块ID
- * @returns {Object|undefined} - 找到的模块
- */
-function findById(list, id) {
-  return list.find((entry) => entry.id === id);
-}
-
-/* -------------------------------------------------------------------------- */
 /* 模块工厂函数                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -457,34 +443,6 @@ function applyPlayerLikeOptions(player, options = {}) {
   ["loop", "reverse", "mute"].forEach((key) => {
     if (options[key] !== undefined && key in player) {
       player[key] = Boolean(options[key]);
-    }
-  });
-}
-
-/**
- * 应用 Players 选项
- * @param {Object} bank - Tone.Players 实例
- * @param {Object} options - 选项
- */
-function applyPlayersOptions(bank, options = {}) {
-  if (!bank || typeof bank.player !== "function") {
-    return;
-  }
-
-  ["fadeIn", "fadeOut"].forEach((key) => {
-    if (options[key] !== undefined && key in bank) {
-      bank[key] = options[key];
-    }
-  });
-  if (options.mute !== undefined && "mute" in bank) {
-    bank.mute = Boolean(options.mute);
-  }
-
-  const keys = new Set(["low", "mid", "high", ...Object.keys(options.urls || {})]);
-  keys.forEach((key) => {
-    const player = bank.player(key);
-    if (player) {
-      applyPlayerLikeOptions(player, options);
     }
   });
 }

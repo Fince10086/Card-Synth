@@ -1130,38 +1130,6 @@ select {
   text-align: center;
 }
 
-/* Morph 控制区域 */
-.bottom-bar__morph {
-  min-width: 140px;
-  max-width: 180px;
-  padding: 0 8px;
-  border-left: 1px solid #e0e1e8;
-}
-
-.morph-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  height: 100%;
-}
-
-.morph-section .control {
-  flex-shrink: 0;
-}
-
-.morph-section .select-input {
-  font-size: 0.7rem;
-  padding: 3px 6px;
-}
-
-.morph-section .slider-shell {
-  padding: 2px 0;
-}
-
-.morph-section .slider-input {
-  height: 4px;
-}
-
 /* 宏控制区域 */
 .bottom-bar__macros {
   min-width: 140px;
