@@ -1118,6 +1118,9 @@ class ModularSynthApp {
   }) {
     const card = document.createElement("section");
     card.className = "module-card";
+    if (!enabled) {
+      card.classList.add("disabled");
+    }
     card.dataset.accent = accent;
     if (moduleRef) {
       card.dataset.moduleRef = moduleRef;
@@ -1126,30 +1129,22 @@ class ModularSynthApp {
     const head = document.createElement("div");
     head.className = "module-head";
 
-    const titleBlock = document.createElement("div");
-    titleBlock.className = "module-title-row";
-
-    // 显示模块编号
     if (index !== null) {
       const indexBadge = document.createElement("span");
       indexBadge.className = "module-index";
       indexBadge.textContent = `${index}`;
-      titleBlock.append(indexBadge);
+      if (onToggleEnabled) {
+        indexBadge.addEventListener("click", onToggleEnabled);
+      }
+      head.append(indexBadge);
     }
 
     if (titleOptions && onTitleChange) {
-      titleBlock.append(this.createTitleSelect({ accent, title, options: titleOptions, value: title, onChange: onTitleChange }));
+      head.append(this.createTitleSelect({ accent, title, options: titleOptions, value: title, onChange: onTitleChange }));
     } else {
       const titleNode = document.createElement("h3");
       titleNode.textContent = title;
-      titleBlock.append(titleNode);
-    }
-
-    const actions = document.createElement("div");
-    actions.className = "module-actions";
-
-    if (onToggleEnabled) {
-      actions.append(this.createModuleSwitch({ enabled, accent, onToggle: onToggleEnabled }));
+      head.append(titleNode);
     }
 
     if (removable && onRemove) {
@@ -1158,10 +1153,9 @@ class ModularSynthApp {
       removeButton.className = "module-remove";
       removeButton.textContent = "×";
       removeButton.addEventListener("click", onRemove);
-      actions.append(removeButton);
+      head.append(removeButton);
     }
 
-    head.append(titleBlock, actions);
     card.append(head);
 
     return card;
@@ -1176,7 +1170,6 @@ class ModularSynthApp {
   createTitleSelect({ accent, title, value, options, onChange }) {
     const wrap = document.createElement("label");
     wrap.className = "module-title-select";
-    wrap.style.setProperty("--accent", `var(--${accent})`);
 
     const select = document.createElement("select");
     select.className = "module-title-input";
@@ -1191,21 +1184,6 @@ class ModularSynthApp {
     select.addEventListener("change", (event) => onChange(event.target.value));
     wrap.append(select);
     return wrap;
-  }
-
-  /**
-   * 创建模块开关
-   * @param {Object} options - 选项
-   * @returns {HTMLElement} - 开关元素
-   */
-  createModuleSwitch({ enabled, accent, onToggle }) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `module-switch ${enabled ? "is-on" : ""}`;
-    button.style.setProperty("--accent", `var(--${accent})`);
-    button.setAttribute("aria-label", enabled ? "Disable module" : "Enable module");
-    button.addEventListener("click", onToggle);
-    return button;
   }
 
   /* -------------------------------------------------------------------------- */
@@ -1305,7 +1283,6 @@ class ModularSynthApp {
   }) {
     const wrapper = document.createElement("label");
     wrapper.className = `control control-${variant}`;
-    wrapper.style.setProperty("--accent", `var(--${accent})`);
 
     const controlLabel = document.createElement("div");
     controlLabel.className = "control-label";
