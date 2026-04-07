@@ -652,7 +652,9 @@ class ModularSynthApp {
 
       let shouldWrap = false;
 
-      if (isLastColumn) {
+      if (isAddCard && lastModuleHeight === 0) {
+        currentColumn = 0;
+      } else if (isLastColumn) {
         const firstColumnHeight = columnHeights[0];
         if (firstColumnHeight > columnHeights[currentColumn] + judgeHeight / 2) {
           shouldWrap = true;
@@ -664,7 +666,7 @@ class ModularSynthApp {
         }
       }
 
-      if (!shouldWrap && !isLastColumn) {
+      if (!shouldWrap && !isLastColumn && !(isAddCard && lastModuleHeight === 0)) {
         currentColumn += 1;
       } else if (!shouldWrap && isLastColumn) {
         currentColumn = 0;
