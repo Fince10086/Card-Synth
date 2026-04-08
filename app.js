@@ -1035,7 +1035,6 @@ class ModularSynthApp {
 
     // 配置参数
     const color = "var(--modulation)";  // 线缆颜色
-    const damping = 0.05;               // 阻尼系数：值越小动画越平滑但越慢
     const activeKeys = new Set();       // 当前帧渲染的线缆 ID 集合
     let shouldContinue = Boolean(this.modulationDrag.active);  // 是否需要继续动画
 
@@ -1089,7 +1088,7 @@ class ModularSynthApp {
       dot.setAttribute("cy", String(point.y));
       dot.setAttribute("r", "4");
       dot.setAttribute("fill", color);
-      dot.setAttribute("opacity", "0.7");
+      dot.setAttribute("opacity", "0.6");
 
       // 可交互的端点（起点）支持点击重新拖拽
       if (interactive && meta) {
@@ -1124,10 +1123,6 @@ class ModularSynthApp {
         from: { x: route.from.x, y: route.from.y },
         to: { x: route.to.x, y: route.to.y },
       };
-
-      // 应用 damping 插值，返回是否仍在运动
-      const movingFrom = this.lerpPoint(visual.from, route.from, damping);
-      const movingTo = this.lerpPoint(visual.to, route.to, damping);
 
       // 保存更新后的视觉状态
       this.cableVisuals.set(route.id, visual);
@@ -1769,19 +1764,6 @@ class ModularSynthApp {
       head.append(titleNode);
     }
 
-    if (showModulationAnchor && moduleRef) {
-      const anchor = document.createElement("button");
-      anchor.type = "button";
-      anchor.className = "module-mod-anchor";
-      anchor.dataset.moduleId = moduleRef;
-      anchor.addEventListener("pointerdown", (event) => {
-        if (onModulationAnchorPointerDown) {
-          onModulationAnchorPointerDown(event);
-        }
-      });
-      head.append(anchor);
-    }
-
     if (removable && onRemove) {
       const removeButton = document.createElement("button");
       removeButton.type = "button";
@@ -1802,6 +1784,19 @@ class ModularSynthApp {
         toggle.addEventListener("click", onToggleModulation);
       }
       card.append(toggle);
+    }
+
+    if (showModulationAnchor && moduleRef) {
+      const anchor = document.createElement("button");
+      anchor.type = "button";
+      anchor.className = "module-mod-anchor";
+      anchor.dataset.moduleId = moduleRef;
+      anchor.addEventListener("pointerdown", (event) => {
+        if (onModulationAnchorPointerDown) {
+          onModulationAnchorPointerDown(event);
+        }
+      });
+      card.append(anchor);
     }
 
     return card;
