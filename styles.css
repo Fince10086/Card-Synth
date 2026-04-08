@@ -264,14 +264,15 @@ select {
 .module-mod-toggle {
   position: absolute;
   left: 0px;
-  bottom: 0px;
+  bottom: -0.3px;
   border: 0;
   background: transparent;
   color: var(--accent);
-  font-size: 16px;
+  font-size: 30px;
   cursor: pointer;
   line-height: 1;
   padding: 0;
+  user-select: none;
 }
 
 .module-mod-toggle.is-on {
@@ -309,6 +310,15 @@ select {
 .modulation-cable--ghost {
   stroke-dasharray: 6 4;
   opacity: 0.72;
+}
+
+.cable-socket.is-interactive {
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.cable-socket.is-interactive:active {
+  cursor: grabbing;
 }
 
 .add-module-card {
@@ -474,6 +484,7 @@ select {
   max-width: 100%;
   text-align: center;
   margin: 0 auto;
+  user-select: none;
 }
 
 .module-remove {
@@ -583,6 +594,7 @@ select {
   color: var(--accent);
   cursor: pointer;
   font-size: 12px;
+  opacity: 0;
 }
 
 .control.mod-target-hover {

@@ -35,6 +35,8 @@ class ModularSynthApp {
       y: 0,
     };
     this.modulationSvg = null;
+    this.cableVisuals = new Map();
+    this.modulationFrame = 0;
 
     this.scopeZoom = {
       horizontal: 1,
@@ -995,32 +997,58 @@ class ModularSynthApp {
   }
 
   /**
+   * 平滑插值 - 使用 damping 实现弹性效果
+   */
+  lerpPoint(current, target, damping) {
+    current.x += (target.x - current.x) * damping;
+    current.y += (target.y - current.y) * damping;
+    const dx = Math.abs(target.x - current.x);
+    const dy = Math.abs(target.y - current.y);
+    const settled = dx < 0.5 && dy < 0.5;
+    if (settled) {
+      current.x = target.x;
+      current.y = target.y;
+    }
+    return !settled;
+  }
+
+  /**
    * 渲染调制线缆叠加层
    */
   renderModulationOverlay() {
     const shell = this.elements.signalFlowShell;
-    if (!shell) {
-      return;
-    }
+    if (!shell) return;
 
+    // 延迟创建 SVG 容器，首次调用时才初始化
     if (!this.modulationSvg) {
       this.modulationSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       this.modulationSvg.classList.add("modulation-cables");
       shell.appendChild(this.modulationSvg);
     }
 
+    // 设置 SVG 尺寸与容器一致
     const shellRect = shell.getBoundingClientRect();
-    this.modulationSvg.setAttribute("width", String(Math.max(1, shellRect.width)));
-    this.modulationSvg.setAttribute("height", String(Math.max(1, shellRect.height)));
-    this.modulationSvg.innerHTML = "";
+    const svg = this.modulationSvg;
+    svg.setAttribute("width", String(Math.max(1, shellRect.width)));
+    svg.setAttribute("height", String(Math.max(1, shellRect.height)));
+    svg.innerHTML = "";  // 清空上一帧内容
 
-    const createCable = (from, to, ghost = false) => {
-      if (!from || !to) {
-        return;
-      }
+    // 配置参数
+    const color = "var(--modulation)";  // 线缆颜色
+    const damping = 0.05;               // 阻尼系数：值越小动画越平滑但越慢
+    const activeKeys = new Set();       // 当前帧渲染的线缆 ID 集合
+    let shouldContinue = Boolean(this.modulationDrag.active);  // 是否需要继续动画
+
+    /**
+     * 创建贝塞尔曲线路径
+     * 使用二次贝塞尔曲线 (Q 命令) 模拟线缆受重力下垂的效果
+     *
+     * @param {Object} from - 起点 { x, y }
+     * @param {Object} to - 终点 { x, y }
+     * @param {boolean} isGhost - 是否为虚线（拖拽预览）
+     */
+    const createCablePath = (from, to, isGhost = false) => {
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-
-      // 计算水平距离
       const horizontalDist = Math.abs(to.x - from.x);
 
       // 控制点 x 坐标：起点和终点的中点
@@ -1033,33 +1061,152 @@ class ModularSynthApp {
       // 控制点 y 坐标：取两点中较低的位置，再向下偏移下垂量
       const cy = Math.max(from.y, to.y) + sag;
 
-      // 二次贝塞尔曲线：Q 命令只需要一个控制点
-      const d = `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`;
+      // 二次贝塞尔曲线：M 移动到起点，Q 绘制曲线到终点
+      path.setAttribute("d", `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", color);
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("opacity", isGhost ? "0.5" : "0.6");
 
-      path.setAttribute("d", d);
-      path.setAttribute("class", ghost ? "modulation-cable modulation-cable--ghost" : "modulation-cable");
-      this.modulationSvg.appendChild(path);
+      // 拖拽中的线缆显示虚线
+      if (isGhost) path.setAttribute("stroke-dasharray", "6 4");
+
+      svg.appendChild(path);
     };
 
+    /**
+     * 创建圆圈端点
+     * 在线缆两端绘制小圆圈，标记连接位置
+     *
+     * @param {Object} point - 圆心位置 { x, y }
+     * @param {boolean} interactive - 是否可交互（起点可点击重新拖拽）
+     * @param {Object|null} meta - 交互元数据 { sourceModuleId, connectionId }
+     */
+    const createSocket = (point, interactive = false, meta = null) => {
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", String(point.x));
+      dot.setAttribute("cy", String(point.y));
+      dot.setAttribute("r", "4");
+      dot.setAttribute("fill", color);
+      dot.setAttribute("opacity", "0.7");
+
+      // 可交互的端点（起点）支持点击重新拖拽
+      if (interactive && meta) {
+        dot.setAttribute("class", "cable-socket is-interactive");
+        dot.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.startModulationDrag({
+            event,
+            sourceModuleId: meta.sourceModuleId,
+            updateConnectionId: meta.connectionId,
+          });
+        });
+      }
+
+      svg.appendChild(dot);
+    };
+
+    /**
+     * 渲染单条线缆
+     * 应用 damping 插值实现弹性动画效果
+     *
+     * @param {Object} route - 线缆数据 { id, sourceModuleId, from, to }
+     * @param {boolean} interactive - 是否渲染可交互端点
+     * @param {boolean} isGhost - 是否为虚线预览
+     */
+    const renderCable = (route, interactive = true, isGhost = false) => {
+      activeKeys.add(route.id);  // 记录已渲染的线缆
+
+      // 获取或创建端点的视觉状态（用于动画插值）
+      const visual = this.cableVisuals.get(route.id) || {
+        from: { x: route.from.x, y: route.from.y },
+        to: { x: route.to.x, y: route.to.y },
+      };
+
+      // 应用 damping 插值，返回是否仍在运动
+      const movingFrom = this.lerpPoint(visual.from, route.from, damping);
+      const movingTo = this.lerpPoint(visual.to, route.to, damping);
+
+      // 保存更新后的视觉状态
+      this.cableVisuals.set(route.id, visual);
+
+      // 如果端点仍在运动，需要继续动画
+      if (movingFrom || movingTo) shouldContinue = true;
+
+      // 渲染线缆路径
+      createCablePath(visual.from, visual.to, isGhost);
+
+      // 渲染端点圆圈
+      if (interactive) {
+        // 已建立的连接：起点可交互，终点不可交互
+        createSocket(visual.from, true, { sourceModuleId: route.sourceModuleId, connectionId: route.id });
+        createSocket(visual.to, false);
+      } else {
+        // 拖拽中的线缆：两端都不可交互
+        createSocket(visual.from, false);
+        createSocket(visual.to, false);
+      }
+    };
+
+    // 渲染所有已建立的调制连接
     this.getModulations().forEach((connection) => {
+      // 查找源模块的调制锚点元素
       const fromEl = this.elements.signalFlow?.querySelector(
         `.module-mod-anchor[data-module-id="${connection.sourceModuleId}"]`,
       );
+      // 查找目标参数的显示元素
       const toEl = this.elements.signalFlow?.querySelector(
         `.control-readout[data-module-id="${connection.targetModuleId}"][data-param-path="${connection.targetParamPath}"]`,
       );
-      createCable(this.getPointInSignalFlowShell(fromEl), this.getPointInSignalFlowShell(toEl));
+
+      // 获取元素在 SVG 坐标系中的中心点
+      const from = this.getPointInSignalFlowShell(fromEl);
+      const to = this.getPointInSignalFlowShell(toEl);
+
+      if (from && to) {
+        renderCable(
+          { id: connection.id, sourceModuleId: connection.sourceModuleId, from, to },
+          true,   // interactive: 可交互
+          false,  // isGhost: 不是虚线
+        );
+      }
     });
 
+    // 渲染拖拽中的线缆（虚线预览）
     if (this.modulationDrag.active) {
       const fromEl = this.elements.signalFlow?.querySelector(
         `.module-mod-anchor[data-module-id="${this.modulationDrag.sourceModuleId}"]`,
       );
       const from = this.getPointInSignalFlowShell(fromEl);
-      const to = this.getPointInSignalFlowShell(this.elements.signalFlowShell);
-      if (from && to) {
-        createCable(from, { x: this.modulationDrag.x - shellRect.left, y: this.modulationDrag.y - shellRect.top }, true);
+
+      if (from) {
+        // 终点跟随鼠标位置
+        renderCable(
+          {
+            id: "drag",
+            from,
+            to: { x: this.modulationDrag.x - shellRect.left, y: this.modulationDrag.y - shellRect.top },
+          },
+          false,  // interactive: 不可交互
+          true,   // isGhost: 显示虚线
+        );
       }
+    }
+
+    // 清理已删除线缆的视觉状态
+    // 避免内存泄漏，删除不再存在的线缆数据
+    this.cableVisuals.forEach((_, key) => {
+      if (!activeKeys.has(key)) this.cableVisuals.delete(key);
+    });
+
+    // 动画循环控制
+    // 如果需要继续动画（端点在运动或正在拖拽），请求下一帧
+    if (shouldContinue) {
+      this.modulationFrame = requestAnimationFrame(() => this.renderModulationOverlay());
+    } else {
+      this.modulationFrame = 0;  // 停止动画
     }
   }
 
