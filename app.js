@@ -1035,6 +1035,7 @@ class ModularSynthApp {
 
     // 配置参数
     const color = "var(--modulation)";  // 线缆颜色
+    const damping = 0.05;               // 阻尼系数：值越小动画越平滑但越慢
     const activeKeys = new Set();       // 当前帧渲染的线缆 ID 集合
     let shouldContinue = Boolean(this.modulationDrag.active);  // 是否需要继续动画
 
@@ -1124,6 +1125,10 @@ class ModularSynthApp {
         to: { x: route.to.x, y: route.to.y },
       };
 
+      // 应用 damping 插值，返回是否仍在运动
+      const movingFrom = this.lerpPoint(visual.from, route.from, damping);
+      const movingTo = this.lerpPoint(visual.to, route.to, damping);
+
       // 保存更新后的视觉状态
       this.cableVisuals.set(route.id, visual);
 
@@ -1136,7 +1141,7 @@ class ModularSynthApp {
       // 渲染端点圆圈
       if (interactive) {
         // 已建立的连接：起点可交互，终点不可交互
-        createSocket(visual.from, true, { sourceModuleId: route.sourceModuleId, connectionId: route.id });
+        createSocket(visual.from, false, { sourceModuleId: route.sourceModuleId, connectionId: route.id });
         createSocket(visual.to, false);
       } else {
         // 拖拽中的线缆：两端都不可交互
