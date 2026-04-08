@@ -763,14 +763,20 @@ select {
 
 .mod-range-marker {
   position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
   color: var(--modulation);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1;
   cursor: ew-resize;
   user-select: none;
+}
+
+.mod-range-marker--max {
+  transform: translate(-50%, -20%);
+}
+
+.mod-range-marker--min {
+  transform: translate(-25%, -20%);
 }
 
 .slider-input::-webkit-slider-thumb {

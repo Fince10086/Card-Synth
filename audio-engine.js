@@ -100,6 +100,31 @@ class AudioEngine {
     rampParam(this.masterVolume.volume, globalState.volume);
   }
 
+  /**
+   * 轻量级更新调制范围
+   * 只更新 scale 参数，不重建信号链
+   * @param {string} modulationId - 调制连接ID
+   * @param {number} scaleMin - 最小值
+   * @param {number} scaleMax - 最大值
+   */
+  updateModulationRange(modulationId, scaleMin, scaleMax) {
+    const item = this.modulationRuntimes.find((m) => m.id === modulationId);
+    if (!item || !item.scale) {
+      return;
+    }
+    const scale = item.scale;
+    if ("outputMin" in scale) {
+      scale.outputMin = Number(scaleMin ?? 0);
+    } else if ("min" in scale) {
+      scale.min = Number(scaleMin ?? 0);
+    }
+    if ("outputMax" in scale) {
+      scale.outputMax = Number(scaleMax ?? 1);
+    } else if ("max" in scale) {
+      scale.max = Number(scaleMax ?? 1);
+    }
+  }
+
   /* -------------------------------------------------------------------------- */
   /* 模块类型判断                                                               */
   /* -------------------------------------------------------------------------- */

@@ -2380,10 +2380,10 @@ class ModularSynthApp {
       shell.classList.add("slider-shell--mod-range");
       const markerMin = document.createElement("span");
       markerMin.className = "mod-range-marker mod-range-marker--min";
-      markerMin.textContent = "「";
+      markerMin.textContent = "[";
       const markerMax = document.createElement("span");
       markerMax.className = "mod-range-marker mod-range-marker--max";
-      markerMax.textContent = "」";
+      markerMax.textContent = "]";
       shell.append(markerMin, markerMax);
 
       const clamp = (next) => Math.max(min, Math.min(max, next));
@@ -2413,12 +2413,18 @@ class ModularSynthApp {
         markerMax.style.left = `${maxPercent * 100}%`;
       };
 
-      const commitRange = (valueKey, next) => {
+      const updateRange = (valueKey, next) => {
         modulation[valueKey] = snap(next);
         paintRange();
+        this.engine.updateModulationRange(
+          modulation.id,
+          modulation.scaleMin,
+          modulation.scaleMax
+        );
+      };
+
+      const commitRange = () => {
         this.selectedPresetId = "custom";
-        this.engine.fullSync(this.state);
-        this.renderModulationOverlay();
       };
 
       const bindMarkerDrag = (marker, valueKey) => {
@@ -2430,12 +2436,13 @@ class ModularSynthApp {
               return;
             }
             const percent = clamp01((clientX - rect.left) / rect.width);
-            commitRange(valueKey, min + percent * (max - min));
+            updateRange(valueKey, min + percent * (max - min));
           };
           const onMove = (moveEvent) => {
             updateFromPointer(moveEvent.clientX);
           };
           const onUp = () => {
+            commitRange();
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
           };
