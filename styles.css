@@ -302,6 +302,7 @@ select {
   inset: 0;
   pointer-events: none;
   z-index: 3;
+  overflow: visible;
 }
 
 .modulation-cable {
