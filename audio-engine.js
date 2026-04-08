@@ -201,8 +201,9 @@ class AudioEngine {
 
   /**
    * 连接 Source 模块
-   * 当模块链中有 AmpEnv 时：Voice[i] → AmpEnv.voices[i]
-   * 当模块链中没有 AmpEnv 时：Voice[i] → hiddenAmpEnv → 目标模块
+   * 当 AmpEnv 在第一个位置时：Voice[i] → AmpEnv.voices[i]
+   * 当 AmpEnv 不在第一个位置时：Voice[i] → hiddenAmpEnv → 目标模块（release = 10s）
+   * 当没有 AmpEnv 时：Voice[i] → hiddenAmpEnv → 目标模块（release = 0.005s）
    * @param {Array} modules - 模块数组
    * @param {number} sourceIndex - Source 索引
    * @param {Object} runtime - Source 运行时
@@ -228,21 +229,30 @@ class AudioEngine {
       }
     }
 
-    // 检查 Source 之后的整个信号链中是否有 AmpEnv
-    let ampEnvIndex = -1;
+    // 检查第一个非 Source 模块是否为 AmpEnv
+    const isFirstModuleAmpEnv = targetIndex >= 0 && ampEnvIndices.has(targetIndex);
+
+    // 检查信号链中是否存在 AmpEnv（用于设置 hiddenAmpEnv release 时间）
+    let hasAmpEnvAnywhere = false;
     for (let i = sourceIndex + 1; i < modules.length; i++) {
       if (ampEnvIndices.has(i)) {
-        ampEnvIndex = i;
+        hasAmpEnvAnywhere = true;
         break;
       }
     }
 
-    const hasAmpEnv = ampEnvIndex >= 0;
-    runtime.hasAmpEnv = hasAmpEnv;
+    // 设置 hiddenAmpEnv release 时间
+    // 如果 AmpEnv 存在但不在第一个位置，需要延长 release 时间
+    const hiddenAmpEnvRelease = hasAmpEnvAnywhere && !isFirstModuleAmpEnv ? 10 : 0.005;
+    runtime.voices.forEach((voice) => {
+      voice.hiddenAmpEnv.release = hiddenAmpEnvRelease;
+    });
 
-    if (hasAmpEnv) {
-      // 有 AmpEnv：Voice[i] → AmpEnv.voices[i]
-      const ampEnvModule = modules[ampEnvIndex];
+    runtime.hasAmpEnv = isFirstModuleAmpEnv;
+
+    if (isFirstModuleAmpEnv) {
+      // AmpEnv 在第一个位置：Voice[i] → AmpEnv.voices[i]
+      const ampEnvModule = modules[targetIndex];
       const ampEnvRuntime = this.moduleRuntimes.get(ampEnvModule.id);
       runtime.ampEnvRuntime = ampEnvRuntime;
 
@@ -252,7 +262,7 @@ class AudioEngine {
         }
       });
     } else {
-      // 无 AmpEnv：Voice[i] → hiddenAmpEnv → 目标模块
+      // AmpEnv 不在第一个位置或不存在：Voice[i] → hiddenAmpEnv → 目标模块
       runtime.ampEnvRuntime = null;
 
       let targetNode;
@@ -274,13 +284,14 @@ class AudioEngine {
 
   /**
    * 连接非 Source 模块
+   * AmplitudeEnvelope 特殊处理：同时支持 node 和 voices 两种输入模式
    * @param {Array} modules - 模块数组
    * @param {number} moduleIndex - 模块索引
    * @param {Object} runtime - 模块运行时
    */
   connectNonSourceModule(modules, moduleIndex, runtime) {
-    // AmplitudeEnvelope 特殊处理：所有 voices 连接到目标
-    if (runtime.type === "AmplitudeEnvelope" && runtime.voices) {
+    // AmplitudeEnvelope 特殊处理：node 和 voices 都连接到目标
+    if (runtime.type === "AmplitudeEnvelope") {
       let targetIndex = -1;
       for (let i = moduleIndex + 1; i < modules.length; i++) {
         if (!this.isSourceModule(modules[i]) && modules[i].enabled) {
@@ -299,7 +310,14 @@ class AudioEngine {
       }
 
       if (targetNode) {
-        runtime.voices.forEach((env) => env.connect(targetNode));
+        // node 模式连接
+        if (runtime.node) {
+          runtime.node.connect(targetNode);
+        }
+        // voices 模式连接
+        if (runtime.voices) {
+          runtime.voices.forEach((env) => env.connect(targetNode));
+        }
       }
       return;
     }
@@ -442,33 +460,29 @@ class AudioEngine {
 
     /**
      * 触发 AmpEnv 包络（带引用计数）
+     * 使用 voices 模式的 triggerVoiceAttack 方法
      * @param {number} voiceIndex - Voice 索引
      * @param {number} velocity - 力度
      */
     const triggerAmpEnvAttack = (voiceIndex, velocity) => {
       const ampEnv = runtime.ampEnvRuntime;
-      if (!ampEnv || !ampEnv.voices || !ampEnv.voiceRefCount) {
+      if (!ampEnv || typeof ampEnv.triggerVoiceAttack !== "function") {
         return;
       }
-      ampEnv.voiceRefCount[voiceIndex] += 1;
-      if (ampEnv.voiceRefCount[voiceIndex] === 1) {
-        ampEnv.voices[voiceIndex].triggerAttack(Tone.now(), velocity);
-      }
+      ampEnv.triggerVoiceAttack(voiceIndex, velocity);
     };
 
     /**
      * 释放 AmpEnv 包络（带引用计数）
+     * 使用 voices 模式的 triggerVoiceRelease 方法
      * @param {number} voiceIndex - Voice 索引
      */
     const triggerAmpEnvRelease = (voiceIndex) => {
       const ampEnv = runtime.ampEnvRuntime;
-      if (!ampEnv || !ampEnv.voices || !ampEnv.voiceRefCount) {
+      if (!ampEnv || typeof ampEnv.triggerVoiceRelease !== "function") {
         return;
       }
-      ampEnv.voiceRefCount[voiceIndex] = Math.max(0, ampEnv.voiceRefCount[voiceIndex] - 1);
-      if (ampEnv.voiceRefCount[voiceIndex] === 0) {
-        ampEnv.voices[voiceIndex].triggerRelease(Tone.now());
-      }
+      ampEnv.triggerVoiceRelease(voiceIndex);
     };
 
     const runtime = {
@@ -837,28 +851,74 @@ class AudioEngine {
 
   /**
    * 创建效果器/组件运行时
-   * AmplitudeEnvelope 特殊处理：创建 8 个包络节点
+   * AmplitudeEnvelope 特殊处理：同时创建 node 和 voices 两种输入模式
    * @param {Object} module - 模块对象
    * @returns {Object} - 运行时对象
    */
   createEffectRuntime(module) {
-    // AmplitudeEnvelope 特殊处理：创建 8 个包络节点
+    // AmplitudeEnvelope 特殊处理：双模式输入
     if (module.type === "AmplitudeEnvelope") {
       const VOICE_COUNT = 8;
+      // voices 模式：8 个 AmplitudeEnvelope 节点（用于 Source Voice 连接）
       const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.AmplitudeEnvelope(module.options));
+      // node 模式：1 个 AmplitudeEnvelope 节点（用于非 Source 模块连接）
+      const node = new Tone.AmplitudeEnvelope(module.options);
+      // voices 模式引用计数
       const voiceRefCount = new Array(VOICE_COUNT).fill(0);
+      // node 模式状态追踪
+      const nodeState = { note: null, startTime: 0 };
 
       return {
         type: module.type,
         category: module.category || "component",
         voices,
         voiceRefCount,
-        node: null,
+        node,
+        nodeState,
         apply: (nextModule) => {
           voices.forEach((env) => safeSet(env, nextModule.options));
+          safeSet(node, nextModule.options);
+        },
+        // voices 模式触发（由 Source Voice 调用，带引用计数）
+        triggerVoiceAttack: (voiceIndex, velocity) => {
+          if (voiceIndex < 0 || voiceIndex >= VOICE_COUNT) return;
+          voiceRefCount[voiceIndex] += 1;
+          if (voiceRefCount[voiceIndex] === 1) {
+            voices[voiceIndex].triggerAttack(Tone.now(), velocity);
+          }
+        },
+        triggerVoiceRelease: (voiceIndex) => {
+          if (voiceIndex < 0 || voiceIndex >= VOICE_COUNT) return;
+          voiceRefCount[voiceIndex] = Math.max(0, voiceRefCount[voiceIndex] - 1);
+          if (voiceRefCount[voiceIndex] === 0) {
+            voices[voiceIndex].triggerRelease(Tone.now());
+          }
+        },
+        // node 模式触发（由全局 attack/release 调用，无引用计数）
+        triggerAttack: (note, velocity) => {
+          nodeState.note = note;
+          nodeState.startTime = Tone.now();
+          node.triggerAttack(Tone.now(), velocity);
+        },
+        triggerRelease: (note) => {
+          if (nodeState.note === note) {
+            nodeState.note = null;
+            node.triggerRelease(Tone.now());
+          }
+        },
+        releaseAll: () => {
+          // 释放 node 模式
+          nodeState.note = null;
+          node.triggerRelease(Tone.now());
+          // 释放 voices 模式
+          voices.forEach((env, index) => {
+            voiceRefCount[index] = 0;
+            env.triggerRelease(Tone.now());
+          });
         },
         dispose: () => {
           voices.forEach((env) => env.dispose());
+          node.dispose();
         },
       };
     }
@@ -962,7 +1022,8 @@ class AudioEngine {
 
   /**
    * 触发音符 Attack
-   * AmpEnv 由 Source Voice per-voice 触发，此处不再全局触发
+   * Source Voice 触发 AmpEnv.voices 模式（由 Source runtime.triggerAttack 处理）
+   * AmpEnv.node 模式在此处触发（用于非 Source 模块信号）
    * @param {string} note - 音符
    * @param {number} velocity - 力度
    */
@@ -973,9 +1034,16 @@ class AudioEngine {
 
     this.activeNotes.add(note);
 
-    // 触发所有 Source 的 attack（AmpEnv 或 hiddenAmpEnv 在此触发）
+    // 触发所有 Source 的 attack（AmpEnv voices 模式或 hiddenAmpEnv 在此触发）
     this.moduleRuntimes.forEach((runtime) => {
       if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.triggerAttack) {
+        runtime.triggerAttack(note, velocity);
+      }
+    });
+
+    // 触发所有 AmpEnv 的 node 模式
+    this.moduleRuntimes.forEach((runtime) => {
+      if (runtime.type === "AmplitudeEnvelope" && runtime.node && runtime.triggerAttack) {
         runtime.triggerAttack(note, velocity);
       }
     });
@@ -983,7 +1051,8 @@ class AudioEngine {
 
   /**
    * 触发音符 Release
-   * AmpEnv 由 Source Voice per-voice 触发，此处不再全局触发
+   * Source Voice 触发 AmpEnv.voices 模式（由 Source runtime.triggerRelease 处理）
+   * AmpEnv.node 模式在此处触发（用于非 Source 模块信号）
    * @param {string} note - 音符
    */
   release(note) {
@@ -993,9 +1062,16 @@ class AudioEngine {
 
     this.activeNotes.delete(note);
 
-    // 触发所有 Source 的 release（AmpEnv 或 hiddenAmpEnv 在此触发）
+    // 触发所有 Source 的 release（AmpEnv voices 模式或 hiddenAmpEnv 在此触发）
     this.moduleRuntimes.forEach((runtime) => {
       if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.triggerRelease) {
+        runtime.triggerRelease(note);
+      }
+    });
+
+    // 触发所有 AmpEnv 的 node 模式 release
+    this.moduleRuntimes.forEach((runtime) => {
+      if (runtime.type === "AmplitudeEnvelope" && runtime.node && runtime.triggerRelease) {
         runtime.triggerRelease(note);
       }
     });
@@ -1003,7 +1079,7 @@ class AudioEngine {
 
   /**
    * 静音所有音符
-   * AmpEnv 由 Source Voice per-voice 触发，此处不再全局触发
+   * 释放所有 Source 和 AmpEnv 的 node 模式
    */
   silenceAll() {
     this.activeNotes.clear();
@@ -1011,9 +1087,16 @@ class AudioEngine {
       return;
     }
 
-    // 释放所有 Source（AmpEnv 或 hiddenAmpEnv 在此触发）
+    // 释放所有 Source（AmpEnv voices 模式或 hiddenAmpEnv 在此触发）
     this.moduleRuntimes.forEach((runtime) => {
       if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.releaseAll) {
+        runtime.releaseAll();
+      }
+    });
+
+    // 释放所有 AmpEnv 的 node 模式
+    this.moduleRuntimes.forEach((runtime) => {
+      if (runtime.type === "AmplitudeEnvelope" && runtime.node && runtime.releaseAll) {
         runtime.releaseAll();
       }
     });
