@@ -1019,8 +1019,23 @@ class ModularSynthApp {
         return;
       }
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      const dx = Math.max(28, Math.abs(to.x - from.x) * 0.4);
-      const d = `M ${from.x} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`;
+
+      // 计算水平距离
+      const horizontalDist = Math.abs(to.x - from.x);
+
+      // 控制点 x 坐标：起点和终点的中点
+      const cx = (from.x + to.x) / 2;
+
+      // 下垂量：基础下垂 + 水平距离贡献
+      // 水平距离越大，下垂越多，模拟真实线缆的重力效果
+      const sag = 15 + horizontalDist * 0.25;
+
+      // 控制点 y 坐标：取两点中较低的位置，再向下偏移下垂量
+      const cy = Math.max(from.y, to.y) + sag;
+
+      // 二次贝塞尔曲线：Q 命令只需要一个控制点
+      const d = `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`;
+
       path.setAttribute("d", d);
       path.setAttribute("class", ghost ? "modulation-cable modulation-cable--ghost" : "modulation-cable");
       this.modulationSvg.appendChild(path);
