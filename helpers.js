@@ -179,6 +179,8 @@ function createSourceModule(type = "Oscillator") {
     enabled: true,
     volume: -8,
     pan: 0,
+    modulationMode: false,
+    modulationFrequency: 1,
     index: moduleCounter - 1,
     ...(definition.moduleDefaults ? deepClone(definition.moduleDefaults) : {}),
     options: deepClone(definition.options),
@@ -348,6 +350,7 @@ function normalizePreset(preset = {}) {
     name: "Untitled Patch",
     global: { volume: -8, octave: 4, velocity: 0.8 },
     modules: [],
+    modulations: [],
   };
 
   const merged = deepMerge(fallback, preset);
@@ -369,6 +372,21 @@ function normalizePreset(preset = {}) {
   merged.global.octave = clamp(Number(merged.global.octave || 4), 1, 7);
   merged.global.velocity = clamp(Number(merged.global.velocity || 0.8), 0.1, 1);
   merged.global.volume = clamp(Number(merged.global.volume || -8), -36, 6);
+
+  // 标准化调制连接
+  merged.modulations = Array.isArray(merged.modulations)
+    ? merged.modulations
+      .map((item) => ({
+        id: String(item?.id || createId("mod")),
+        sourceModuleId: String(item?.sourceModuleId || ""),
+        sourceVoiceIndex: clamp(Number(item?.sourceVoiceIndex ?? 0), 0, 7),
+        targetModuleId: String(item?.targetModuleId || ""),
+        targetParamPath: String(item?.targetParamPath || ""),
+        scaleMin: Number(item?.scaleMin ?? 0),
+        scaleMax: Number(item?.scaleMax ?? 1),
+      }))
+      .filter((item) => item.sourceModuleId && item.targetModuleId && item.targetParamPath)
+    : [];
 
   return merged;
 }

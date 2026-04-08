@@ -24,6 +24,17 @@ class ModularSynthApp {
     this.heldPointerNotes = new Set();
 
     this.controlBindings = new Map();
+    this.modulationDrag = {
+      active: false,
+      pointerId: 0,
+      sourceModuleId: "",
+      updateConnectionId: "",
+      startX: 0,
+      startY: 0,
+      x: 0,
+      y: 0,
+    };
+    this.modulationSvg = null;
 
     this.scopeZoom = {
       horizontal: 1,
@@ -76,6 +87,7 @@ class ModularSynthApp {
     window.addEventListener("resize", () => {
       this.resizeScopeCanvas();
       this.layoutModuleMasonry();
+      this.renderModulationOverlay();
     });
   }
 
@@ -93,6 +105,7 @@ class ModularSynthApp {
       presetControls: document.getElementById("presetControls"),
       masterControls: document.getElementById("masterControls"),
       signalFlow: document.querySelector(".signal-flow"),
+      signalFlowShell: document.querySelector(".signal-flow-shell"),
       addModuleCard: document.getElementById("addModuleCard"),
       addModuleDropdown: document.getElementById("addModuleDropdown"),
       keyboard: document.getElementById("virtualKeyboard"),
@@ -194,6 +207,7 @@ class ModularSynthApp {
 
     this.initBottomBarResize();
     this.bindStaticControls();
+    this.bindModulationEvents();
   }
 
   initBottomBarResize() {
@@ -221,6 +235,7 @@ class ModularSynthApp {
       bottomBar.style.height = `${newHeight}px`;
       this.resizeScopeCanvas();
       this.layoutModuleMasonry();
+      this.renderModulationOverlay();
     });
 
     handle.addEventListener("pointerup", (e) => {
@@ -556,6 +571,7 @@ class ModularSynthApp {
     }
 
     this.layoutModuleMasonry();
+    this.renderModulationOverlay();
 
     if (previousState) {
       this.animateControlTransition(previousState, this.state);
@@ -695,6 +711,344 @@ class ModularSynthApp {
   }
 
   /* -------------------------------------------------------------------------- */
+  /* 调制连线                                                                    */
+  /* -------------------------------------------------------------------------- */
+
+  /**
+   * 绑定调制拖拽事件
+   */
+  bindModulationEvents() {
+    document.addEventListener("pointermove", (event) => this.handleModulationPointerMove(event));
+    document.addEventListener("pointerup", (event) => this.handleModulationPointerUp(event));
+    document.addEventListener("pointercancel", () => this.cancelModulationDrag());
+  }
+
+  /**
+   * 判断模块是否可作为调制源
+   * @param {Object} module - 模块对象
+   * @returns {boolean}
+   */
+  isModulationSource(module) {
+    if (!module) {
+      return false;
+    }
+    if (module.type === "Envelope") {
+      return true;
+    }
+    return module.category === "source" && Boolean(module.modulationMode);
+  }
+
+  /**
+   * 获取所有调制连接
+   * @returns {Array}
+   */
+  getModulations() {
+    if (!Array.isArray(this.state.modulations)) {
+      this.state.modulations = [];
+    }
+    return this.state.modulations;
+  }
+
+  /**
+   * 获取指定源模块的调制输出
+   * @param {string} sourceModuleId - 源模块 ID
+   * @returns {Array}
+   */
+  getOutgoingModulations(sourceModuleId) {
+    return this.getModulations().filter((item) => item.sourceModuleId === sourceModuleId);
+  }
+
+  /**
+   * 获取指定目标参数的调制连接
+   * @param {string} targetModuleId - 目标模块 ID
+   * @param {string} targetParamPath - 目标参数路径
+   * @returns {Object|null}
+   */
+  getModulationByTarget(targetModuleId, targetParamPath) {
+    return this.getModulations().find(
+      (item) => item.targetModuleId === targetModuleId && item.targetParamPath === targetParamPath,
+    ) || null;
+  }
+
+  /**
+   * 获取调制连接（按 ID）
+   * @param {string} connectionId - 连接 ID
+   * @returns {Object|null}
+   */
+  getModulationById(connectionId) {
+    return this.getModulations().find((item) => item.id === connectionId) || null;
+  }
+
+  /**
+   * 获取源模块下一个可用 Voice 索引
+   * @param {string} sourceModuleId - 源模块 ID
+   * @returns {number}
+   */
+  getNextModulationVoiceIndex(sourceModuleId) {
+    const used = new Set(this.getOutgoingModulations(sourceModuleId).map((item) => Number(item.sourceVoiceIndex)));
+    for (let i = 0; i < 8; i += 1) {
+      if (!used.has(i)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * 开始调制连线拖拽
+   * @param {Object} options - 拖拽选项
+   */
+  startModulationDrag({ event, sourceModuleId, updateConnectionId = "" }) {
+    event.preventDefault();
+    this.modulationDrag = {
+      active: true,
+      pointerId: event.pointerId,
+      sourceModuleId,
+      updateConnectionId,
+      startX: event.clientX,
+      startY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    this.renderModulationOverlay();
+  }
+
+  /**
+   * 处理调制拖拽移动
+   * @param {PointerEvent} event - 指针事件
+   */
+  handleModulationPointerMove(event) {
+    if (!this.modulationDrag.active) {
+      return;
+    }
+    this.modulationDrag.x = event.clientX;
+    this.modulationDrag.y = event.clientY;
+
+    document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
+      node.classList.remove("mod-target-hover");
+    });
+    const slider = event.target?.closest?.(".control.control-slider[data-module-id][data-param-path]");
+    if (slider) {
+      slider.classList.add("mod-target-hover");
+    }
+
+    this.renderModulationOverlay();
+  }
+
+  /**
+   * 处理调制拖拽结束
+   * 仅在拖拽状态下且 pointerup 命中 slider 时建立连接。
+   * @param {PointerEvent} event - 指针事件
+   */
+  handleModulationPointerUp(event) {
+    if (!this.modulationDrag.active) {
+      return;
+    }
+
+    const drag = { ...this.modulationDrag };
+    const targetControl = event.target?.closest?.(".control.control-slider[data-module-id][data-param-path]");
+
+    document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
+      node.classList.remove("mod-target-hover");
+    });
+
+    if (!targetControl) {
+      // 重连时释放到空白处表示删除该连接。
+      if (drag.updateConnectionId) {
+        this.removeModulationById(drag.updateConnectionId);
+        this.engine.fullSync(this.state);
+        this.renderAll();
+      }
+      this.cancelModulationDrag();
+      return;
+    }
+
+    const targetModuleId = targetControl.dataset.moduleId;
+    const targetParamPath = targetControl.dataset.paramPath;
+    this.commitModulationTarget({
+      sourceModuleId: drag.sourceModuleId,
+      targetModuleId,
+      targetParamPath,
+      updateConnectionId: drag.updateConnectionId,
+    });
+    this.cancelModulationDrag();
+  }
+
+  /**
+   * 提交调制连接目标
+   * @param {Object} options - 连接选项
+   */
+  commitModulationTarget({ sourceModuleId, targetModuleId, targetParamPath, updateConnectionId = "" }) {
+    if (!sourceModuleId || !targetModuleId || !targetParamPath || sourceModuleId === targetModuleId) {
+      return;
+    }
+
+    const sourceModule = this.state.modules.find((item) => item.id === sourceModuleId);
+    const targetModule = this.state.modules.find((item) => item.id === targetModuleId);
+    if (!sourceModule || !targetModule) {
+      return;
+    }
+    if (!this.isModulationSource(sourceModule)) {
+      return;
+    }
+
+    const existingTarget = this.getModulationByTarget(targetModuleId, targetParamPath);
+    if (existingTarget && existingTarget.id !== updateConnectionId) {
+      this.setStatus("A target parameter can only have one modulation connection.", "error");
+      return;
+    }
+
+    if (updateConnectionId) {
+      const current = this.getModulationById(updateConnectionId);
+      if (!current) {
+        return;
+      }
+      current.targetModuleId = targetModuleId;
+      current.targetParamPath = targetParamPath;
+    } else {
+      if (this.getOutgoingModulations(sourceModuleId).length >= 8) {
+        this.setStatus("Each modulation source can connect up to 8 targets.", "error");
+        return;
+      }
+      const voiceIndex = this.getNextModulationVoiceIndex(sourceModuleId);
+      if (voiceIndex < 0) {
+        return;
+      }
+      this.getModulations().push({
+        id: `${sourceModuleId}-mod-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        sourceModuleId,
+        sourceVoiceIndex: voiceIndex,
+        targetModuleId,
+        targetParamPath,
+        scaleMin: 0,
+        scaleMax: 1,
+      });
+    }
+
+    this.selectedPresetId = "custom";
+    this.engine.fullSync(this.state);
+    this.renderAll();
+  }
+
+  /**
+   * 删除调制连接（按 ID）
+   * @param {string} connectionId - 连接 ID
+   */
+  removeModulationById(connectionId) {
+    this.state.modulations = this.getModulations().filter((item) => item.id !== connectionId);
+    this.selectedPresetId = "custom";
+  }
+
+  /**
+   * 删除某个源模块的全部调制输出
+   * @param {string} sourceModuleId - 源模块 ID
+   */
+  removeOutgoingModulations(sourceModuleId) {
+    this.state.modulations = this.getModulations().filter((item) => item.sourceModuleId !== sourceModuleId);
+    this.selectedPresetId = "custom";
+  }
+
+  /**
+   * 删除某个模块相关的调制连接（作为源或目标）
+   * @param {string} moduleId - 模块 ID
+   */
+  removeModuleModulations(moduleId) {
+    this.state.modulations = this.getModulations().filter(
+      (item) => item.sourceModuleId !== moduleId && item.targetModuleId !== moduleId,
+    );
+    this.selectedPresetId = "custom";
+  }
+
+  /**
+   * 取消当前调制拖拽
+   */
+  cancelModulationDrag() {
+    this.modulationDrag = {
+      active: false,
+      pointerId: 0,
+      sourceModuleId: "",
+      updateConnectionId: "",
+      startX: 0,
+      startY: 0,
+      x: 0,
+      y: 0,
+    };
+    this.renderModulationOverlay();
+  }
+
+  /**
+   * 获取元素中心点（相对于 signalFlowShell）
+   * @param {HTMLElement} element - 目标元素
+   * @returns {{x:number,y:number}|null}
+   */
+  getPointInSignalFlowShell(element) {
+    const shell = this.elements.signalFlowShell;
+    if (!shell || !element) {
+      return null;
+    }
+    const shellRect = shell.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.left - shellRect.left + rect.width / 2,
+      y: rect.top - shellRect.top + rect.height / 2,
+    };
+  }
+
+  /**
+   * 渲染调制线缆叠加层
+   */
+  renderModulationOverlay() {
+    const shell = this.elements.signalFlowShell;
+    if (!shell) {
+      return;
+    }
+
+    if (!this.modulationSvg) {
+      this.modulationSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      this.modulationSvg.classList.add("modulation-cables");
+      shell.appendChild(this.modulationSvg);
+    }
+
+    const shellRect = shell.getBoundingClientRect();
+    this.modulationSvg.setAttribute("width", String(Math.max(1, shellRect.width)));
+    this.modulationSvg.setAttribute("height", String(Math.max(1, shellRect.height)));
+    this.modulationSvg.innerHTML = "";
+
+    const createCable = (from, to, ghost = false) => {
+      if (!from || !to) {
+        return;
+      }
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const dx = Math.max(28, Math.abs(to.x - from.x) * 0.4);
+      const d = `M ${from.x} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`;
+      path.setAttribute("d", d);
+      path.setAttribute("class", ghost ? "modulation-cable modulation-cable--ghost" : "modulation-cable");
+      this.modulationSvg.appendChild(path);
+    };
+
+    this.getModulations().forEach((connection) => {
+      const fromEl = this.elements.signalFlow?.querySelector(
+        `.module-mod-anchor[data-module-id="${connection.sourceModuleId}"]`,
+      );
+      const toEl = this.elements.signalFlow?.querySelector(
+        `.control-readout[data-module-id="${connection.targetModuleId}"][data-param-path="${connection.targetParamPath}"]`,
+      );
+      createCable(this.getPointInSignalFlowShell(fromEl), this.getPointInSignalFlowShell(toEl));
+    });
+
+    if (this.modulationDrag.active) {
+      const fromEl = this.elements.signalFlow?.querySelector(
+        `.module-mod-anchor[data-module-id="${this.modulationDrag.sourceModuleId}"]`,
+      );
+      const from = this.getPointInSignalFlowShell(fromEl);
+      const to = this.getPointInSignalFlowShell(this.elements.signalFlowShell);
+      if (from && to) {
+        createCable(from, { x: this.modulationDrag.x - shellRect.left, y: this.modulationDrag.y - shellRect.top }, true);
+      }
+    }
+  }
+
+  /* -------------------------------------------------------------------------- */
   /* 全局边栏渲染                                                               */
   /* -------------------------------------------------------------------------- */
 
@@ -742,8 +1096,11 @@ class ModularSynthApp {
    */
   renderModuleCard(module, index) {
     const definition = getModuleDefinition(module);
-    const accent = getModuleAccent(module);
+    const modulationSource = this.isModulationSource(module);
+    const accent = modulationSource ? "modulation" : getModuleAccent(module);
     const kicker = getModuleTag(module);
+    const canToggleModulation = module.category === "source";
+    const canCreateCable = modulationSource;
 
     const card = this.createModuleCard({
       accent,
@@ -757,6 +1114,11 @@ class ModularSynthApp {
         if (module.category === "source") {
           replacement.volume = module.volume;
           replacement.pan = module.pan;
+          replacement.modulationMode = module.modulationMode;
+          replacement.modulationFrequency = module.modulationFrequency;
+        }
+        if (!this.isModulationSource(replacement)) {
+          this.removeOutgoingModulations(module.id);
         }
         this.state.modules[index] = replacement;
         this.selectedPresetId = "custom";
@@ -772,10 +1134,29 @@ class ModularSynthApp {
         this.renderAll();
       },
       onRemove: () => {
+        this.removeModuleModulations(module.id);
         this.state.modules.splice(index, 1);
         this.selectedPresetId = "custom";
         this.renderAll();
         this.engine.fullSync(this.state);
+      },
+      modulationEnabled: modulationSource,
+      showModulationToggle: canToggleModulation,
+      onToggleModulation: () => {
+        module.modulationMode = !module.modulationMode;
+        if (!module.modulationMode) {
+          this.removeOutgoingModulations(module.id);
+        }
+        this.selectedPresetId = "custom";
+        this.renderAll();
+        this.engine.fullSync(this.state);
+      },
+      showModulationAnchor: canCreateCable,
+      onModulationAnchorPointerDown: (event) => {
+        if (this.getOutgoingModulations(module.id).length >= 8) {
+          return;
+        }
+        this.startModulationDrag({ event, sourceModuleId: module.id });
       },
       removable: true,
       index: index + 1,
@@ -795,6 +1176,9 @@ class ModularSynthApp {
           step: 0.1,
           value: module.volume,
           path: `modules.${index}.volume`,
+          moduleId: module.id,
+          paramPath: "volume",
+          modulation: this.getModulationByTarget(module.id, "volume"),
           formatter: formatDb,
           onInput: (value) => {
             module.volume = value;
@@ -810,6 +1194,9 @@ class ModularSynthApp {
           step: 0.01,
           value: module.pan,
           path: `modules.${index}.pan`,
+          moduleId: module.id,
+          paramPath: "pan",
+          modulation: this.getModulationByTarget(module.id, "pan"),
           formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}`,
           onInput: (value) => {
             module.pan = value;
@@ -831,6 +1218,33 @@ class ModularSynthApp {
           }),
         );
       });
+    }
+
+    // Oscillator / PulseOscillator 在调制模式下新增 Frequency 控件。
+    if (
+      module.category === "source" &&
+      module.modulationMode &&
+      (module.type === "Oscillator" || module.type === "PulseOscillator")
+    ) {
+      controls.append(
+        this.createRangeControl({
+          label: "Frequency",
+          accent: "modulation",
+          min: 0.1,
+          max: 100,
+          step: 0.01,
+          value: Number(module.modulationFrequency || 1),
+          path: `modules.${index}.modulationFrequency`,
+          moduleId: module.id,
+          paramPath: "modulationFrequency",
+          formatter: formatHertz,
+          onInput: (value) => {
+            module.modulationFrequency = value;
+            this.selectedPresetId = "custom";
+            this.engine.updateSource(module);
+          },
+        }),
+      );
     }
 
     // 模块参数控件
@@ -1115,6 +1529,9 @@ class ModularSynthApp {
       step: control.step,
       value,
       path: bindingPath,
+      moduleId: module.id,
+      paramPath: control.path,
+      modulation: this.getModulationByTarget(module.id, control.path),
       formatter: control.formatter || formatPlain,
       onInput: (nextValue) => {
         setByPath(module, path, nextValue);
@@ -1146,6 +1563,11 @@ class ModularSynthApp {
     enabled = true,
     onToggleEnabled = null,
     index = null,
+    modulationEnabled = false,
+    showModulationToggle = false,
+    onToggleModulation = null,
+    showModulationAnchor = false,
+    onModulationAnchorPointerDown = null,
   }) {
     const card = document.createElement("section");
     card.className = "module-card";
@@ -1155,6 +1577,10 @@ class ModularSynthApp {
     card.dataset.accent = accent;
     if (moduleRef) {
       card.dataset.moduleRef = moduleRef;
+      card.dataset.moduleId = moduleRef;
+    }
+    if (modulationEnabled) {
+      card.classList.add("module-card--modulation");
     }
 
     const head = document.createElement("div");
@@ -1181,6 +1607,19 @@ class ModularSynthApp {
       head.append(titleNode);
     }
 
+    if (showModulationAnchor && moduleRef) {
+      const anchor = document.createElement("button");
+      anchor.type = "button";
+      anchor.className = "module-mod-anchor";
+      anchor.dataset.moduleId = moduleRef;
+      anchor.addEventListener("pointerdown", (event) => {
+        if (onModulationAnchorPointerDown) {
+          onModulationAnchorPointerDown(event);
+        }
+      });
+      head.append(anchor);
+    }
+
     if (removable && onRemove) {
       const removeButton = document.createElement("button");
       removeButton.type = "button";
@@ -1191,6 +1630,17 @@ class ModularSynthApp {
     }
 
     card.append(head);
+
+    if (showModulationToggle) {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = `module-mod-toggle ${modulationEnabled ? "is-on" : ""}`;
+      toggle.textContent = "◣";
+      if (onToggleModulation) {
+        toggle.addEventListener("click", onToggleModulation);
+      }
+      card.append(toggle);
+    }
 
     return card;
   }
@@ -1610,9 +2060,16 @@ class ModularSynthApp {
     variant = "slider",
     path = null,
     eventName = "input",
+    moduleId = "",
+    paramPath = "",
+    modulation = null,
   }) {
     const wrapper = document.createElement("label");
     wrapper.className = `control control-${variant}`;
+    if (moduleId && paramPath && variant === "slider") {
+      wrapper.dataset.moduleId = moduleId;
+      wrapper.dataset.paramPath = paramPath;
+    }
 
     const controlLabel = document.createElement("div");
     controlLabel.className = "control-label";
@@ -1620,6 +2077,10 @@ class ModularSynthApp {
     strong.textContent = label;
     const readout = document.createElement("span");
     readout.className = "control-readout";
+    if (moduleId && paramPath) {
+      readout.dataset.moduleId = moduleId;
+      readout.dataset.paramPath = paramPath;
+    }
     controlLabel.append(strong, readout);
 
     const shell = document.createElement("div");
@@ -1665,6 +2126,9 @@ class ModularSynthApp {
     }
 
     input.addEventListener("input", (event) => {
+      if (modulation) {
+        return;
+      }
       const nextValue = Number(event.target.value);
       updateVisual(nextValue);
       if (eventName === "input") {
@@ -1679,6 +2143,9 @@ class ModularSynthApp {
 
     if (eventName === "change") {
       input.addEventListener("change", (event) => {
+        if (modulation) {
+          return;
+        }
         onInput(Number(event.target.value));
         input.blur();
       });
@@ -1686,6 +2153,9 @@ class ModularSynthApp {
 
     // 双击读数手动输入
     const handleReadoutDoubleClick = () => {
+      if (modulation) {
+        return;
+      }
       const currentInput = readout.nextElementSibling;
       if (currentInput && currentInput.classList.contains("readout-input")) {
         return;
@@ -1735,6 +2205,60 @@ class ModularSynthApp {
     };
 
     readout.addEventListener("dblclick", handleReadoutDoubleClick);
+
+    if (modulation) {
+      wrapper.classList.add("is-modulated");
+      input.disabled = true;
+      readout.classList.add("control-readout--modulated");
+      readout.textContent = "●";
+      readout.addEventListener("pointerdown", (event) => {
+        this.startModulationDrag({
+          event,
+          sourceModuleId: modulation.sourceModuleId,
+          updateConnectionId: modulation.id,
+        });
+      });
+
+      const scaleControls = document.createElement("div");
+      scaleControls.className = "mod-scale-controls";
+
+      const createScaleHandle = ({ symbol, valueKey }) => {
+        const node = document.createElement("label");
+        node.className = "mod-scale-handle";
+        const marker = document.createElement("span");
+        marker.className = "mod-scale-marker";
+        marker.textContent = symbol;
+        const control = document.createElement("input");
+        control.type = "range";
+        control.className = "slider-input";
+        control.min = String(min);
+        control.max = String(max);
+        control.step = String(step);
+        control.value = String(Number(modulation[valueKey] ?? value));
+        control.addEventListener("input", (event) => {
+          const numeric = Number(event.target.value);
+          modulation[valueKey] = numeric;
+          if (valueKey === "scaleMin" && modulation.scaleMin > modulation.scaleMax) {
+            modulation.scaleMax = modulation.scaleMin;
+          }
+          if (valueKey === "scaleMax" && modulation.scaleMax < modulation.scaleMin) {
+            modulation.scaleMin = modulation.scaleMax;
+          }
+          this.selectedPresetId = "custom";
+          this.engine.fullSync(this.state);
+          this.renderModulationOverlay();
+        });
+        node.append(marker, control);
+        return node;
+      };
+
+      scaleControls.append(
+        createScaleHandle({ symbol: "「", valueKey: "scaleMin" }),
+        createScaleHandle({ symbol: "」", valueKey: "scaleMax" }),
+      );
+      wrapper.append(controlLabel, shell, scaleControls);
+      return wrapper;
+    }
 
     wrapper.append(controlLabel, shell);
     return wrapper;
