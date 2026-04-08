@@ -2219,44 +2219,78 @@ class ModularSynthApp {
         });
       });
 
-      const scaleControls = document.createElement("div");
-      scaleControls.className = "mod-scale-controls";
+      shell.classList.add("slider-shell--mod-range");
+      const markerMin = document.createElement("span");
+      markerMin.className = "mod-range-marker mod-range-marker--min";
+      markerMin.textContent = "「";
+      const markerMax = document.createElement("span");
+      markerMax.className = "mod-range-marker mod-range-marker--max";
+      markerMax.textContent = "」";
+      shell.append(markerMin, markerMax);
 
-      const createScaleHandle = ({ symbol, valueKey }) => {
-        const node = document.createElement("label");
-        node.className = "mod-scale-handle";
-        const marker = document.createElement("span");
-        marker.className = "mod-scale-marker";
-        marker.textContent = symbol;
-        const control = document.createElement("input");
-        control.type = "range";
-        control.className = "slider-input";
-        control.min = String(min);
-        control.max = String(max);
-        control.step = String(step);
-        control.value = String(Number(modulation[valueKey] ?? value));
-        control.addEventListener("input", (event) => {
-          const numeric = Number(event.target.value);
-          modulation[valueKey] = numeric;
-          if (valueKey === "scaleMin" && modulation.scaleMin > modulation.scaleMax) {
-            modulation.scaleMax = modulation.scaleMin;
-          }
-          if (valueKey === "scaleMax" && modulation.scaleMax < modulation.scaleMin) {
-            modulation.scaleMin = modulation.scaleMax;
-          }
-          this.selectedPresetId = "custom";
-          this.engine.fullSync(this.state);
-          this.renderModulationOverlay();
-        });
-        node.append(marker, control);
-        return node;
+      const clamp = (next) => Math.max(min, Math.min(max, next));
+      const snap = (next) => {
+        const numericStep = Number(step) || 1;
+        const snapped = min + Math.round((next - min) / numericStep) * numericStep;
+        return clamp(Number(snapped.toFixed(6)));
+      };
+      const toPercent = (next) => (next - min) / (max - min || 1);
+      const clamp01 = (next) => Math.max(0, Math.min(1, next));
+      const safeNumber = (next, fallback) => {
+        const numeric = Number(next);
+        return Number.isFinite(numeric) ? numeric : fallback;
       };
 
-      scaleControls.append(
-        createScaleHandle({ symbol: "「", valueKey: "scaleMin" }),
-        createScaleHandle({ symbol: "」", valueKey: "scaleMax" }),
-      );
-      wrapper.append(controlLabel, shell, scaleControls);
+      modulation.scaleMin = snap(safeNumber(modulation.scaleMin, value));
+      modulation.scaleMax = snap(safeNumber(modulation.scaleMax, value));
+
+      const paintRange = () => {
+        const minPercent = clamp01(toPercent(modulation.scaleMin));
+        const maxPercent = clamp01(toPercent(modulation.scaleMax));
+        const rangeStart = Math.min(minPercent, maxPercent);
+        const rangeEnd = Math.max(minPercent, maxPercent);
+        shell.style.setProperty("--range-start", `${rangeStart * 100}%`);
+        shell.style.setProperty("--range-end", `${rangeEnd * 100}%`);
+        markerMin.style.left = `${minPercent * 100}%`;
+        markerMax.style.left = `${maxPercent * 100}%`;
+      };
+
+      const commitRange = (valueKey, next) => {
+        modulation[valueKey] = snap(next);
+        paintRange();
+        this.selectedPresetId = "custom";
+        this.engine.fullSync(this.state);
+        this.renderModulationOverlay();
+      };
+
+      const bindMarkerDrag = (marker, valueKey) => {
+        marker.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          const updateFromPointer = (clientX) => {
+            const rect = shell.getBoundingClientRect();
+            if (!rect.width) {
+              return;
+            }
+            const percent = clamp01((clientX - rect.left) / rect.width);
+            commitRange(valueKey, min + percent * (max - min));
+          };
+          const onMove = (moveEvent) => {
+            updateFromPointer(moveEvent.clientX);
+          };
+          const onUp = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+          };
+          updateFromPointer(event.clientX);
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+        });
+      };
+
+      bindMarkerDrag(markerMin, "scaleMin");
+      bindMarkerDrag(markerMax, "scaleMax");
+      paintRange();
+      wrapper.append(controlLabel, shell);
       return wrapper;
     }
 
