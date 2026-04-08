@@ -1880,11 +1880,7 @@ class ModularSynthApp {
 
       // 在容器内且有有效目标位置，执行重排序
       if (!isOutsideContainer && this.dragState.targetIndex >= 0) {
-        let toIndex = this.dragState.targetIndex;
-        // 向后移动时，由于先移除了源模块，目标索引需要 -1
-        if (toIndex > this.dragState.dragIndex) {
-          toIndex--;
-        }
+        const toIndex = this.dragState.targetIndex;
         // 位置未变化则不执行重排序
         if (toIndex !== this.dragState.dragIndex) {
           this.reorderModule(this.dragState.dragIndex, toIndex);
