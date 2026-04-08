@@ -12,6 +12,7 @@
   --env: #c0a03e;
   --component: #6f8f4e;
   --fx: #ca5d48;
+  --modulation: #6e4dff;
   --disabled: #8a8a8a;
   --white-key: #fdfbf7;
   --black-key: #2b2b31;
@@ -250,6 +251,64 @@ select {
 
 .module-card[data-accent="fx"] {
   --accent: var(--fx);
+}
+
+.module-card[data-accent="modulation"] {
+  --accent: var(--modulation);
+}
+
+.module-card--modulation {
+  border: 3px solid var(--accent);
+}
+
+.module-mod-toggle {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+
+.module-mod-toggle.is-on {
+  color: var(--modulation);
+}
+
+.module-mod-anchor {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: #ffffff;
+  padding: 0;
+  cursor: pointer;
+}
+
+.signal-flow-shell {
+  position: relative;
+}
+
+.modulation-cables {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.modulation-cable {
+  fill: none;
+  stroke: var(--modulation);
+  stroke-width: 2.5;
+  opacity: 0.82;
+}
+
+.modulation-cable--ghost {
+  stroke-dasharray: 6 4;
+  opacity: 0.72;
 }
 
 .add-module-card {
@@ -518,6 +577,39 @@ select {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: #181d6b;
+}
+
+.control-readout--modulated {
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.control.is-modulated .slider-input {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.mod-scale-controls {
+  display: grid;
+  gap: 4px;
+}
+
+.mod-scale-handle {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.mod-scale-marker {
+  color: var(--modulation);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.control.mod-target-hover {
+  background: color-mix(in srgb, var(--modulation) 20%, transparent);
 }
 
 .control-file {

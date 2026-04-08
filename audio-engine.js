@@ -23,6 +23,9 @@ class AudioEngine {
     
     // 活跃音符集合
     this.activeNotes = new Set();
+
+    // 调制连接运行时（用于统一释放 Tone.Scale）
+    this.modulationRuntimes = [];
   }
 
   /* -------------------------------------------------------------------------- */
@@ -107,7 +110,7 @@ class AudioEngine {
    * @returns {boolean} - 是否为 Source
    */
   isSourceModule(module) {
-    return module.category === "source" || SOURCE_LIBRARY[module.type] !== undefined;
+    return module.type === "Envelope" || module.category === "source" || SOURCE_LIBRARY[module.type] !== undefined;
   }
 
   /**
@@ -142,6 +145,12 @@ class AudioEngine {
       }
     });
     this.moduleRuntimes.clear();
+    this.modulationRuntimes.forEach((item) => {
+      if (item.scale && typeof item.scale.dispose === "function") {
+        item.scale.dispose();
+      }
+    });
+    this.modulationRuntimes = [];
 
     const modules = this.state.modules || [];
     if (modules.length === 0) {
@@ -156,6 +165,8 @@ class AudioEngine {
 
     // 构建信号链连接
     this.connectSignalChain(modules);
+    // 构建调制连接
+    this.connectModulations(modules);
   }
 
   /**
@@ -198,6 +209,16 @@ class AudioEngine {
    * @param {Set} ampEnvIndices - AmpEnv 模块索引集合
    */
   connectSourceModule(modules, sourceIndex, runtime, ampEnvIndices) {
+    const sourceModule = modules[sourceIndex];
+    if (sourceModule?.type === "Envelope") {
+      return;
+    }
+    if (sourceModule?.modulationMode) {
+      runtime.hasAmpEnv = false;
+      runtime.ampEnvRuntime = null;
+      return;
+    }
+
     // 查找 Source 之后第一个非 Source 模块
     let targetIndex = -1;
     for (let i = sourceIndex + 1; i < modules.length; i++) {
@@ -315,6 +336,9 @@ class AudioEngine {
    * @returns {Object} - 运行时对象
    */
   createModuleRuntime(module) {
+    if (module.type === "Envelope") {
+      return this.createEnvelopeModulationRuntime(module);
+    }
     if (this.isSourceModule(module)) {
       return this.createSourceRuntime(module);
     }
@@ -456,7 +480,19 @@ class AudioEngine {
       hasAmpEnv: false,
       ampEnvRuntime: null,
 
+      /**
+       * 获取指定 Voice 的调制输出节点
+       * 调制模式下直接使用 panNode 输出，不经过 hiddenAmpEnv
+       * @param {number} voiceIndex - Voice 索引
+       * @returns {Tone.ToneAudioNode|null}
+       */
+      getModulationOutput: (voiceIndex) => {
+        const voice = voices[voiceIndex];
+        return voice ? voice.panNode : null;
+      },
+
       apply: (nextModule) => {
+        const wasModulationMode = Boolean(moduleState?.modulationMode);
         moduleState = deepClone(nextModule);
         voices.forEach((voice) => {
           rampParam(voice.volumeNode.volume, moduleState.enabled ? moduleState.volume : -48);
@@ -470,11 +506,35 @@ class AudioEngine {
             safeSet(voice.node, moduleState.options);
             applyPlayerLikeOptions(voice.node, moduleState.options);
           }
+
+          if (moduleState.modulationMode) {
+            // 调制模式下保持 Voice 持续输出，不使用 hiddenAmpEnv。
+            voice.hiddenAmpEnv.triggerAttack(Tone.now(), 1);
+            if (definition.runtime === "pitchedSource" && voice.node.frequency) {
+              voice.node.frequency.rampTo(Number(moduleState.modulationFrequency || 1), 0.02);
+            }
+            if (definition.runtime === "player") {
+              try {
+                voice.node.loop = true;
+                if (voice.node.loaded) {
+                  voice.node.start(Tone.now());
+                }
+              } catch {}
+            }
+          } else if (wasModulationMode && !moduleState.modulationMode) {
+            // 退出调制模式时释放 hiddenAmpEnv，避免残留门控状态。
+            voice.hiddenAmpEnv.triggerRelease(Tone.now());
+            if (definition.runtime === "player") {
+              try {
+                voice.node.stop(Tone.now());
+              } catch {}
+            }
+          }
         });
       },
 
       triggerAttack: (note, velocity) => {
-        if (!moduleState.enabled) {
+        if (!moduleState.enabled || moduleState.modulationMode) {
           return;
         }
         const result = findAvailableVoice();
@@ -519,6 +579,9 @@ class AudioEngine {
       },
 
       triggerRelease: (note) => {
+        if (moduleState.modulationMode) {
+          return;
+        }
         const result = findVoiceByNote(note);
         if (!result) {
           return;
@@ -544,6 +607,9 @@ class AudioEngine {
       },
 
       releaseAll: () => {
+        if (moduleState.modulationMode) {
+          return;
+        }
         voices.forEach((voice, index) => {
           if (voice.note) {
             voice.note = null;
@@ -573,7 +639,200 @@ class AudioEngine {
       },
     };
 
+    // 初次创建时同步一次模块状态，确保调制模式 Voice 立即生效。
+    runtime.apply(moduleState);
+
     return runtime;
+  }
+
+  /**
+   * 创建 Envelope 调制运行时
+   * Envelope 只作为调制源，不进入主模块链，且保留 MIDI attack/release。
+   * @param {Object} module - Envelope 模块
+   * @returns {Object} - 运行时对象
+   */
+  createEnvelopeModulationRuntime(module) {
+    let moduleState = deepClone(module);
+    const VOICE_COUNT = 8;
+    const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.Envelope(moduleState.options));
+
+    const voiceStates = voices.map(() => ({
+      note: null,
+      startTime: 0,
+    }));
+
+    const findAvailableVoice = () => {
+      let oldest = null;
+      let oldestIndex = -1;
+      for (let i = 0; i < voiceStates.length; i++) {
+        if (!voiceStates[i].note) {
+          return i;
+        }
+        if (!oldest || voiceStates[i].startTime < oldest.startTime) {
+          oldest = voiceStates[i];
+          oldestIndex = i;
+        }
+      }
+      return oldest ? oldestIndex : 0;
+    };
+
+    const findVoiceByNote = (note) => voiceStates.findIndex((item) => item.note === note);
+
+    return {
+      type: module.type,
+      category: "modulation-envelope",
+      voices,
+      moduleState,
+      getModulationOutput: (voiceIndex) => voices[voiceIndex] || null,
+      apply: (nextModule) => {
+        moduleState = deepClone(nextModule);
+        voices.forEach((env) => safeSet(env, moduleState.options));
+      },
+      triggerAttack: (note, velocity) => {
+        if (!moduleState.enabled) {
+          return;
+        }
+        const index = findAvailableVoice();
+        voiceStates[index].note = note;
+        voiceStates[index].startTime = Tone.now();
+        voices[index].triggerAttack(Tone.now(), velocity);
+      },
+      triggerRelease: (note) => {
+        const index = findVoiceByNote(note);
+        if (index < 0) {
+          return;
+        }
+        voiceStates[index].note = null;
+        voices[index].triggerRelease(Tone.now());
+      },
+      releaseAll: () => {
+        voices.forEach((env, index) => {
+          voiceStates[index].note = null;
+          env.triggerRelease(Tone.now());
+        });
+      },
+      dispose: () => {
+        voices.forEach((env) => env.dispose());
+      },
+    };
+  }
+
+  /**
+   * 构建所有调制连接
+   * 连接顺序：Voice 输出 -> Tone.Scale -> 目标参数
+   * @param {Array} modules - 当前模块数组
+   */
+  connectModulations(modules) {
+    const modulations = Array.isArray(this.state?.modulations) ? this.state.modulations : [];
+    if (!modulations.length) {
+      return;
+    }
+
+    modulations.forEach((modulation) => {
+      const sourceRuntime = this.moduleRuntimes.get(modulation.sourceModuleId);
+      if (!sourceRuntime || typeof sourceRuntime.getModulationOutput !== "function") {
+        return;
+      }
+
+      const sourceModule = modules.find((item) => item.id === modulation.sourceModuleId);
+      if (!sourceModule || !sourceModule.enabled) {
+        return;
+      }
+      if (sourceModule.type !== "Envelope" && !sourceModule.modulationMode) {
+        return;
+      }
+
+      const targetModule = modules.find((item) => item.id === modulation.targetModuleId);
+      if (!targetModule || !targetModule.enabled) {
+        return;
+      }
+
+      const sourceOutput = sourceRuntime.getModulationOutput(Number(modulation.sourceVoiceIndex) || 0);
+      if (!sourceOutput || typeof sourceOutput.connect !== "function") {
+        return;
+      }
+
+      const targetParams = this.getModulationTargetParams(targetModule, modulation.targetParamPath);
+      if (!targetParams.length) {
+        return;
+      }
+
+      const scale = new Tone.Scale();
+      const isEnvelopeSource = sourceModule.type === "Envelope";
+      if ("inputMin" in scale) {
+        scale.inputMin = isEnvelopeSource ? 0 : -1;
+      }
+      if ("inputMax" in scale) {
+        scale.inputMax = 1;
+      }
+      if ("outputMin" in scale) {
+        scale.outputMin = Number(modulation.scaleMin ?? 0);
+      } else if ("min" in scale) {
+        scale.min = Number(modulation.scaleMin ?? 0);
+      }
+      if ("outputMax" in scale) {
+        scale.outputMax = Number(modulation.scaleMax ?? 1);
+      } else if ("max" in scale) {
+        scale.max = Number(modulation.scaleMax ?? 1);
+      }
+
+      sourceOutput.connect(scale);
+      targetParams.forEach((param) => {
+        try {
+          scale.connect(param);
+        } catch {}
+      });
+
+      this.modulationRuntimes.push({ id: modulation.id, scale });
+    });
+  }
+
+  /**
+   * 解析调制目标参数列表
+   * Source 目标会映射到每个 Voice 对应参数，其他模块映射到单节点参数。
+   * @param {Object} module - 目标模块
+   * @param {string} targetParamPath - 目标参数路径（如 options.frequency / volume）
+   * @returns {Array} - Tone 参数数组
+   */
+  getModulationTargetParams(module, targetParamPath) {
+    const runtime = this.moduleRuntimes.get(module.id);
+    if (!runtime || !targetParamPath) {
+      return [];
+    }
+
+    const resolveParam = (target, path) => {
+      const value = getByPath(target, path);
+      if (!value) {
+        return null;
+      }
+      if (value.value !== undefined || typeof value.rampTo === "function") {
+        return value;
+      }
+      return null;
+    };
+
+    if (module.category === "source") {
+      if (!Array.isArray(runtime.voices)) {
+        return [];
+      }
+      return runtime.voices
+        .map((voice) => {
+          if (targetParamPath === "volume") {
+            return voice.volumeNode?.volume || null;
+          }
+          if (targetParamPath === "pan") {
+            return voice.panNode?.pan || null;
+          }
+          return resolveParam(voice.node, targetParamPath.replace(/^options\./, ""));
+        })
+        .filter(Boolean);
+    }
+
+    const node = runtime.node;
+    if (!node) {
+      return [];
+    }
+    return [resolveParam(node, targetParamPath.replace(/^options\./, ""))].filter(Boolean);
   }
 
   /**
@@ -716,7 +975,7 @@ class AudioEngine {
 
     // 触发所有 Source 的 attack（AmpEnv 或 hiddenAmpEnv 在此触发）
     this.moduleRuntimes.forEach((runtime) => {
-      if (runtime.category === "source" && runtime.triggerAttack) {
+      if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.triggerAttack) {
         runtime.triggerAttack(note, velocity);
       }
     });
@@ -736,7 +995,7 @@ class AudioEngine {
 
     // 触发所有 Source 的 release（AmpEnv 或 hiddenAmpEnv 在此触发）
     this.moduleRuntimes.forEach((runtime) => {
-      if (runtime.category === "source" && runtime.triggerRelease) {
+      if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.triggerRelease) {
         runtime.triggerRelease(note);
       }
     });
@@ -754,7 +1013,7 @@ class AudioEngine {
 
     // 释放所有 Source（AmpEnv 或 hiddenAmpEnv 在此触发）
     this.moduleRuntimes.forEach((runtime) => {
-      if (runtime.category === "source" && runtime.releaseAll) {
+      if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.releaseAll) {
         runtime.releaseAll();
       }
     });
