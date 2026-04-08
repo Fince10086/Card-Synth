@@ -12,7 +12,7 @@
   --env: #c0a03e;
   --component: #6f8f4e;
   --fx: #ca5d48;
-  --modulation: #6e4dff;
+  --modulation: #3d7fb8;
   --disabled: #8a8a8a;
   --white-key: #fdfbf7;
   --black-key: #2b2b31;
@@ -302,8 +302,8 @@ select {
 .modulation-cable {
   fill: none;
   stroke: var(--modulation);
-  stroke-width: 2.5;
-  opacity: 0.82;
+  stroke-width: 1.5;
+  opacity: 0.6;
 }
 
 .modulation-cable--ghost {
