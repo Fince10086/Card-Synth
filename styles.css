@@ -1,11 +1,5 @@
 /* 全局设计令牌：颜色、圆角、过渡时间都在这里统一定义，便于整站风格同步调整。 */
 :root {
-  --bg: #ebe4d6;
-  --bg-deep: #ddd3c1;
-  --panel: rgba(252, 248, 241, 0.86);
-  --panel-strong: rgba(255, 252, 247, 0.94);
-  --line: rgba(41, 33, 21, 0.14);
-  --line-strong: rgba(41, 33, 21, 0.24);
   --ink: #2a241b;
   --muted: #726757;
   --source: #2f9f95;
@@ -16,11 +10,6 @@
   --disabled: #8a8a8a;
   --white-key: #fdfbf7;
   --black-key: #2b2b31;
-  --shadow: 0 24px 80px rgba(61, 47, 31, 0.12);
-  --radius-xl: 28px;
-  --radius-lg: 22px;
-  --radius-md: 18px;
-  --radius-sm: 12px;
   --transition: 180ms ease;
 }
 
@@ -77,18 +66,6 @@ select {
   padding-bottom: 8px;
 }
 
-
-
-/* 小型题注用于 stage / panel 的次级标签。 */
-.eyebrow,
-.stage-kicker {
-  margin: 0;
-  font-size: 0.64rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #82859a;
-}
-
 .title-block h1,
 .stage-header h2,
 .panel-header h2 {
@@ -103,79 +80,9 @@ select {
   font-weight: 600;
 }
 
-.subtitle {
-  max-width: 520px;
-  margin: 5px 0 0;
-  color: #7b8095;
-  line-height: 1.35;
-  font-size: 0.8rem;
-}
-
-/* 卡片类元素统一关闭毛玻璃，保持当前扁平化方向。 */
-.status-card,
-.panel,
-.module-card {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-.status-card {
-  min-width: 220px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: #ffffff;
-  border: 1px solid #e3e4eb;
-  box-shadow: none;
-}
-
-.status-dot {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: #c39535;
-  box-shadow: 0 0 0 5px rgba(195, 149, 53, 0.16);
-  transition: background var(--transition), box-shadow var(--transition);
-}
-
-.status-dot.live {
-  background: #259f7f;
-  box-shadow: 0 0 0 5px rgba(37, 159, 127, 0.16);
-}
-
-.status-dot.error {
-  background: #ce5d57;
-  box-shadow: 0 0 0 5px rgba(206, 93, 87, 0.16);
-}
-
-
-
-/* 所有面板使用统一的白底与细边框。 */
 .panel {
   background: #ffffff;
   box-shadow: none;
-}
-
-/* 全局边栏内部的区块纵向排列。 */
-.global-block {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e0e1e8;
-}
-
-.volume-block {
-  justify-content: flex-start;
-  margin-top: 4px;
-}
-
-.global-block:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
 }
 
 .toolbar-field {
@@ -198,29 +105,6 @@ select {
   gap: 10px;
   min-width: 0;
   padding: 2px 0 8px;
-}
-
-/* stage 仅保留语义容器，视觉分组已取消。 */
-.stage {
-  display: contents;
-}
-
-.stage-header,
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.stage-header > div:first-child,
-.panel-header > div:first-child {
-  min-width: 0;
-}
-
-.stage-header {
-  display: none;
 }
 
 .module-card {
@@ -444,10 +328,6 @@ select {
   color: var(--accent, #1a1d6d);
   flex: 1;
   min-width: 0;
-}
-
-.module-tag {
-  display: none;
 }
 
 .module-index {
@@ -835,11 +715,6 @@ select {
   border-color: color-mix(in srgb, var(--accent, var(--ink)) 24%, white);
 }
 
-.destructive-button {
-  border-color: rgba(206, 93, 87, 0.18);
-  color: #9d473f;
-}
-
 .compact-block {
   flex: 0 0 auto;
   display: flex;
@@ -1090,7 +965,7 @@ select {
 }
 
 /* ========================================
-   底栏样式 (重构后)
+   底栏样式
    ======================================== */
 
 .bottom-bar {
@@ -1193,33 +1068,6 @@ select {
   background: #f5f6fa;
   border-radius: 4px;
   text-align: center;
-}
-
-/* 宏控制区域 */
-.bottom-bar__macros {
-  min-width: 140px;
-  max-width: 180px;
-  padding: 0 8px;
-  border-left: 1px solid #e0e1e8;
-}
-
-.macros-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  height: 100%;
-}
-
-.macros-section .control {
-  flex-shrink: 0;
-}
-
-.macros-section .slider-shell {
-  padding: 2px 0;
-}
-
-.macros-section .slider-input {
-  height: 4px;
 }
 
 .slider-input--global {
