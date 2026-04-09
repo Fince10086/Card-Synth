@@ -147,6 +147,59 @@ class AudioEngine {
     return module.type === "AmplitudeEnvelope";
   }
 
+  /**
+   * 创建按 note 追踪的 voice 状态器
+   * @param {number} voiceCount - voice 数量
+   * @returns {Object} - 状态器
+   */
+  createNoteVoiceTracker(voiceCount) {
+    const voiceStates = Array.from({ length: voiceCount }, () => ({
+      note: null,
+      startTime: 0,
+    }));
+
+    const findAvailableVoice = () => {
+      let oldest = null;
+      let oldestIndex = -1;
+      for (let i = 0; i < voiceStates.length; i++) {
+        if (!voiceStates[i].note) {
+          return i;
+        }
+        if (!oldest || voiceStates[i].startTime < oldest.startTime) {
+          oldest = voiceStates[i];
+          oldestIndex = i;
+        }
+      }
+      return oldest ? oldestIndex : 0;
+    };
+
+    return {
+      allocate(note, time) {
+        const index = findAvailableVoice();
+        voiceStates[index].note = note;
+        voiceStates[index].startTime = time;
+        return index;
+      },
+      releaseByNote(note) {
+        const index = voiceStates.findIndex((item) => item.note === note);
+        if (index < 0) {
+          return -1;
+        }
+        voiceStates[index].note = null;
+        return index;
+      },
+      clearAll() {
+        voiceStates.forEach((item) => {
+          item.note = null;
+          item.startTime = 0;
+        });
+      },
+      hasActiveNotes() {
+        return voiceStates.some((item) => item.note !== null);
+      },
+    };
+  }
+
   /* -------------------------------------------------------------------------- */
   /* 信号链构建                                                                 */
   /* -------------------------------------------------------------------------- */
@@ -721,28 +774,7 @@ class AudioEngine {
     let moduleState = deepClone(module);
     const VOICE_COUNT = 8;
     const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.Envelope(moduleState.options));
-
-    const voiceStates = voices.map(() => ({
-      note: null,
-      startTime: 0,
-    }));
-
-    const findAvailableVoice = () => {
-      let oldest = null;
-      let oldestIndex = -1;
-      for (let i = 0; i < voiceStates.length; i++) {
-        if (!voiceStates[i].note) {
-          return i;
-        }
-        if (!oldest || voiceStates[i].startTime < oldest.startTime) {
-          oldest = voiceStates[i];
-          oldestIndex = i;
-        }
-      }
-      return oldest ? oldestIndex : 0;
-    };
-
-    const findVoiceByNote = (note) => voiceStates.findIndex((item) => item.note === note);
+    const noteTracker = this.createNoteVoiceTracker(VOICE_COUNT);
 
     return {
       type: module.type,
@@ -758,22 +790,19 @@ class AudioEngine {
         if (!moduleState.enabled) {
           return;
         }
-        const index = findAvailableVoice();
-        voiceStates[index].note = note;
-        voiceStates[index].startTime = Tone.now();
+        const index = noteTracker.allocate(note, Tone.now());
         voices[index].triggerAttack(Tone.now(), velocity);
       },
       triggerRelease: (note) => {
-        const index = findVoiceByNote(note);
+        const index = noteTracker.releaseByNote(note);
         if (index < 0) {
           return;
         }
-        voiceStates[index].note = null;
         voices[index].triggerRelease(Tone.now());
       },
       releaseAll: () => {
+        noteTracker.clearAll();
         voices.forEach((env, index) => {
-          voiceStates[index].note = null;
           env.triggerRelease(Tone.now());
         });
       },
@@ -917,8 +946,8 @@ class AudioEngine {
       const node = new Tone.AmplitudeEnvelope(module.options);
       // voices 模式引用计数
       const voiceRefCount = new Array(VOICE_COUNT).fill(0);
-      // node 模式状态追踪
-      const nodeState = { note: null, startTime: 0 };
+      // node 模式按-note状态追踪
+      const nodeNoteTracker = this.createNoteVoiceTracker(VOICE_COUNT);
 
       return {
         type: module.type,
@@ -926,7 +955,6 @@ class AudioEngine {
         voices,
         voiceRefCount,
         node,
-        nodeState,
         apply: (nextModule) => {
           voices.forEach((env) => safeSet(env, nextModule.options));
           safeSet(node, nextModule.options);
@@ -948,19 +976,18 @@ class AudioEngine {
         },
         // node 模式触发（由全局 attack/release 调用，无引用计数）
         triggerAttack: (note, velocity) => {
-          nodeState.note = note;
-          nodeState.startTime = Tone.now();
+          nodeNoteTracker.allocate(note, Tone.now());
           node.triggerAttack(Tone.now(), velocity);
         },
         triggerRelease: (note) => {
-          if (nodeState.note === note) {
-            nodeState.note = null;
+          const releasedIndex = nodeNoteTracker.releaseByNote(note);
+          if (releasedIndex >= 0 && !nodeNoteTracker.hasActiveNotes()) {
             node.triggerRelease(Tone.now());
           }
         },
         releaseAll: () => {
           // 释放 node 模式
-          nodeState.note = null;
+          nodeNoteTracker.clearAll();
           node.triggerRelease(Tone.now());
           // 释放 voices 模式
           voices.forEach((env, index) => {
