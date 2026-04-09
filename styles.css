@@ -561,7 +561,6 @@ select {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  overflow: hidden;
 }
 
 .control-label {
@@ -770,14 +769,24 @@ select {
   line-height: 1;
   cursor: ew-resize;
   user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mod-range-marker__value {
+  font-size: 8px;
+  font-weight: 400;
+  margin-top: 2px;
+  white-space: nowrap;
 }
 
 .mod-range-marker--max {
-  transform: translate(-50%, -20%);
+  transform: translate(-50%, 10%);
 }
 
 .mod-range-marker--min {
-  transform: translate(-25%, -20%);
+  transform: translate(-50%, 10%);
 }
 
 .slider-input::-webkit-slider-thumb {

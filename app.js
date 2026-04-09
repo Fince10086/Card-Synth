@@ -2381,9 +2381,15 @@ class ModularSynthApp {
       const markerMin = document.createElement("span");
       markerMin.className = "mod-range-marker mod-range-marker--min";
       markerMin.textContent = "[";
+      const markerMinValue = document.createElement("span");
+      markerMinValue.className = "mod-range-marker__value";
+      markerMin.append(markerMinValue);
       const markerMax = document.createElement("span");
       markerMax.className = "mod-range-marker mod-range-marker--max";
       markerMax.textContent = "]";
+      const markerMaxValue = document.createElement("span");
+      markerMaxValue.className = "mod-range-marker__value";
+      markerMax.append(markerMaxValue);
       shell.append(markerMin, markerMax);
 
       const clamp = (next) => Math.max(min, Math.min(max, next));
@@ -2411,6 +2417,8 @@ class ModularSynthApp {
         shell.style.setProperty("--range-end", `${rangeEnd * 100}%`);
         markerMin.style.left = `${minPercent * 100}%`;
         markerMax.style.left = `${maxPercent * 100}%`;
+        markerMinValue.textContent = modulation.scaleMin.toFixed(2);
+        markerMaxValue.textContent = modulation.scaleMax.toFixed(2);
       };
 
       const updateRange = (valueKey, next) => {
