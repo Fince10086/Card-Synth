@@ -46,6 +46,7 @@ class AudioEngine {
     }
 
     await Tone.start();
+    Tone.context.lookAhead = 0;
     this.state = deepClone(state);
     this.ready = true;
 
