@@ -267,10 +267,11 @@ class AudioEngine {
     }
 
     // 设置 hiddenAmpEnv release 时间
-    // 如果 AmpEnv 存在但不在第一个位置，需要延长 release 时间
-    const hiddenAmpEnvRelease = hasAmpEnvAnywhere && !isFirstModuleAmpEnv ? 10 : 0.005;
+    // 如果 AmpEnv 存在但不在第一个位置，需要根据活跃 voice 数量动态调整 release 时间
+    const needsExtendedRelease = hasAmpEnvAnywhere && !isFirstModuleAmpEnv;
+    runtime.needsExtendedRelease = needsExtendedRelease;
     runtime.voices.forEach((voice) => {
-      voice.hiddenAmpEnv.release = hiddenAmpEnvRelease;
+      voice.hiddenAmpEnv.release = needsExtendedRelease ? 10 : 0.005;
     });
 
     runtime.hasAmpEnv = isFirstModuleAmpEnv;
@@ -510,6 +511,27 @@ class AudioEngine {
       ampEnv.triggerVoiceRelease(voiceIndex);
     };
 
+    /**
+     * 计算当前活跃的 voice 数量
+     * @returns {number}
+     */
+    const getActiveVoiceCount = () => voices.filter((v) => v.note !== null).length;
+
+    /**
+     * 更新 hiddenAmpEnv 的 release 时间
+     * 当 needsExtendedRelease 为 true 时，只有活跃 voice ≤ 1 时才使用 10 秒 release
+     */
+    const updateHiddenAmpEnvRelease = () => {
+      if (!runtime.needsExtendedRelease) {
+        return;
+      }
+      const activeCount = getActiveVoiceCount();
+      const releaseTime = activeCount <= 1 ? 10 : 0.005;
+      voices.forEach((voice) => {
+        voice.hiddenAmpEnv.release = releaseTime;
+      });
+    };
+
     const runtime = {
       type: module.type,
       category: "source",
@@ -518,6 +540,7 @@ class AudioEngine {
       moduleState,
       hasAmpEnv: false,
       ampEnvRuntime: null,
+      needsExtendedRelease: false,
 
       /**
        * 获取指定 Voice 的调制输出节点
@@ -605,6 +628,7 @@ class AudioEngine {
             } else {
               voice.hiddenAmpEnv.triggerRelease(Tone.now());
             }
+            updateHiddenAmpEnvRelease();
             return;
           }
           if ("playbackRate" in voice.node) {
@@ -615,6 +639,7 @@ class AudioEngine {
           } catch {}
           voice.node.start(Tone.now());
         }
+        updateHiddenAmpEnvRelease();
       },
 
       triggerRelease: (note) => {
@@ -643,6 +668,7 @@ class AudioEngine {
             voice.node.stop(Tone.now());
           } catch {}
         }
+        updateHiddenAmpEnvRelease();
       },
 
       releaseAll: () => {
@@ -664,6 +690,7 @@ class AudioEngine {
             } catch {}
           }
         });
+        updateHiddenAmpEnvRelease();
       },
 
       dispose: () => {
