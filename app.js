@@ -2199,8 +2199,6 @@ class ModularSynthApp {
 
   /**
    * 创建范围控件
-   * Range 控件支持 slider / knob / fader 三种可视变体
-   * 并统一写入 controlBindings，供预设切换动画和宏控制回写 UI
    * @param {Object} options - 选项
    * @returns {HTMLElement} - 控件元素
    */
