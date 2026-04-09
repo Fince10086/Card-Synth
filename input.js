@@ -72,8 +72,10 @@ class InputManager {
     }
 
     try {
-      this.midi.access = await navigator.requestMIDIAccess();
-      this.midi.access.onstatechange = () => this.requestMidiAccess();
+      if (!this.midi.access) {
+        this.midi.access = await navigator.requestMIDIAccess();
+        this.midi.access.onstatechange = () => this.handleMidiStateChange();
+      }
     } catch (error) {
       this.midi.status = "MIDI access denied";
       this.onRenderGlobalStrip();
@@ -92,6 +94,22 @@ class InputManager {
     }
 
     this.selectMidiInput(this.midi.selectedInputId, false);
+  }
+
+  handleMidiStateChange() {
+    this.midi.inputs = Array.from(this.midi.access.inputs.values());
+    if (!this.midi.inputs.length) {
+      this.midi.selectedInputId = "";
+      this.midi.status = "No MIDI inputs";
+      this.onRenderGlobalStrip();
+      return;
+    }
+
+    if (!this.midi.inputs.some((input) => input.id === this.midi.selectedInputId)) {
+      this.midi.selectedInputId = this.midi.inputs[0].id;
+    }
+
+    this.selectMidiInput(this.midi.selectedInputId);
   }
 
   selectMidiInput(inputId, rerender = true) {
