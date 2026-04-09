@@ -173,8 +173,7 @@ class ModularSynthApp {
       }
 
       try {
-        const text = await file.text();
-        const preset = normalizePreset(JSON.parse(text));
+        const preset = await importPresetFromFile(file);
         const previousState = deepClone(this.state);
         this.state = preset;
         this.selectedPresetId = "custom";
@@ -268,8 +267,7 @@ class ModularSynthApp {
     });
 
     this.elements.exportBtn?.addEventListener("click", () => {
-      const filename = `${(this.state.name || "tone-preset").toLowerCase().replace(/\s+/g, "-")}.json`;
-      downloadJson(filename, this.state);
+      const filename = exportPresetToFile(this.state);
       this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
     });
 
