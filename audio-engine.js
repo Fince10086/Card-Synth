@@ -90,6 +90,20 @@ class AudioEngine {
   }
 
   /**
+   * 批量初始化所有调制连接的范围
+   * 应由 UI 层在 fullSync 后调用，传入每个调制的当前滑块值和 rangeRadius
+   * @param {Array<{modulationId: string, rangeRadius: number, currentSliderValue: number, paramMin: number, paramMax: number}>} ranges - 范围配置数组
+   */
+  initAllModulationRanges(ranges) {
+    if (!Array.isArray(ranges)) {
+      return;
+    }
+    ranges.forEach(({ modulationId, rangeRadius, currentSliderValue, paramMin, paramMax }) => {
+      this.updateModulationRange(modulationId, rangeRadius, currentSliderValue, paramMin, paramMax);
+    });
+  }
+
+  /**
    * 更新全局参数
    * @param {Object} globalState - 全局状态
    */
@@ -103,26 +117,38 @@ class AudioEngine {
 
   /**
    * 轻量级更新调制范围
-   * 只更新 scale 参数，不重建信号链
+   * 基于范围半径计算实际的 min/max 值，不重建信号链
    * @param {string} modulationId - 调制连接ID
-   * @param {number} scaleMin - 最小值
-   * @param {number} scaleMax - 最大值
+   * @param {number} rangeRadius - 范围半径（0-1之间的比例）
+   * @param {number} currentSliderValue - 当前滑块值
+   * @param {number} paramMin - 参数最小值
+   * @param {number} paramMax - 参数最大值
    */
-  updateModulationRange(modulationId, scaleMin, scaleMax) {
+  updateModulationRange(modulationId, rangeRadius, currentSliderValue, paramMin, paramMax) {
     const item = this.modulationRuntimes.find((m) => m.id === modulationId);
     if (!item || !item.scale) {
       return;
     }
+
     const scale = item.scale;
+
+    // 基于范围半径计算实际的 min/max 值
+    const sliderPercent = (currentSliderValue - paramMin) / (paramMax - paramMin || 1);
+    const minPercent = Math.max(0, Math.min(1, sliderPercent - rangeRadius));
+    const maxPercent = Math.max(0, Math.min(1, sliderPercent + rangeRadius));
+
+    const outputMin = paramMin + (paramMax - paramMin) * minPercent;
+    const outputMax = paramMin + (paramMax - paramMin) * maxPercent;
+
     if ("outputMin" in scale) {
-      scale.outputMin = Number(scaleMin ?? 0);
+      scale.outputMin = outputMin;
     } else if ("min" in scale) {
-      scale.min = Number(scaleMin ?? 0);
+      scale.min = outputMin;
     }
     if ("outputMax" in scale) {
-      scale.outputMax = Number(scaleMax ?? 1);
+      scale.outputMax = outputMax;
     } else if ("max" in scale) {
-      scale.max = Number(scaleMax ?? 1);
+      scale.max = outputMax;
     }
   }
 
@@ -861,15 +887,22 @@ class AudioEngine {
       if ("inputMax" in scale) {
         scale.inputMax = 1;
       }
+
+      // 获取目标参数的范围信息
+      const paramRange = this.getParamRange(targetModule, modulation.targetParamPath);
+      const initParamMin = paramRange?.min ?? 0;
+      const initParamMax = paramRange?.max ?? 1;
+
+      // 使用占位值初始化（将在 fullSync 时通过 updateModulationRange 更新）
       if ("outputMin" in scale) {
-        scale.outputMin = Number(modulation.scaleMin ?? 0);
+        scale.outputMin = initParamMin;
       } else if ("min" in scale) {
-        scale.min = Number(modulation.scaleMin ?? 0);
+        scale.min = initParamMin;
       }
       if ("outputMax" in scale) {
-        scale.outputMax = Number(modulation.scaleMax ?? 1);
+        scale.outputMax = initParamMax;
       } else if ("max" in scale) {
-        scale.max = Number(modulation.scaleMax ?? 1);
+        scale.max = initParamMax;
       }
 
       sourceOutput.connect(scale);
@@ -881,6 +914,46 @@ class AudioEngine {
 
       this.modulationRuntimes.push({ id: modulation.id, scale });
     });
+  }
+
+  /**
+   * 获取调制目标参数的范围信息
+   * @param {Object} module - 目标模块
+   * @param {string} targetParamPath - 目标参数路径
+   * @returns {{min: number, max: number}|null} - 参数范围
+   */
+  getParamRange(module, targetParamPath) {
+    if (!module || !targetParamPath) {
+      return null;
+    }
+
+    // Source 模块的 volume 和 pan 有固定范围
+    if (module.category === "source") {
+      if (targetParamPath === "volume") {
+        return { min: -48, max: 6 };
+      }
+      if (targetParamPath === "pan") {
+        return { min: -1, max: 1 };
+      }
+    }
+
+    // 尝试从模块定义中获取参数范围
+    // 这里可以根据需要扩展更多模块类型的参数范围定义
+    const commonRanges = {
+      frequency: { min: 20, max: 20000 },
+      detune: { min: -1200, max: 1200 },
+      Q: { min: 0.1, max: 20 },
+      wet: { min: 0, max: 1 },
+      dry: { min: 0, max: 1 },
+    };
+
+    const paramName = targetParamPath.replace(/^options\./, "");
+    if (commonRanges[paramName]) {
+      return commonRanges[paramName];
+    }
+
+    // 默认返回 null，让调用方使用默认值
+    return null;
   }
 
   /**

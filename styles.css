@@ -753,14 +753,6 @@ select {
   );
 }
 
-.slider-shell--mod-range .slider-input::-webkit-slider-thumb {
-  opacity: 0;
-}
-
-.slider-shell--mod-range .slider-input::-moz-range-thumb {
-  opacity: 0;
-}
-
 .mod-range-marker {
   position: absolute;
   color: var(--modulation);

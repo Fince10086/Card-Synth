@@ -70,15 +70,29 @@ function normalizePreset(preset = {}) {
 
   merged.modulations = Array.isArray(merged.modulations)
     ? merged.modulations
-      .map((item) => ({
-        id: String(item?.id || createId("mod")),
-        sourceModuleId: String(item?.sourceModuleId || ""),
-        sourceVoiceIndex: clamp(Number(item?.sourceVoiceIndex ?? 0), 0, 7),
-        targetModuleId: String(item?.targetModuleId || ""),
-        targetParamPath: String(item?.targetParamPath || ""),
-        scaleMin: Number(item?.scaleMin ?? 0),
-        scaleMax: Number(item?.scaleMax ?? 1),
-      }))
+      .map((item) => {
+        let rangeRadius = 0.15; // 默认值
+
+        // 尝试从新格式读取
+        if (typeof item?.rangeRadius === "number" && !Number.isNaN(item.rangeRadius)) {
+          rangeRadius = item.rangeRadius;
+        }
+        // 可选：从旧格式转换（如果需要兼容性）
+        else if (typeof item?.scaleMin === "number" && typeof item?.scaleMax === "number") {
+          // 旧格式存在但不再做复杂转换，直接使用默认值
+          // 或者可以基于旧值估算一个 radius（可选）
+          console.warn("Legacy modulation format detected (scaleMin/scaleMax), using default rangeRadius");
+        }
+
+        return {
+          id: String(item?.id || createId("mod")),
+          sourceModuleId: String(item?.sourceModuleId || ""),
+          sourceVoiceIndex: clamp(Number(item?.sourceVoiceIndex ?? 0), 0, 7),
+          targetModuleId: String(item?.targetModuleId || ""),
+          targetParamPath: String(item?.targetParamPath || ""),
+          rangeRadius: rangeRadius,
+        };
+      })
       .filter((item) => item.sourceModuleId && item.targetModuleId && item.targetParamPath)
     : [];
 

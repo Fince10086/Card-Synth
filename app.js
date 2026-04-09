@@ -920,8 +920,7 @@ class ModularSynthApp {
         sourceVoiceIndex: voiceIndex,
         targetModuleId,
         targetParamPath,
-        scaleMin: 0,
-        scaleMax: 1,
+        rangeRadius: 0.15,  // 默认15%的范围半径
       });
     }
 
@@ -1328,7 +1327,7 @@ class ModularSynthApp {
     // Source 模块显示音量和声像控件
     if (module.category === "source") {
       controls.append(
-        this.createRangeControl({
+        this.createSliderControl({
           label: "Level",
           accent,
           min: -36,
@@ -1346,7 +1345,7 @@ class ModularSynthApp {
             this.engine.updateSource(module);
           },
         }),
-        this.createRangeControl({
+        this.createSliderControl({
           label: "Pan",
           accent,
           min: -1,
@@ -1387,7 +1386,7 @@ class ModularSynthApp {
       (module.type === "Oscillator" || module.type === "PulseOscillator")
     ) {
       controls.append(
-        this.createRangeControl({
+        this.createSliderControl({
           label: "Frequency",
           accent: "modulation",
           min: 0.1,
@@ -1681,7 +1680,7 @@ class ModularSynthApp {
       });
     }
 
-    return this.createRangeControl({
+    return this.createSliderControl({
       label: control.label,
       accent,
       min: control.min,
@@ -2198,11 +2197,11 @@ class ModularSynthApp {
   }
 
   /**
-   * 创建范围控件
+   * 创建滑块控件
    * @param {Object} options - 选项
    * @returns {HTMLElement} - 控件元素
    */
-  createRangeControl({
+  createSliderControl({
     label,
     value,
     min,
@@ -2279,37 +2278,50 @@ class ModularSynthApp {
       });
     }
 
+    let paintRange = null;
+
     input.addEventListener("input", (event) => {
-      if (modulation) {
-        return;
-      }
       const nextValue = Number(event.target.value);
       updateVisual(nextValue);
       if (eventName === "input") {
         onInput(nextValue);
       }
+      if (modulation && paintRange) {
+        paintRange();
+        this.engine.updateModulationRange(
+          modulation.id,
+          modulation.rangeRadius ?? 0.15,
+          nextValue,
+          min,
+          max
+        );
+      }
     });
 
-    // 滑块拖动结束后失去焦点，恢复键盘演奏
     input.addEventListener("pointerup", () => {
       input.blur();
     });
 
     if (eventName === "change") {
       input.addEventListener("change", (event) => {
-        if (modulation) {
-          return;
-        }
-        onInput(Number(event.target.value));
+        const nextValue = Number(event.target.value);
+        onInput(nextValue);
         input.blur();
+        if (modulation && paintRange) {
+          paintRange();
+          this.engine.updateModulationRange(
+            modulation.id,
+            modulation.rangeRadius ?? 0.15,
+            nextValue,
+            min,
+            max
+          );
+        }
       });
     }
 
     // 双击读数手动输入
     const handleReadoutDoubleClick = () => {
-      if (modulation) {
-        return;
-      }
       const currentInput = readout.nextElementSibling;
       if (currentInput && currentInput.classList.contains("readout-input")) {
         return;
@@ -2339,6 +2351,16 @@ class ModularSynthApp {
         onInput(newValue);
         inputField.remove();
         readout.style.display = "";
+        if (modulation && paintRange) {
+          paintRange();
+          this.engine.updateModulationRange(
+            modulation.id,
+            modulation.rangeRadius ?? 0.15,
+            newValue,
+            min,
+            max
+          );
+        }
       };
 
       const cancelEdit = () => {
@@ -2361,18 +2383,6 @@ class ModularSynthApp {
     readout.addEventListener("dblclick", handleReadoutDoubleClick);
 
     if (modulation) {
-      wrapper.classList.add("is-modulated");
-      input.disabled = true;
-      readout.classList.add("control-readout--modulated");
-      readout.textContent = "●";
-      readout.addEventListener("pointerdown", (event) => {
-        this.startModulationDrag({
-          event,
-          sourceModuleId: modulation.sourceModuleId,
-          updateConnectionId: modulation.id,
-        });
-      });
-
       shell.classList.add("slider-shell--mod-range");
       const markerMin = document.createElement("span");
       markerMin.className = "mod-range-marker mod-range-marker--min";
@@ -2401,37 +2411,52 @@ class ModularSynthApp {
         return Number.isFinite(numeric) ? numeric : fallback;
       };
 
-      modulation.scaleMin = snap(safeNumber(modulation.scaleMin, value));
-      modulation.scaleMax = snap(safeNumber(modulation.scaleMax, value));
+      if (modulation.rangeRadius === undefined) {
+        if (modulation.scaleMin !== undefined && modulation.scaleMax !== undefined) {
+          const currentScaleMin = snap(safeNumber(modulation.scaleMin, value));
+          const currentScaleMax = snap(safeNumber(modulation.scaleMax, value));
+          const sliderPercent = toPercent(value);
+          const minPercent = toPercent(currentScaleMin);
+          const maxPercent = toPercent(currentScaleMax);
+          modulation.rangeRadius = Math.max(
+            Math.abs(sliderPercent - minPercent),
+            Math.abs(sliderPercent - maxPercent)
+          );
+        } else {
+          modulation.rangeRadius = 0.15;
+        }
+      }
 
-      const paintRange = () => {
-        const minPercent = clamp01(toPercent(modulation.scaleMin));
-        const maxPercent = clamp01(toPercent(modulation.scaleMax));
-        const rangeStart = Math.min(minPercent, maxPercent);
-        const rangeEnd = Math.max(minPercent, maxPercent);
-        shell.style.setProperty("--range-start", `${rangeStart * 100}%`);
-        shell.style.setProperty("--range-end", `${rangeEnd * 100}%`);
-        markerMin.style.left = `${minPercent * 100}%`;
-        markerMax.style.left = `${maxPercent * 100}%`;
-        markerMinValue.textContent = modulation.scaleMin.toFixed(2);
-        markerMaxValue.textContent = modulation.scaleMax.toFixed(2);
+      const calculateRangeFromRadius = (currentValue, paramMin, paramMax, rangeRadius) => {
+        const sliderPercent = (currentValue - paramMin) / (paramMax - paramMin);
+
+        const minPercent = clamp01(sliderPercent - rangeRadius);
+        const maxPercent = clamp01(sliderPercent + rangeRadius);
+
+        const minValue = paramMin + (paramMax - paramMin) * minPercent;
+        const maxValue = paramMin + (paramMax - paramMin) * maxPercent;
+
+        return { minValue, maxValue, minPercent, maxPercent };
       };
 
-      const updateRange = (valueKey, next) => {
-        modulation[valueKey] = snap(next);
-        paintRange();
-        this.engine.updateModulationRange(
-          modulation.id,
-          modulation.scaleMin,
-          modulation.scaleMax
+      paintRange = () => {
+        const { minValue, maxValue, minPercent, maxPercent } = calculateRangeFromRadius(
+          Number(input.value), min, max, modulation.rangeRadius ?? 0.15
         );
+
+        shell.style.setProperty("--range-start", `${Math.min(minPercent, maxPercent) * 100}%`);
+        shell.style.setProperty("--range-end", `${Math.max(minPercent, maxPercent) * 100}%`);
+        markerMin.style.left = `${minPercent * 100}%`;
+        markerMax.style.left = `${maxPercent * 100}%`;
+        markerMinValue.textContent = minValue.toFixed(2);
+        markerMaxValue.textContent = maxValue.toFixed(2);
       };
 
       const commitRange = () => {
         this.selectedPresetId = "custom";
       };
 
-      const bindMarkerDrag = (marker, valueKey) => {
+      const bindMarkerDrag = (marker) => {
         marker.addEventListener("pointerdown", (event) => {
           event.preventDefault();
           const updateFromPointer = (clientX) => {
@@ -2439,8 +2464,19 @@ class ModularSynthApp {
             if (!rect.width) {
               return;
             }
-            const percent = clamp01((clientX - rect.left) / rect.width);
-            updateRange(valueKey, min + percent * (max - min));
+            const markerPercent = clamp01((clientX - rect.left) / rect.width);
+            const currentValue = Number(input.value);
+            const sliderPercent = toPercent(currentValue);
+            const newRadius = Math.abs(markerPercent - sliderPercent);
+            modulation.rangeRadius = newRadius;
+            paintRange();
+            this.engine.updateModulationRange(
+              modulation.id,
+              modulation.rangeRadius,
+              currentValue,
+              modulation.rangeRadius !== undefined ? calculateRangeFromRadius(currentValue, min, max, modulation.rangeRadius).minValue : min,
+              modulation.rangeRadius !== undefined ? calculateRangeFromRadius(currentValue, min, max, modulation.rangeRadius).maxValue : max
+            );
           };
           const onMove = (moveEvent) => {
             updateFromPointer(moveEvent.clientX);
@@ -2456,8 +2492,8 @@ class ModularSynthApp {
         });
       };
 
-      bindMarkerDrag(markerMin, "scaleMin");
-      bindMarkerDrag(markerMax, "scaleMax");
+      bindMarkerDrag(markerMin);
+      bindMarkerDrag(markerMax);
       paintRange();
       wrapper.append(controlLabel, shell);
       return wrapper;
