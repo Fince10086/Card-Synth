@@ -975,10 +975,10 @@ class AudioEngine {
             voices[voiceIndex].triggerRelease(Tone.now());
           }
         },
-        // node 模式触发（由全局 attack/release 调用，无引用计数）
+        // node 模式触发（由全局 attack/release 调用，无引用计数，忽略力度）
         triggerAttack: (note, velocity) => {
           nodeNoteTracker.allocate(note, Tone.now());
-          node.triggerAttack(Tone.now(), velocity);
+          node.triggerAttack(Tone.now(), 1);
         },
         triggerRelease: (note) => {
           const releasedIndex = nodeNoteTracker.releaseByNote(note);
