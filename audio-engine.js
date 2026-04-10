@@ -927,19 +927,10 @@ class AudioEngine {
       return null;
     }
 
-    // Source 模块的 volume 和 pan 有固定范围
-    if (module.category === "source") {
-      if (targetParamPath === "volume") {
-        return { min: -48, max: 6 };
-      }
-      if (targetParamPath === "pan") {
-        return { min: -1, max: 1 };
-      }
-    }
-
     // 尝试从模块定义中获取参数范围
-    // 这里可以根据需要扩展更多模块类型的参数范围定义
     const commonRanges = {
+      volume: { min: -36, max: 6 },
+      pan: { min: -1, max: 1 },
       frequency: { min: 20, max: 20000 },
       detune: { min: -1200, max: 1200 },
       Q: { min: 0.1, max: 20 },

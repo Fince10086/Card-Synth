@@ -1324,48 +1324,8 @@ class ModularSynthApp {
     const controls = document.createElement("div");
     controls.className = "module-grid";
 
-    // Source 模块显示音量和声像控件
+    // Source 模块的样本导入控件
     if (module.category === "source") {
-      controls.append(
-        this.createSliderControl({
-          label: "Level",
-          accent,
-          min: -36,
-          max: 6,
-          step: 0.1,
-          value: module.volume,
-          path: `modules.${index}.volume`,
-          moduleId: module.id,
-          paramPath: "volume",
-          modulation: this.getModulationByTarget(module.id, "volume"),
-          formatter: formatDb,
-          onInput: (value) => {
-            module.volume = value;
-            this.selectedPresetId = "custom";
-            this.engine.updateSource(module);
-          },
-        }),
-        this.createSliderControl({
-          label: "Pan",
-          accent,
-          min: -1,
-          max: 1,
-          step: 0.01,
-          value: module.pan,
-          path: `modules.${index}.pan`,
-          moduleId: module.id,
-          paramPath: "pan",
-          modulation: this.getModulationByTarget(module.id, "pan"),
-          formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}`,
-          onInput: (value) => {
-            module.pan = value;
-            this.selectedPresetId = "custom";
-            this.engine.updateSource(module);
-          },
-        }),
-      );
-
-      // 样本导入控件
       this.getSourceSampleSlots(module).forEach((slot) => {
         controls.append(
           this.createAudioImportControl({
