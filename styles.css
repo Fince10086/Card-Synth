@@ -1061,13 +1061,30 @@ select {
   padding: 4px 8px;
 }
 
-.midi-status {
+.midi-selecter {
+  display: flex;
+  align-items: center;
+  min-width: 120px;
+}
+
+.midi-status-text {
   font-size: 0.65rem;
   color: #7c8298;
   padding: 4px 8px;
-  background: #f5f6fa;
-  border-radius: 4px;
-  text-align: center;
+}
+
+.midi-selecter-control {
+  min-width: 120px;
+}
+
+.midi-selecter-control .control-label {
+  display: none;
+}
+
+.midi-selecter-control .select-input {
+  font-size: 0.65rem;
+  padding: 2px 4px;
+  min-width: 100px;
 }
 
 .slider-input--global {

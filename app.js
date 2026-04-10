@@ -128,7 +128,7 @@ class ModularSynthApp {
       resetBtn: document.getElementById("resetBtn"),
       randomBtn: document.getElementById("randomBtn"),
       midiBtn: document.getElementById("midiBtn"),
-      midiStatus: document.getElementById("midiStatus"),
+      midiSelecter: document.getElementById("midiSelecter"),
       masterFader: document.getElementById("masterFader"),
       masterReadout: document.getElementById("masterReadout"),
     };
@@ -280,7 +280,11 @@ class ModularSynthApp {
     });
 
     this.elements.midiBtn?.addEventListener("click", () => {
-      this.inputManager.requestMidiAccess();
+      if (this.inputManager.getMidiInputs().length > 0) {
+        this.inputManager.closeMidi();
+      } else {
+        this.inputManager.requestMidiAccess();
+      }
     });
 
     this.elements.masterFader?.addEventListener("input", (e) => {
@@ -322,16 +326,41 @@ class ModularSynthApp {
   }
 
   updateMidiStatus() {
-    if (this.elements.midiStatus) {
-      this.elements.midiStatus.textContent = this.inputManager.getMidiSupported()
-        ? this.inputManager.getMidiStatus()
-        : "MIDI unsupported";
-    }
+    const container = this.elements.midiSelecter;
+    if (!container) return;
+
+    const supported = this.inputManager.getMidiSupported();
+    const inputs = this.inputManager.getMidiInputs();
+    const selectedId = this.inputManager.getMidiSelectedInputId();
+
     if (this.elements.midiBtn) {
-      this.elements.midiBtn.textContent = this.inputManager.getMidiInputs().length > 0
-        ? "Refresh MIDI"
-        : "Enable MIDI";
+      this.elements.midiBtn.textContent = inputs.length > 0 ? "MIDI Off" : "MIDI On";
     }
+
+    const options = inputs.map((input) => ({
+      value: input.id,
+      label: input.name || input.id,
+    }));
+
+    const selectControl = this.createSelectControl({
+      label: "MIDI",
+      options: options.length > 0 ? options : [{ value: "", label: supported ? "No devices" : "Unsupported" }],
+      value: selectedId || "",
+      onChange: (value) => {
+        if (value) {
+          this.inputManager.selectMidiInput(value);
+        }
+      },
+    });
+
+    selectControl.classList.add("midi-selecter-control");
+    const selectEl = selectControl.querySelector(".select-input");
+    if (!supported || inputs.length === 0) {
+      selectEl.disabled = true;
+    }
+
+    container.innerHTML = "";
+    container.appendChild(selectControl);
   }
 
   /**

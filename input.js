@@ -125,6 +125,21 @@ class InputManager {
     }
   }
 
+  closeMidi() {
+    this.releaseAllNotes();
+    this.midi.inputs.forEach((input) => {
+      input.onmidimessage = null;
+    });
+    this.midi.selectedInputId = "";
+    this.midi.status = "MIDI off";
+    if (this.midi.access) {
+      this.midi.access.onstatechange = null;
+      this.midi.access = null;
+    }
+    this.midi.inputs = [];
+    this.onRenderGlobalStrip();
+  }
+
   async handleMidiMessage(event) {
     const [status, data1, data2] = event.data;
     const command = status & 0xf0;
