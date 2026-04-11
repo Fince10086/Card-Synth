@@ -86,6 +86,7 @@ export function renderModuleCard(module, index, app) {
     },
     removable: true,
     index: index + 1,
+    initModuleDrag: (event, card, moduleIndex) => app.initModuleDrag(event, card, moduleIndex),
   });
 
   const controls = document.createElement("div");
