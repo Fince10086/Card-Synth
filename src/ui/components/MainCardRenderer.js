@@ -1,7 +1,7 @@
 import { createSelectControl, createSliderControl, createToggleControl } from "../controls/index.js";
 import { formatDb } from "../../core/formatters.js";
 import { exportPresetToFile } from "../../preset/preset.js";
-import { createModuleCard } from "./ModuleCard.js";
+import { createModuleCard } from "./moduleCard.js";
 
 export function renderMainCard({
   selectedPresetId,

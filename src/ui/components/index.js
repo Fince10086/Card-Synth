@@ -1,4 +1,4 @@
-export { createModuleCard, createTitleSelect } from "./ModuleCard.js";
-export { renderKeyboard } from "./VirtualKeyboard.js";
-export { resizeScopeCanvas, startScopeRendering, stopScopeRendering } from "./ScopeRenderer.js";
-export { renderMainCard, renderMainCardContent, cacheDynamicElements } from "./MainCardRenderer.js";
+export { createModuleCard, createTitleSelect } from "./moduleCard.js";
+export { renderKeyboard } from "./virtualKeyboard.js";
+export { resizeScopeCanvas, startScopeRendering, stopScopeRendering } from "./scopeRenderer.js";
+export { renderMainCard, renderMainCardContent, cacheDynamicElements } from "./mainCardRenderer.js";
