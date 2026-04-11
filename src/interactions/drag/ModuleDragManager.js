@@ -105,16 +105,11 @@ export class ModuleDragManager {
         event.clientY <= rect.bottom
       ) {
         targetCard = card;
-        targetIndex = i;
+        const moduleId = card.dataset.moduleId;
+        const modules = this.app.state.modules || [];
+        targetIndex = modules.findIndex((m) => m.id === moduleId);
         break;
       }
-    }
-
-    if (targetIndex >= 0) {
-      targetIndex += 1;
-    }
-    if (targetIndex === 0) {
-      targetIndex = 1;
     }
 
     this.dragState.targetIndex = targetIndex;
@@ -195,11 +190,7 @@ export class ModuleDragManager {
         event.clientY > containerRect.bottom;
 
       if (!isOutsideContainer && this.dragState.targetIndex >= 0) {
-        let toIndex = this.dragState.targetIndex;
-
-        if (toIndex === 0) {
-          toIndex = 1;
-        }
+        const toIndex = this.dragState.targetIndex;
 
         if (toIndex !== this.dragState.dragIndex) {
           this.reorderModule(this.dragState.dragIndex, toIndex);
@@ -235,7 +226,8 @@ export class ModuleDragManager {
     }
 
     const [module] = modules.splice(fromIndex, 1);
-    modules.splice(toIndex, 0, module);
+    const insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+    modules.splice(insertIndex, 0, module);
 
     this.app.selectedPresetId = "custom";
     this.app.renderAll();
