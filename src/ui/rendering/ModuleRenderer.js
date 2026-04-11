@@ -38,7 +38,10 @@ export function renderModuleCard(module, index, app) {
         replacement.volume = module.volume;
         replacement.pan = module.pan;
         replacement.modulationMode = module.modulationMode;
-        replacement.modulationFrequency = module.modulationFrequency;
+        const sourceFrequency = Number(module?.options?.frequency);
+        if (Number.isFinite(sourceFrequency) && sourceFrequency > 0) {
+          replacement.options.frequency = sourceFrequency;
+        }
       }
       if (!app.isModulationSource(replacement)) {
         app.removeOutgoingModulations(module.id);
@@ -107,6 +110,11 @@ export function renderModuleCard(module, index, app) {
     module.modulationMode &&
     (module.type === "Oscillator" || module.type === "PulseOscillator")
   ) {
+    const modulationFrequency = Number(module?.options?.frequency);
+    const initialFrequency = Number.isFinite(modulationFrequency) && modulationFrequency > 0
+      ? modulationFrequency
+      : 1;
+
     controls.append(
       createSliderControl({
         label: "Frequency",
@@ -114,13 +122,13 @@ export function renderModuleCard(module, index, app) {
         min: 0.1,
         max: 100,
         step: 0.01,
-        value: Number(module.modulationFrequency || 1),
-        path: `modules.${index}.modulationFrequency`,
+        value: initialFrequency,
+        path: `modules.${index}.options.frequency`,
         moduleId: module.id,
-        paramPath: "modulationFrequency",
+        paramPath: "options.frequency",
         formatter: formatHertz,
         onInput: (value) => {
-          module.modulationFrequency = value;
+          setByPath(module, "options.frequency", value);
           app.selectedPresetId = "custom";
           app.engine.updateSource(module);
         },

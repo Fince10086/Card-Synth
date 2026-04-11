@@ -90,7 +90,6 @@ export function createSourceModule(type = "Oscillator") {
     volume: -8,
     pan: 0,
     modulationMode: false,
-    modulationFrequency: 1,
     index: moduleCounter - 1,
     ...(definition.moduleDefaults ? deepClone(definition.moduleDefaults) : {}),
     options: deepClone(definition.options),
@@ -161,7 +160,27 @@ export function normalizeModule(module, defaultCategory, defaultCreator) {
 }
 
 export function normalizeSourceModule(module) {
-  return normalizeModule(module, "source", (type) => createSourceModule(type || "Oscillator"));
+  const normalized = normalizeModule(module, "source", (type) => createSourceModule(type || "Oscillator"));
+
+  if (normalized.type === "Oscillator" || normalized.type === "PulseOscillator") {
+    const nextOptions = isObject(normalized.options) ? normalized.options : {};
+    const hasConfiguredFrequency = Number.isFinite(Number(nextOptions.frequency)) && Number(nextOptions.frequency) > 0;
+
+    if (!hasConfiguredFrequency) {
+      const legacyFrequency = Number(normalized.modulationFrequency);
+      if (Number.isFinite(legacyFrequency) && legacyFrequency > 0) {
+        nextOptions.frequency = legacyFrequency;
+      }
+    }
+
+    normalized.options = nextOptions;
+  }
+
+  if ("modulationFrequency" in normalized) {
+    delete normalized.modulationFrequency;
+  }
+
+  return normalized;
 }
 
 export function normalizeEffectModule(module) {

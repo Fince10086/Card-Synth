@@ -309,6 +309,19 @@ export class AudioEngine {
       const root = Tone.Frequency(moduleState.rootNote || "C4").toFrequency();
       return getNoteFrequency(note) / root;
     };
+    const getModulationFrequency = () => {
+      const configuredFrequency = Number(moduleState?.options?.frequency);
+      if (Number.isFinite(configuredFrequency) && configuredFrequency > 0) {
+        return configuredFrequency;
+      }
+
+      const legacyFrequency = Number(moduleState?.modulationFrequency);
+      if (Number.isFinite(legacyFrequency) && legacyFrequency > 0) {
+        return legacyFrequency;
+      }
+
+      return 1;
+    };
 
     const createVoice = () => {
       const volumeNode = new Tone.Volume(module.enabled ? module.volume : -48);
@@ -426,6 +439,9 @@ export class AudioEngine {
 
           if (definition.runtime === "pitchedSource") {
             safeSet(voice.node, moduleState.options);
+            if (moduleState.modulationMode && voice.node.frequency) {
+              voice.node.frequency.rampTo(getModulationFrequency(), 0.02);
+            }
           } else if (definition.runtime === "noise") {
             safeSet(voice.node, moduleState.options);
           } else if (definition.runtime === "player") {
@@ -456,7 +472,10 @@ export class AudioEngine {
 
         if (definition.runtime === "pitchedSource") {
           if (voice.node.frequency) {
-            voice.node.frequency.rampTo(getNoteFrequency(note), 0.02);
+            const nextFrequency = moduleState.modulationMode
+              ? getModulationFrequency()
+              : getNoteFrequency(note);
+            voice.node.frequency.rampTo(nextFrequency, 0.02);
           }
         } else if (definition.runtime === "noise") {
         } else if (definition.runtime === "player") {
