@@ -99,7 +99,9 @@ class AudioEngine {
       return;
     }
     ranges.forEach(({ modulationId, rangeRadius, currentSliderValue, paramMin, paramMax }) => {
-      this.updateModulationRange(modulationId, rangeRadius, currentSliderValue, paramMin, paramMax);
+      const centerValue = currentSliderValue;
+      const radius = (paramMax - paramMin) * (rangeRadius ?? 0.15);
+      this.updateModulationRange(modulationId, centerValue, radius);
     });
   }
 
@@ -116,39 +118,18 @@ class AudioEngine {
   }
 
   /**
-   * 基于范围半径计算实际的 min/max 值，不重建信号链
+   * 更新调制范围
    * @param {string} modulationId - 调制连接ID
-   * @param {number} rangeRadius - 范围半径（0-1之间的比例）
-   * @param {number} currentSliderValue - 当前滑块值
-   * @param {number} paramMin - 参数最小值
-   * @param {number} paramMax - 参数最大值
+   * @param {number} centerValue - 中心值
+   * @param {number} radius - 范围半径
    */
-  updateModulationRange(modulationId, rangeRadius, currentSliderValue, paramMin, paramMax) {
-    const item = this.modulationRuntimes.find((m) => m.id === modulationId);
-    if (!item || !item.scale) {
-      return;
-    }
+  updateModulationRange(modulationId, centerValue, radius) {
+    const item = this.modulationRuntimes.find(m => m.id === modulationId);
+    if (!item?.scale) return;
 
     const scale = item.scale;
-
-    // 基于范围半径计算实际的 min/max 值
-    const sliderPercent = (currentSliderValue - paramMin) / (paramMax - paramMin || 1);
-    const minPercent = Math.max(0, Math.min(1, sliderPercent - rangeRadius));
-    const maxPercent = Math.max(0, Math.min(1, sliderPercent + rangeRadius));
-
-    const outputMin = paramMin + (paramMax - paramMin) * minPercent;
-    const outputMax = paramMin + (paramMax - paramMin) * maxPercent;
-
-    if ("outputMin" in scale) {
-      scale.outputMin = outputMin;
-    } else if ("min" in scale) {
-      scale.min = outputMin;
-    }
-    if ("outputMax" in scale) {
-      scale.outputMax = outputMax;
-    } else if ("max" in scale) {
-      scale.max = outputMax;
-    }
+    scale.min = centerValue - radius;
+    scale.max = centerValue + radius;
   }
 
   /* -------------------------------------------------------------------------- */
@@ -318,9 +299,8 @@ class AudioEngine {
     if (sourceModule?.type === "Envelope") {
       return;
     }
+
     if (sourceModule?.modulationMode) {
-      runtime.hasAmpEnv = false;
-      runtime.ampEnvRuntime = null;
       return;
     }
 
@@ -633,7 +613,6 @@ class AudioEngine {
       },
 
       apply: (nextModule) => {
-        const wasModulationMode = Boolean(moduleState?.modulationMode);
         moduleState = deepClone(nextModule);
         voices.forEach((voice) => {
           rampParam(voice.volumeNode.volume, moduleState.enabled ? moduleState.volume : -48);
@@ -647,35 +626,11 @@ class AudioEngine {
             safeSet(voice.node, moduleState.options);
             applyPlayerLikeOptions(voice.node, moduleState.options);
           }
-
-          if (moduleState.modulationMode) {
-            // 调制模式下保持 Voice 持续输出，不使用 hiddenAmpEnv。
-            voice.hiddenAmpEnv.triggerAttack(Tone.now(), 1);
-            if (definition.runtime === "pitchedSource" && voice.node.frequency) {
-              voice.node.frequency.rampTo(Number(moduleState.modulationFrequency || 1), 0.02);
-            }
-            if (definition.runtime === "player") {
-              try {
-                voice.node.loop = true;
-                if (voice.node.loaded) {
-                  voice.node.start(Tone.now());
-                }
-              } catch {}
-            }
-          } else if (wasModulationMode && !moduleState.modulationMode) {
-            // 退出调制模式时释放 hiddenAmpEnv，避免残留门控状态。
-            voice.hiddenAmpEnv.triggerRelease(Tone.now());
-            if (definition.runtime === "player") {
-              try {
-                voice.node.stop(Tone.now());
-              } catch {}
-            }
-          }
         });
       },
 
       triggerAttack: (note, velocity) => {
-        if (!moduleState.enabled || moduleState.modulationMode) {
+        if (!moduleState.enabled) {
           return;
         }
         const result = findAvailableVoice();
@@ -722,9 +677,6 @@ class AudioEngine {
       },
 
       triggerRelease: (note) => {
-        if (moduleState.modulationMode) {
-          return;
-        }
         const result = findVoiceByNote(note);
         if (!result) {
           return;
@@ -751,9 +703,6 @@ class AudioEngine {
       },
 
       releaseAll: () => {
-        if (moduleState.modulationMode) {
-          return;
-        }
         voices.forEach((voice, index) => {
           if (voice.note) {
             voice.note = null;
@@ -840,161 +789,51 @@ class AudioEngine {
 
   /**
    * 构建所有调制连接
-   * 连接顺序：Voice 输出 -> Tone.Scale -> 目标参数
    * @param {Array} modules - 当前模块数组
    */
   connectModulations(modules) {
     const modulations = Array.isArray(this.state?.modulations) ? this.state.modulations : [];
-    if (!modulations.length) {
-      return;
-    }
+    if (!modulations.length) return;
 
-    modulations.forEach((modulation) => {
-      const sourceRuntime = this.moduleRuntimes.get(modulation.sourceModuleId);
-      if (!sourceRuntime || typeof sourceRuntime.getModulationOutput !== "function") {
-        return;
-      }
+    modulations.forEach(mod => {
+      const sourceOutput = this.getModulationSourceOutput(mod);
+      const targetParam = this.getModulationTargetParam(mod);
+      if (!sourceOutput || !targetParam) return;
 
-      const sourceModule = modules.find((item) => item.id === modulation.sourceModuleId);
-      if (!sourceModule || !sourceModule.enabled) {
-        return;
-      }
-      if (sourceModule.type !== "Envelope" && !sourceModule.modulationMode) {
-        return;
-      }
+      const audioToGain = new Tone.AudioToGain();
+      const scale = new Tone.Scale(-1, 1, 0, 1);
 
-      const targetModule = modules.find((item) => item.id === modulation.targetModuleId);
-      if (!targetModule || !targetModule.enabled) {
-        return;
-      }
+      sourceOutput.connect(audioToGain);
+      audioToGain.connect(scale);
+      scale.connect(targetParam);
 
-      const sourceOutput = sourceRuntime.getModulationOutput(Number(modulation.sourceVoiceIndex) || 0);
-      if (!sourceOutput || typeof sourceOutput.connect !== "function") {
-        return;
-      }
-
-      const targetParams = this.getModulationTargetParams(targetModule, modulation.targetParamPath);
-      if (!targetParams.length) {
-        return;
-      }
-
-      const scale = new Tone.Scale();
-      const isEnvelopeSource = sourceModule.type === "Envelope";
-      if ("inputMin" in scale) {
-        scale.inputMin = isEnvelopeSource ? 0 : -1;
-      }
-      if ("inputMax" in scale) {
-        scale.inputMax = 1;
-      }
-
-      const a2g = new Tone.AudioToGain();
-
-      // 获取目标参数的范围信息
-      const paramRange = this.getParamRange(targetModule, modulation.targetParamPath);
-      const initParamMin = paramRange?.min ?? 0;
-      const initParamMax = paramRange?.max ?? 1;
-
-      // 使用占位值初始化（将在 fullSync 时通过 updateModulationRange 更新）
-      if ("outputMin" in scale) {
-        scale.outputMin = initParamMin;
-      } else if ("min" in scale) {
-        scale.min = initParamMin;
-      }
-      if ("outputMax" in scale) {
-        scale.outputMax = initParamMax;
-      } else if ("max" in scale) {
-        scale.max = initParamMax;
-      }
-
-      sourceOutput.connect(a2g);
-      a2g.connect(scale);
-      targetParams.forEach((param) => {
-        try {
-          scale.connect(param);
-        } catch {}
-      });
-
-      this.modulationRuntimes.push({ id: modulation.id, scale });
+      this.modulationRuntimes.push({ id: mod.id, scale, audioToGain });
     });
   }
 
   /**
-   * 获取调制目标参数的范围信息
-   * @param {Object} module - 目标模块
-   * @param {string} targetParamPath - 目标参数路径
-   * @returns {{min: number, max: number}|null} - 参数范围
+   * 获取调制源输出节点
+   * @param {Object} modulation - 调制连接对象
+   * @returns {Object|null} - Tone 音频节点或 null
    */
-  getParamRange(module, targetParamPath) {
-    if (!module || !targetParamPath) {
-      return null;
-    }
-
-    // 尝试从模块定义中获取参数范围
-    const commonRanges = {
-      volume: { min: -36, max: 6 },
-      pan: { min: -1, max: 1 },
-      frequency: { min: 20, max: 20000 },
-      detune: { min: -1200, max: 1200 },
-      Q: { min: 0.1, max: 20 },
-      wet: { min: 0, max: 1 },
-      dry: { min: 0, max: 1 },
-    };
-
-    const paramName = targetParamPath.replace(/^options\./, "");
-    if (commonRanges[paramName]) {
-      return commonRanges[paramName];
-    }
-
-    // 默认返回 null，让调用方使用默认值
-    return null;
+  getModulationSourceOutput(modulation) {
+    const sourceRuntime = this.moduleRuntimes.get(modulation.sourceModuleId);
+    if (!sourceRuntime?.getModulationOutput) return null;
+    return sourceRuntime.getModulationOutput(0);
   }
 
   /**
-   * 解析调制目标参数列表
-   * Source 目标会映射到每个 Voice 对应参数，其他模块映射到单节点参数。
-   * @param {Object} module - 目标模块
-   * @param {string} targetParamPath - 目标参数路径（如 options.frequency / volume）
-   * @returns {Array} - Tone 参数数组
+   * 获取调制目标参数
+   * @param {Object} modulation - 调制连接对象
+   * @returns {Object|null} - Tone 参数对象
    */
-  getModulationTargetParams(module, targetParamPath) {
-    const runtime = this.moduleRuntimes.get(module.id);
-    if (!runtime || !targetParamPath) {
-      return [];
-    }
+  getModulationTargetParam(modulation) {
+    const targetModule = this.state.modules.find(m => m.id === modulation.targetModuleId);
+    const runtime = this.moduleRuntimes.get(targetModule?.id);
+    if (!runtime?.node) return null;
 
-    const resolveParam = (target, path) => {
-      const value = getByPath(target, path);
-      if (!value) {
-        return null;
-      }
-      if (value.value !== undefined || typeof value.rampTo === "function") {
-        return value;
-      }
-      return null;
-    };
-
-    if (module.category === "source") {
-      if (!Array.isArray(runtime.voices)) {
-        return [];
-      }
-      return runtime.voices
-        .map((voice) => {
-          if (targetParamPath === "volume") {
-            return voice.volumeNode?.volume || null;
-          }
-          if (targetParamPath === "pan") {
-            return voice.panNode?.pan || null;
-          }
-          return resolveParam(voice.node, targetParamPath.replace(/^options\./, ""));
-        })
-        .filter(Boolean);
-    }
-
-    const node = runtime.node;
-    if (!node) {
-      return [];
-    }
-    return [resolveParam(node, targetParamPath.replace(/^options\./, ""))].filter(Boolean);
+    const paramPath = modulation.targetParamPath.replace(/^options\./, '');
+    return getByPath(runtime.node, paramPath);
   }
 
   /**

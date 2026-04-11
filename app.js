@@ -954,7 +954,7 @@ class ModularSynthApp {
         sourceVoiceIndex: voiceIndex,
         targetModuleId,
         targetParamPath,
-        rangeRadius: 0.15,  // 默认15%的范围半径
+        radius: undefined,
       });
     }
 
@@ -2490,12 +2490,12 @@ class ModularSynthApp {
       }
       if (modulation && paintRange) {
         paintRange();
+        const centerValue = nextValue;
+        const radius = modulation.radius ?? ((max - min) * 0.15);
         this.engine.updateModulationRange(
           modulation.id,
-          modulation.rangeRadius ?? 0.15,
-          nextValue,
-          min,
-          max
+          centerValue,
+          radius
         );
       }
     });
@@ -2511,12 +2511,12 @@ class ModularSynthApp {
         input.blur();
         if (modulation && paintRange) {
           paintRange();
+          const centerValue = nextValue;
+          const radius = modulation.radius ?? ((max - min) * 0.15);
           this.engine.updateModulationRange(
             modulation.id,
-            modulation.rangeRadius ?? 0.15,
-            nextValue,
-            min,
-            max
+            centerValue,
+            radius
           );
         }
       });
@@ -2555,12 +2555,12 @@ class ModularSynthApp {
         readout.style.display = "";
         if (modulation && paintRange) {
           paintRange();
+          const centerValue = newValue;
+          const radius = modulation.radius ?? ((max - min) * 0.15);
           this.engine.updateModulationRange(
             modulation.id,
-            modulation.rangeRadius ?? 0.15,
-            newValue,
-            min,
-            max
+            centerValue,
+            radius
           );
         }
       };
@@ -2606,50 +2606,29 @@ class ModularSynthApp {
         const snapped = min + Math.round((next - min) / numericStep) * numericStep;
         return clamp(Number(snapped.toFixed(6)));
       };
-      const toPercent = (next) => (next - min) / (max - min || 1);
-      const clamp01 = (next) => Math.max(0, Math.min(1, next));
       const safeNumber = (next, fallback) => {
         const numeric = Number(next);
         return Number.isFinite(numeric) ? numeric : fallback;
       };
 
-      if (modulation.rangeRadius === undefined) {
-        if (modulation.scaleMin !== undefined && modulation.scaleMax !== undefined) {
-          const currentScaleMin = snap(safeNumber(modulation.scaleMin, value));
-          const currentScaleMax = snap(safeNumber(modulation.scaleMax, value));
-          const sliderPercent = toPercent(value);
-          const minPercent = toPercent(currentScaleMin);
-          const maxPercent = toPercent(currentScaleMax);
-          modulation.rangeRadius = Math.max(
-            Math.abs(sliderPercent - minPercent),
-            Math.abs(sliderPercent - maxPercent)
-          );
-        } else {
-          modulation.rangeRadius = 0.15;
-        }
+      if (modulation.radius === undefined) {
+        modulation.radius = (max - min) * 0.15;
       }
 
-      const calculateRangeFromRadius = (currentValue, paramMin, paramMax, rangeRadius) => {
-        const sliderPercent = (currentValue - paramMin) / (paramMax - paramMin);
-
-        const minPercent = clamp01(sliderPercent - rangeRadius);
-        const maxPercent = clamp01(sliderPercent + rangeRadius);
-
-        const minValue = paramMin + (paramMax - paramMin) * minPercent;
-        const maxValue = paramMin + (paramMax - paramMin) * maxPercent;
-
-        return { minValue, maxValue, minPercent, maxPercent };
-      };
-
       paintRange = () => {
-        const { minValue, maxValue, minPercent, maxPercent } = calculateRangeFromRadius(
-          Number(input.value), min, max, modulation.rangeRadius ?? 0.15
-        );
+        const centerValue = Number(input.value);
+        const radius = modulation.radius ?? ((max - min) * 0.15);
+        const minValue = centerValue - radius;
+        const maxValue = centerValue + radius;
 
-        shell.style.setProperty("--range-start", `${Math.min(minPercent, maxPercent) * 100}%`);
-        shell.style.setProperty("--range-end", `${Math.max(minPercent, maxPercent) * 100}%`);
-        markerMin.style.left = `${minPercent * 100}%`;
-        markerMax.style.left = `${maxPercent * 100}%`;
+        // 仅在最后转换为百分比用于 CSS 显示
+        const minPct = ((minValue - min) / (max - min)) * 100;
+        const maxPct = ((maxValue - min) / (max - min)) * 100;
+
+        shell.style.setProperty("--range-start", `${Math.min(minPct, maxPct)}%`);
+        shell.style.setProperty("--range-end", `${Math.max(minPct, maxPct)}%`);
+        markerMin.style.left = `${minPct}%`;
+        markerMax.style.left = `${maxPct}%`;
         markerMinValue.textContent = minValue.toFixed(2);
         markerMaxValue.textContent = maxValue.toFixed(2);
       };
@@ -2666,19 +2645,17 @@ class ModularSynthApp {
             if (!rect.width) {
               return;
             }
-            const markerPercent = clamp01((clientX - rect.left) / rect.width);
-            const currentValue = Number(input.value);
-            const sliderPercent = toPercent(currentValue);
-            const newRadius = Math.abs(markerPercent - sliderPercent);
-            modulation.rangeRadius = newRadius;
+
+            // 像素位置 → 参数域绝对值
+            const markerPercent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            const valueAtMarker = min + (max - min) * markerPercent;
+            const centerValue = Number(input.value);
+
+            // 直接计算绝对值 radius
+            modulation.radius = Math.abs(valueAtMarker - centerValue);
             paintRange();
-            this.engine.updateModulationRange(
-              modulation.id,
-              modulation.rangeRadius,
-              currentValue,
-              modulation.rangeRadius !== undefined ? calculateRangeFromRadius(currentValue, min, max, modulation.rangeRadius).minValue : min,
-              modulation.rangeRadius !== undefined ? calculateRangeFromRadius(currentValue, min, max, modulation.rangeRadius).maxValue : max
-            );
+
+            this.engine.updateModulationRange(modulation.id, centerValue, modulation.radius);
           };
           const onMove = (moveEvent) => {
             updateFromPointer(moveEvent.clientX);
