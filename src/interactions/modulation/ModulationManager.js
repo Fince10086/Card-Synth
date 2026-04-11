@@ -71,6 +71,7 @@ export class ModulationManager {
    * @returns {Array} 调制连接数组
    */
   getModulations() {
+    // 检查 this.app.state.modulations 是否不是一个数组，如果不是则初始化为空数组
     if (!Array.isArray(this.app.state.modulations)) {
       this.app.state.modulations = [];
     }
@@ -234,8 +235,12 @@ export class ModulationManager {
    * @param {string} params.updateConnectionId - 要更新的连接ID（可选）
    */
   commitModulationTarget({ sourceModuleId, targetModuleId, targetParamPath, updateConnectionId = "" }) {
+    console.log("[ModulationManager] commitModulationTarget called with:", { sourceModuleId, targetModuleId, targetParamPath, updateConnectionId
+    });
+    
     // 基本有效性检查
     if (!sourceModuleId || !targetModuleId || !targetParamPath || sourceModuleId === targetModuleId) {
+      console.warn("[ModulationManager] Invalid modulation parameters");
       return;
     }
 
@@ -250,9 +255,11 @@ export class ModulationManager {
     const sourceModule = this.app.state.modules.find((item) => item.id === sourceModuleId);
     const targetModule = this.app.state.modules.find((item) => item.id === targetModuleId);
     if (!sourceModule || !targetModule) {
+      console.warn("[ModulationManager] Source or target module not found");
       return;
     }
     if (!this.isModulationSource(sourceModule)) {
+      console.warn("[ModulationManager] Source module is not a valid modulation source");
       return;
     }
 
@@ -263,14 +270,19 @@ export class ModulationManager {
       return;
     }
 
+    let modulationId;
+    
     // 更新现有连接
     if (updateConnectionId) {
+      console.log("[ModulationManager] Updating existing connection:", updateConnectionId);
       const current = this.getModulationById(updateConnectionId);
       if (!current) {
+        console.warn("[ModulationManager] Connection not found for update");
         return;
       }
       current.targetModuleId = targetModuleId;
       current.targetParamPath = targetParamPath;
+      modulationId = updateConnectionId;
     } else {
       // 创建新连接
       if (this.getOutgoingModulations(sourceModuleId).length >= 8) {
@@ -279,10 +291,13 @@ export class ModulationManager {
       }
       const voiceIndex = this.getNextModulationVoiceIndex(sourceModuleId);
       if (voiceIndex < 0) {
+        console.warn("[ModulationManager] No available voice index");
         return;
       }
+      modulationId = `${sourceModuleId}-mod-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      console.log("[ModulationManager] Creating new connection:", modulationId);
       this.getModulations().push({
-        id: `${sourceModuleId}-mod-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        id: modulationId,
         sourceModuleId,
         sourceVoiceIndex: voiceIndex,
         targetModuleId,
@@ -295,6 +310,9 @@ export class ModulationManager {
     this.app.selectedPresetId = "custom";
     this.app.engine.fullSync(this.app.state);
     this.app.renderAll();
+    
+    // 不需要在这里调用 connectModulations，因为 fullSync 内部已经调用了
+    console.log("[ModulationManager] Modulation commit completed");
   }
 
   /**
@@ -347,12 +365,20 @@ export class ModulationManager {
    * @param {number} radius - 范围半径
    */
   updateModulationRange(modulationId, centerValue, radius) {
+    console.log("[ModulationManager] updateModulationRange called:", { modulationId, centerValue, radius });
+    
     const item = this.modulationRuntimes.find(m => m.id === modulationId);
-    if (!item?.scale) return;
+    if (!item?.scale) {
+      console.warn("[ModulationManager] Scale not found for modulation:", modulationId);
+      console.warn("[ModulationManager] Available modulationRuntimes:", this.modulationRuntimes.map(m => m.id));
+      return;
+    }
 
     const scale = item.scale;
     scale.min = centerValue - radius;
     scale.max = centerValue + radius;
+    
+    console.log("[ModulationManager] Scale updated for", modulationId, "min:", scale.min, "max:", scale.max);
   }
 
   /**
@@ -361,23 +387,55 @@ export class ModulationManager {
    */
   connectModulations(modules) {
     const modulations = Array.isArray(this.app.state?.modulations) ? this.app.state.modulations : [];
-    if (!modulations.length) return;
-
+    console.log("[ModulationManager] connectModulations called, modulations count:", modulations.length);
+    
     this.clearModulationRuntimes();
 
+    if (!modulations.length) {
+      console.log("[ModulationManager] No modulations to connect");
+      return;
+    }
+
     modulations.forEach(mod => {
+      console.log("[ModulationManager] Processing modulation:", mod.id);
+      
       const sourceOutput = this.getModulationSourceOutput(mod);
       const targetParam = this.getModulationTargetParam(mod);
-      if (!sourceOutput || !targetParam) return;
+      
+      if (!sourceOutput) {
+        console.warn("[ModulationManager] Source output not found for modulation:", mod.id);
+        return;
+      }
+      if (!targetParam) {
+        console.warn("[ModulationManager] Target param not found for modulation:", mod.id);
+        return;
+      }
 
       const audioToGain = new Tone.AudioToGain();
       const scale = new Tone.Scale();
+
+      console.log("[ModulationManager] Setting default scale range for modulation:", mod.id);
+      scale.min = 0;
+      scale.max = 1;
 
       sourceOutput.connect(audioToGain);
       audioToGain.connect(scale);
       scale.connect(targetParam);
 
       this.modulationRuntimes.push({ id: mod.id, scale, audioToGain });
+      
+      console.log("[ModulationManager] Modulation connected:", mod.id);
+      
+      // 立即尝试初始化范围
+      const targetModule = this.app.state.modules.find(m => m.id === mod.targetModuleId);
+      if (targetModule) {
+        const currentSliderValue = getByPath(targetModule, mod.targetParamPath);
+        if (typeof currentSliderValue === 'number' && isFinite(currentSliderValue)) {
+          const radius = mod.radius ?? 0.15;
+          console.log("[ModulationManager] Initializing range for", mod.id, "with value:", currentSliderValue, "radius:", radius);
+          this.updateModulationRange(mod.id, currentSliderValue, radius);
+        }
+      }
     });
   }
 
@@ -402,9 +460,28 @@ export class ModulationManager {
    * @returns {Object|null} 调制源输出节点
    */
   getModulationSourceOutput(modulation) {
+    console.log("[ModulationManager] getModulationSourceOutput called for modulation:", modulation.id);
+    console.log("[ModulationManager] Source module ID:", modulation.sourceModuleId);
+    
     const sourceRuntime = this.app.engine.moduleRuntimes.get(modulation.sourceModuleId);
-    if (!sourceRuntime?.getModulationOutput) return null;
-    return sourceRuntime.getModulationOutput(0);
+    if (!sourceRuntime) {
+      console.warn("[ModulationManager] Source module runtime not found:", modulation.sourceModuleId);
+      console.log("[ModulationManager] Available runtimes:", Array.from(this.app.engine.moduleRuntimes.keys()));
+      return null;
+    }
+    if (!sourceRuntime.getModulationOutput) {
+      console.warn("[ModulationManager] Source module runtime has no getModulationOutput method:", modulation.sourceModuleId);
+      return null;
+    }
+    
+    const output = sourceRuntime.getModulationOutput(0);
+    if (!output) {
+      console.warn("[ModulationManager] Source module output is null:", modulation.sourceModuleId);
+    } else {
+      console.log("[ModulationManager] Source module output found:", output);
+    }
+    
+    return output;
   }
 
   /**
@@ -413,12 +490,48 @@ export class ModulationManager {
    * @returns {Object|null} 调制目标参数
    */
   getModulationTargetParam(modulation) {
+    console.log("[ModulationManager] getModulationTargetParam called for modulation:", modulation.id);
+    console.log("[ModulationManager] Target module ID:", modulation.targetModuleId);
+    console.log("[ModulationManager] Target param path:", modulation.targetParamPath);
+    
+    // 查找目标模块
     const targetModule = this.app.state.modules.find(m => m.id === modulation.targetModuleId);
-    const runtime = this.app.engine.moduleRuntimes.get(targetModule?.id);
-    if (!runtime?.node) return null;
-
+    if (!targetModule) {
+      console.warn("[ModulationManager] Target module not found:", modulation.targetModuleId);
+      console.log("[ModulationManager] Available modules:", this.app.state.modules.map(m => m.id));
+      return null;
+    }
+    console.log("[ModulationManager] Target module found:", targetModule.type, "category:", targetModule.category);
+    
+    // 获取目标模块运行时
+    const runtime = this.app.engine.moduleRuntimes.get(targetModule.id);
+    if (!runtime) {
+      console.warn("[ModulationManager] Target module runtime not found:", targetModule.id);
+      console.log("[ModulationManager] Available runtimes:", Array.from(this.app.engine.moduleRuntimes.keys()));
+      return null;
+    }
+    if (!runtime.node) {
+      console.warn("[ModulationManager] Target module runtime has no node:", targetModule.id, "type:", targetModule.type);
+      console.warn("[ModulationManager] Runtime details:", runtime);
+      return null;
+    }
+    console.log("[ModulationManager] Target module runtime found:", runtime.type);
+    
+    // 处理参数路径
     const paramPath = modulation.targetParamPath.replace(/^options\./, '');
-    return getByPath(runtime.node, paramPath);
+    console.log("[ModulationManager] Processed param path:", paramPath);
+    
+    // 获取参数
+    const param = getByPath(runtime.node, paramPath);
+    if (!param) {
+      console.warn("[ModulationManager] Param not found at path:", paramPath);
+      console.log("[ModulationManager] Runtime node:", runtime.node);
+      console.log("[ModulationManager] Node keys:", Object.keys(runtime.node));
+    } else {
+      console.log("[ModulationManager] Param found:", param);
+    }
+    
+    return param;
   }
 
   /**
