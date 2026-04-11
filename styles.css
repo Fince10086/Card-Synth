@@ -523,8 +523,7 @@ select {
   display: none;
 }
 
-.control-slider .slider-shell,
-.control-fader .slider-shell {
+.control-slider .slider-shell {
   position: relative;
   display: flex;
   justify-content: center;
@@ -734,37 +733,6 @@ select {
   align-items: stretch;
 }
 
-.global-strip .control,
-.global-strip .compact-block,
-.global-strip .global-subgrid,
-.global-strip .global-cluster,
-.global-strip .meter-chip,
-.global-strip .select-input,
-.global-strip .pill-button,
-.global-strip .action-button {
-  width: 100%;
-}
-
-.global-strip .pill-button,
-.global-strip .action-button {
-  justify-content: center;
-  text-align: center;
-}
-
-.global-strip .compact-block.column {
-  gap: 12px;
-}
-
-.global-strip .control-fader {
-  width: 100%;
-  max-width: 96px;
-  align-self: center;
-}
-
-.global-sidebar .meter-chip {
-  background: #ffffff;
-}
-
 .meter-chip {
   padding: 7px 10px;
   border-radius: 4px;
@@ -773,8 +741,6 @@ select {
   color: #7c8298;
   font-size: 0.72rem;
 }
-
-
 
 .bottom-row {
   display: grid;

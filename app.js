@@ -230,19 +230,6 @@ class ModularSynthApp {
       }
     });
 
-    this.elements.masterFader?.addEventListener("input", (e) => {
-      const value = Number(e.target.value);
-      this.state.global.volume = value;
-      this.selectedPresetId = "custom";
-      this.engine.updateGlobal(this.state.global);
-      this.updateMasterReadout(value);
-      const shell = e.target.closest(".slider-shell");
-      if (shell) {
-        const percent = (value + 36) / 42;
-        shell.style.setProperty("--percent", percent.toString());
-      }
-    });
-
     this.updatePresetSelect();
     this.updateMasterReadout(this.state.global.volume);
     this.updateMidiStatus();
@@ -257,14 +244,6 @@ class ModularSynthApp {
   updateMasterReadout(value) {
     if (this.elements.masterReadout) {
       this.elements.masterReadout.textContent = formatDb(value);
-    }
-    if (this.elements.masterFader) {
-      this.elements.masterFader.value = String(value);
-      const shell = this.elements.masterFader.closest(".slider-shell");
-      if (shell) {
-        const percent = (value + 36) / 42;
-        shell.style.setProperty("--percent", percent.toString());
-      }
     }
   }
 
