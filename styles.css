@@ -46,7 +46,7 @@ select {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 20px 20px 420px 20px;
+  padding: 20px;
 }
 
 /* 当前主布局由绝对定位的瀑布流卡片驱动，这里仅保留块级上下文。 */
@@ -113,7 +113,6 @@ select {
   flex: 0 1 246px;
   flex-direction: column;
   width: min(100%, 246px);
-  padding: 10px 10px 12px;
   border-radius: 0;
   background: #ffffff;
   box-shadow: none;
@@ -317,7 +316,6 @@ select {
   gap: 8px;
   flex-wrap: wrap;
   position: relative;
-  top: -7px;
 }
 
 .module-head h3 {
@@ -332,8 +330,6 @@ select {
 
 .module-index {
     position: relative;
-    top: -3px;
-    left: -10px;
     width: 30px;
     height: 30px;
     background: var(--accent, var(--source));
@@ -349,12 +345,14 @@ select {
 }
 
 /* 标题本身也可作为模块类型切换入口。 */
+.module-title,
 .module-title-select {
   position: relative;
   display: inline-flex;
   align-items: center;
   flex: 1;
   min-width: 0;
+  height: 30px;
 }
 
 .module-title-input {
@@ -365,17 +363,21 @@ select {
   color: var(--accent, #1a1d6d);
   font-size: 0.9rem;
   font-weight: 500;
-  cursor: pointer;
+  cursor: default;
   max-width: 100%;
   text-align: center;
   margin: 0 auto;
   user-select: none;
+  top: 3px;
+  position: relative;
+}
+
+.module-title-select .module-title-input {
+  cursor: pointer;
 }
 
 .module-remove {
   position: relative;
-  top: -3px;
-  left: 10px;
   width: 30px;
   height: 30px;
   color: #fff;
@@ -428,7 +430,7 @@ select {
   grid-template-columns: 1fr;
   gap: 10px;
   align-items: start;
-  padding: 10px;
+  padding: 20px 20px 25px 20px;
 }
 
 .module-grid.compact {
@@ -612,20 +614,6 @@ select {
   border-radius: 999px;
   background: #ffffff;
   box-shadow: none;
-}
-
-.control-fader {
-  width: 72px;
-}
-
-.control-fader .slider-shell {
-  padding: 12px 0;
-  min-height: 132px;
-}
-
-.control-fader .slider-input {
-  width: 98px;
-  transform: rotate(-90deg);
 }
 
 .readout-input {
@@ -958,95 +946,7 @@ select {
   font-size: 0.86rem;
 }
 
-@media (max-width: 1320px) {
-  .bottom-row {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ========================================
-   底栏样式
-   ======================================== */
-
-.bottom-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 80;
-  display: flex;
-  flex-direction: column;
-  background: rgba(245, 246, 250, 0.98);
-  border-top: 1px solid #dedfe7;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
-  min-height: 120px;
-  max-height: 400px;
-  height: 180px;
-}
-
-/* 拖拽手柄 */
-.bottom-bar__handle {
-  height: 10px;
-  cursor: ns-resize;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  user-select: none;
-}
-
-.bottom-bar__handle-line {
-  width: 48px;
-  height: 4px;
-  background: #d0d4de;
-  border-radius: 2px;
-  transition: background 0.2s ease;
-}
-
-.bottom-bar__handle:hover .bottom-bar__handle-line {
-  background: #a8adb8;
-}
-
-.bottom-bar__handle:active .bottom-bar__handle-line {
-  background: #8a909c;
-}
-
-/* 内容容器 */
-.bottom-bar__content {
-  flex: 1;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  gap: 12px;
-  padding: 8px 16px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  min-width: 0;
-}
-
-/* 各个项目 */
-.bottom-bar__item {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-/* 预设控制区域 */
-.bottom-bar__presets {
-  min-width: 200px;
-  max-width: 280px;
-}
-
-.preset-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  height: 100%;
-}
-
-.preset-section .control {
-  flex-shrink: 0;
-}
+/* 预设按钮组 */
 
 .preset-buttons {
   display: flex;
@@ -1061,105 +961,7 @@ select {
   padding: 4px 8px;
 }
 
-.midi-selecter {
-  display: flex;
-  align-items: center;
-  min-width: 120px;
-}
-
-.midi-status-text {
-  font-size: 0.65rem;
-  color: #7c8298;
-  padding: 4px 8px;
-}
-
-.midi-selecter-control {
-  min-width: 120px;
-}
-
-.midi-selecter-control .control-label {
-  display: none;
-}
-
-.midi-selecter-control .select-input {
-  font-size: 0.65rem;
-  padding: 2px 4px;
-  min-width: 100px;
-}
-
-.slider-input--global {
-  accent-color: #7b68ee;
-}
-
-.slider-input--component {
-  accent-color: #20b2aa;
-}
-
-/* 主音量控制区域 */
-.bottom-bar__volume {
-  min-width: 80px;
-  max-width: 100px;
-  padding: 0 8px;
-  border-left: 1px solid #e0e1e8;
-  border-right: 1px solid #e8eaef;
-}
-
-.bottom-bar__volume .control-fader {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.bottom-bar__volume .control-label {
-  flex-shrink: 0;
-  text-align: center;
-}
-
-.bottom-bar__volume .slider-shell {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
-}
-
-.bottom-bar__volume .slider-input {
-  writing-mode: horizontal-tb;
-  direction: ltr;
-  width: 100px;
-  height: 6px;
-}
-
-.bottom-bar__volume .control-fader .slider-shell {
-  height: 100%;
-  min-height: 0;
-  padding: 0;
-}
-
-/* 示波器区域 */
-.bottom-bar__scope {
-  min-width: 200px;
-  max-width: 400px;
-  flex: 1 1 auto;
-}
-
-.bottom-bar__scope #oscilloscope {
-  flex: 1;
-  width: 100%;
-  min-height: 60px;
-  display: block;
-  background: linear-gradient(180deg, #fbfcfe 0%, #f5f7fb 100%);
-  border-radius: 4px;
-}
-
-.bottom-bar__scope .scope-controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  margin-top: 4px;
-  flex-shrink: 0;
-}
+/* 示波器按钮和标签 */
 
 .scope-btn {
   width: 22px;
@@ -1187,13 +989,7 @@ select {
   font-weight: 500;
 }
 
-/* 虚拟键盘区域 */
-.bottom-bar__keyboard {
-  min-width: 315px;
-  flex: 0 0 auto;
-  padding-left: 8px;
-  border-left: 1px solid #e8eaef;
-}
+/* 键盘提示 */
 
 .keyboard-hint {
   display: flex;
@@ -1292,84 +1088,32 @@ select {
   color: #f0f4ff;
 }
 
-/* 响应式样式 */
-@media (max-width: 1200px) {
-  .bottom-bar__content {
-    gap: 8px;
-    padding: 8px 12px;
-  }
-  
-  .bottom-bar__presets {
-    min-width: 180px;
-    max-width: 280px;
-  }
-  
-  .bottom-bar__scope {
-    min-width: 180px;
-    max-width: 320px;
-  }
-
+/* Main Card 特殊样式 */
+.module-card[data-main-card="true"] {
+  --accent: #4B0082;
 }
 
-@media (max-width: 940px) {
-  .bottom-bar {
-    min-height: 160px;
-    height: 220px;
-  }
-  
-  .bottom-bar__content {
-    flex-wrap: wrap;
-    align-content: flex-start;
-  }
-  
-  .bottom-bar__presets {
-    order: 1;
-    min-width: 100%;
-    max-width: 100%;
-    flex-basis: 100%;
-  }
-  
-  .bottom-bar__volume {
-    order: 2;
-    border-left: none;
-    border-right: 1px solid #e0e1e8;
-    padding-left: 0;
-  }
-  
-  .bottom-bar__scope {
-    order: 3;
-    min-width: 180px;
-    flex: 1 1 auto;
-  }
-  
-  .bottom-bar__keyboard {
-    order: 4;
-    flex: 1 1 auto;
-    min-width: 200px;
-    border-left: none;
-    padding-left: 0;
-  }
+.module-card[data-main-card="true"] .module-title-input {
+  color: #4B0082;
 }
 
-@media (max-width: 600px) {
-  .bottom-bar {
-    min-height: 200px;
-    height: 280px;
-  }
-  
-  .bottom-bar__content {
-    padding: 6px 8px;
-  }
-  
-  .bottom-bar__scope {
-    order: 4;
-    flex-basis: 100%;
-    min-width: 100%;
-  }
-  
-  .bottom-bar__keyboard {
-    order: 3;
-    flex-basis: calc(100% - 100px);
-    min-width: 0;
-  }
+.main-card__scope {
+  margin-top: 10px;
+}
+
+.main-card__scope #oscilloscope {
+  width: 100%;
+  min-height: 100px;
+  display: block;
+  background: linear-gradient(180deg, #fbfcfe 0%, #f5f7fb 100%);
+  border-radius: 4px;
+  border: 1px solid #e0e1e8;
+}
+
+.main-card__scope .scope-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 4px;
 }

@@ -16,7 +16,7 @@ class InputManager {
     this.onOctaveChange = options.onOctaveChange || (() => {});
     this.onVelocityChange = options.onVelocityChange || (() => {});
     this.onUpdateKeyboardKeyState = options.onUpdateKeyboardKeyState || (() => {});
-    this.onRenderGlobalStrip = options.onRenderGlobalStrip || (() => {});
+    this.onRenderMainCardContent = options.onRenderMainCardContent || (() => {});
     this.getGlobalState = options.getGlobalState || (() => ({ octave: 4, velocity: 0.8 }));
     this.getKeyboardElement = options.getKeyboardElement || (() => null);
     this.getTransportInfoElement = options.getTransportInfoElement || (() => null);
@@ -67,7 +67,7 @@ class InputManager {
   async requestMidiAccess() {
     if (!this.midi.supported) {
       this.midi.status = "Web MIDI unsupported";
-      this.onRenderGlobalStrip();
+      this.onRenderMainCardContent();
       return;
     }
 
@@ -78,7 +78,7 @@ class InputManager {
       }
     } catch (error) {
       this.midi.status = "MIDI access denied";
-      this.onRenderGlobalStrip();
+      this.onRenderMainCardContent();
       return;
     }
 
@@ -101,7 +101,7 @@ class InputManager {
     if (!this.midi.inputs.length) {
       this.midi.selectedInputId = "";
       this.midi.status = "No MIDI inputs";
-      this.onRenderGlobalStrip();
+      this.onRenderMainCardContent();
       return;
     }
 
@@ -121,7 +121,7 @@ class InputManager {
     const selected = this.midi.inputs.find((input) => input.id === inputId);
     this.midi.status = selected ? `MIDI ${selected.name || selected.id}` : "No MIDI input";
     if (rerender) {
-      this.onRenderGlobalStrip();
+      this.onRenderMainCardContent();
     }
   }
 
@@ -137,7 +137,7 @@ class InputManager {
       this.midi.access = null;
     }
     this.midi.inputs = [];
-    this.onRenderGlobalStrip();
+    this.onRenderMainCardContent();
   }
 
   async handleMidiMessage(event) {

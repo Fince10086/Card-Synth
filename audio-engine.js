@@ -116,7 +116,6 @@ class AudioEngine {
   }
 
   /**
-   * 轻量级更新调制范围
    * 基于范围半径计算实际的 min/max 值，不重建信号链
    * @param {string} modulationId - 调制连接ID
    * @param {number} rangeRadius - 范围半径（0-1之间的比例）
@@ -888,6 +887,8 @@ class AudioEngine {
         scale.inputMax = 1;
       }
 
+      const a2g = new Tone.AudioToGain();
+
       // 获取目标参数的范围信息
       const paramRange = this.getParamRange(targetModule, modulation.targetParamPath);
       const initParamMin = paramRange?.min ?? 0;
@@ -905,7 +906,8 @@ class AudioEngine {
         scale.max = initParamMax;
       }
 
-      sourceOutput.connect(scale);
+      sourceOutput.connect(a2g);
+      a2g.connect(scale);
       targetParams.forEach((param) => {
         try {
           scale.connect(param);

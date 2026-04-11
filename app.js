@@ -70,7 +70,7 @@ class ModularSynthApp {
         this.state.global.velocity = velocity;
       },
       onUpdateKeyboardKeyState: (key, active) => this.updateKeyboardKeyState(key, active),
-      onRenderGlobalStrip: () => this.renderGlobalStrip(),
+      onRenderMainCardContent: () => this.renderMainCardContent(),
       getGlobalState: () => this.state.global,
       getKeyboardElement: () => this.elements.keyboard,
       getTransportInfoElement: () => this.elements.transportInfo,
@@ -104,8 +104,6 @@ class ModularSynthApp {
     this.elements = {
       statusText: document.getElementById("statusText"),
       statusDot: document.getElementById("statusDot"),
-      presetControls: document.getElementById("presetControls"),
-      masterControls: document.getElementById("masterControls"),
       signalFlow: document.querySelector(".signal-flow"),
       signalFlowShell: document.querySelector(".signal-flow-shell"),
       addModuleCard: document.getElementById("addModuleCard"),
@@ -120,17 +118,6 @@ class ModularSynthApp {
       scopeZoomOutV: document.getElementById("scopeZoomOutV"),
       scopeHLabel: document.getElementById("scopeHLabel"),
       scopeVLabel: document.getElementById("scopeVLabel"),
-      bottomBar: document.getElementById("bottomBar"),
-      bottomBarHandle: document.getElementById("bottomBarHandle"),
-      presetSelect: document.getElementById("presetSelect"),
-      importBtn: document.getElementById("importBtn"),
-      exportBtn: document.getElementById("exportBtn"),
-      resetBtn: document.getElementById("resetBtn"),
-      randomBtn: document.getElementById("randomBtn"),
-      midiBtn: document.getElementById("midiBtn"),
-      midiSelecter: document.getElementById("midiSelecter"),
-      masterFader: document.getElementById("masterFader"),
-      masterReadout: document.getElementById("masterReadout"),
     };
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
   }
@@ -206,52 +193,8 @@ class ModularSynthApp {
     });
     this.updateScopeZoomLabels();
 
-    this.initBottomBarResize();
     this.bindStaticControls();
     this.bindModulationEvents();
-  }
-
-  initBottomBarResize() {
-    const handle = this.elements.bottomBarHandle;
-    const bottomBar = this.elements.bottomBar;
-    if (!handle || !bottomBar) return;
-
-    let isResizing = false;
-    let startY = 0;
-    let startHeight = 0;
-
-    handle.addEventListener("pointerdown", (e) => {
-      isResizing = true;
-      startY = e.clientY;
-      startHeight = bottomBar.offsetHeight;
-      handle.setPointerCapture(e.pointerId);
-      document.body.style.cursor = "ns-resize";
-      document.body.style.userSelect = "none";
-    });
-
-    handle.addEventListener("pointermove", (e) => {
-      if (!isResizing) return;
-      const deltaY = startY - e.clientY;
-      const newHeight = Math.max(120, Math.min(400, startHeight + deltaY));
-      bottomBar.style.height = `${newHeight}px`;
-      this.resizeScopeCanvas();
-      this.layoutModuleMasonry();
-      this.renderModulationOverlay();
-    });
-
-    handle.addEventListener("pointerup", (e) => {
-      isResizing = false;
-      handle.releasePointerCapture(e.pointerId);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    });
-
-    handle.addEventListener("pointercancel", (e) => {
-      isResizing = false;
-      handle.releasePointerCapture(e.pointerId);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    });
   }
 
   bindStaticControls() {
@@ -584,7 +527,7 @@ class ModularSynthApp {
     this.controlBindings = new Map();
 
     const sections = [
-      ["global strip", () => this.renderGlobalStrip()],
+      ["main-card content", () => this.renderMainCardContent()],
       ["modules", () => this.renderModulesRack()],
       ["keyboard", () => this.renderKeyboard()],
       ["transport", () => this.inputManager.updateTransportInfo()],
@@ -598,6 +541,9 @@ class ModularSynthApp {
         this.setStatus(`Render error in ${label}: ${error.message}`, "error");
       }
     }
+
+    // 重新缓存 Main Card 内部创建的动态元素(keyboard, oscilloscope 等)
+    this.cacheDynamicElements();
 
     this.layoutModuleMasonry();
     this.renderModulationOverlay();
@@ -665,6 +611,29 @@ class ModularSynthApp {
     // 记录每列的累计高度
     const columnHeights = new Array(columnCount).fill(0);
 
+    // Main Card 高度感知变量
+    let mainCardHeight = 0;
+
+    // 识别 Main Card 并优先处理
+    const mainCard = container.querySelector('.module-card[data-main-card="true"]');
+    if (mainCard) {
+      // 从 cards 数组中移除 main-card
+      const mainCardIndex = cards.indexOf(mainCard);
+      if (mainCardIndex > -1) {
+        cards.splice(mainCardIndex, 1);
+      }
+
+      // 固定 Main Card 位置：第 0 列起始位置
+      mainCard.style.position = "absolute";
+      mainCard.style.width = `${columnWidth}px`;
+      mainCard.style.left = `0px`;
+      mainCard.style.top = `0px`;
+
+      // 记录 main-card 高度并更新第 0 列高度
+      mainCardHeight = mainCard.offsetHeight;
+      columnHeights[0] += mainCardHeight + gap;
+    }
+
     // 当前列索引
     let currentColumn = 0;
     // 上一个实际模块的高度（用于 addCard 的回绕判断）
@@ -683,19 +652,34 @@ class ModularSynthApp {
 
       let shouldWrap = false;
 
-      if (isAddCard && lastModuleHeight === 0) {
-        // 特殊情况：没有模块时，addCard 强制放在第一列
-        currentColumn = 0;
-      } else if (isLastColumn) {
-        // 最后一列：检查是否回绕到第一列下方
-        const firstColumnHeight = columnHeights[0];
-        // 高度差：当前列比第一列高出多少（正数表示当前列更高）
-        const heightDiff = columnHeights[currentColumn] - firstColumnHeight;
-        // 基本回绕条件：第一列高度 > 当前列高度 + 卡片高度/2
-        const shouldWrapByHeight = firstColumnHeight > columnHeights[currentColumn] + judgeHeight / 2;
-        // 完整条件：满足基本条件，且（当前列不比第一列高 或 卡片不会导致布局失衡）
-        if (shouldWrapByHeight && (heightDiff <= 0 || judgeHeight <= 2 * heightDiff)) {
-          shouldWrap = true;
+      if (isLastColumn) {
+        // 新增：Main Card 高度感知
+        const shouldSkipToNextColumn = mainCardHeight > 0 && columnHeights[currentColumn] < mainCardHeight;
+
+        if (shouldSkipToNextColumn) {
+          // 跳过规则：最后一列高度不足，直接跳到第1列（Main Card 所在列的下一列）
+          currentColumn = 1;
+          // 直接设置位置并更新高度，跳过后续回绕判断
+          const left = currentColumn * (columnWidth + gap);
+          const top = columnHeights[currentColumn];
+          card.style.left = `${left}px`;
+          card.style.top = `${top}px`;
+          columnHeights[currentColumn] += cardHeight + gap;
+          if (!isAddCard) {
+            lastModuleHeight = cardHeight;
+          }
+          return;  // 在 forEach 中使用 return 跳过后续逻辑
+        } else {
+          // 原有回绕逻辑保持不变
+          const firstColumnHeight = columnHeights[0];
+          // 高度差：当前列比第一列高出多少（正数表示当前列更高）
+          const heightDiff = columnHeights[currentColumn] - firstColumnHeight;
+          // 基本回绕条件：第一列高度 > 当前列高度 + 卡片高度/2
+          const shouldWrapByHeight = firstColumnHeight > columnHeights[currentColumn] + judgeHeight / 2;
+          // 完整条件：满足基本条件，且（当前列不比第一列高 或 卡片不会导致布局失衡）
+          if (shouldWrapByHeight && (heightDiff <= 0 || judgeHeight <= 2 * heightDiff)) {
+            shouldWrap = true;
+          }
         }
       } else {
         // 非最后一列：检查是否回绕到当前列下方
@@ -877,6 +861,20 @@ class ModularSynthApp {
     const drag = { ...this.modulationDrag };
     const targetControl = event.target?.closest?.(".control.control-slider[data-module-id][data-param-path]");
 
+    // 检查是否位于 Main Card 内，防止 Main Card 参数被调制
+    if (targetControl) {
+      const mainCard = targetControl.closest(".module-card[data-main-card='true']");
+      if (mainCard) {
+        // 目标控件在 Main Card 内,拒绝连接
+        document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
+          node.classList.remove("mod-target-hover");
+        });
+        this.setStatus("Main Card parameters cannot be modulated.", "error");
+        this.cancelModulationDrag();
+        return;
+      }
+    }
+
     document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
       node.classList.remove("mod-target-hover");
     });
@@ -909,6 +907,13 @@ class ModularSynthApp {
    */
   commitModulationTarget({ sourceModuleId, targetModuleId, targetParamPath, updateConnectionId = "" }) {
     if (!sourceModuleId || !targetModuleId || !targetParamPath || sourceModuleId === targetModuleId) {
+      return;
+    }
+
+    // 检查目标模块是否是 Main Card,防止 Main Card 参数被调制
+    const targetModuleCard = document.querySelector(`.module-card[data-module-id="${targetModuleId}"][data-main-card='true']`);
+    if (targetModuleCard) {
+      this.setStatus("Main Card parameters cannot be modulated.", "error");
       return;
     }
 
@@ -1240,10 +1245,169 @@ class ModularSynthApp {
   /* 全局边栏渲染                                                               */
   /* -------------------------------------------------------------------------- */
 
-  renderGlobalStrip() {
+  /**
+   * 渲染 Main Card 内容
+   * 更新 Main Card 内的全局控件状态(Preset、Master Volume、MIDI)
+   */
+  renderMainCardContent() {
     this.updatePresetSelect();
     this.updateMasterReadout(this.state.global.volume);
     this.updateMidiStatus();
+  }
+
+  /**
+   * 缓存 Main Card 内部动态创建的 DOM 元素
+   * 在 renderModulesRack() 之后调用,因为 keyboard/oscilloscope 等元素在 renderMainCard() 中创建
+   */
+  cacheDynamicElements() {
+    this.elements.keyboard = document.getElementById("virtualKeyboard");
+    this.elements.oscilloscope = document.getElementById("oscilloscope");
+    this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
+    
+    // 示波器控制按钮(可能在 Main Card 创建后才能获取到)
+    this.elements.scopeZoomInH = document.getElementById("scopeZoomInH");
+    this.elements.scopeZoomOutH = document.getElementById("scopeZoomOutH");
+    this.elements.scopeZoomInV = document.getElementById("scopeZoomInV");
+    this.elements.scopeZoomOutV = document.getElementById("scopeZoomOutV");
+    this.elements.scopeHLabel = document.getElementById("scopeHLabel");
+    this.elements.scopeVLabel = document.getElementById("scopeVLabel");
+  }
+
+  renderMainCard() {
+    const card = this.createModuleCard({
+      accent: "indigo",
+      title: "Main",
+      isMainCard: true,
+    });
+
+    const controls = document.createElement("div");
+    controls.className = "module-grid";
+
+    controls.append(
+      this.createSelectControl({
+        label: "Preset",
+        options: [
+          { value: "init", label: "Init Patch" },
+          { value: "fmBell", label: "FM Bell Stack" },
+          { value: "cinematicDust", label: "Cinematic Dust" },
+          { value: "percussionLab", label: "Percussion Lab" },
+          { value: "custom", label: "Current Patch" },
+        ],
+        value: this.selectedPresetId,
+        onChange: (value) => {
+          if (value !== "custom") {
+            this.applyBuiltinPreset(value);
+          }
+        },
+      })
+    );
+
+    const buttonRow = document.createElement("div");
+    buttonRow.className = "preset-buttons";
+    ["Import", "Export", "Reset", "Random", "MIDI"].forEach((label) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pill-button";
+      btn.textContent = label;
+
+      if (label === "Import") {
+        btn.addEventListener("click", () => this.elements.presetFileInput?.click());
+      } else if (label === "Export") {
+        btn.addEventListener("click", () => {
+          const filename = exportPresetToFile(this.state);
+          this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
+        });
+      } else if (label === "Reset") {
+        btn.addEventListener("click", () => this.applyBuiltinPreset("init"));
+      } else if (label === "Random") {
+        btn.addEventListener("click", () => this.randomizeCurrentPatch());
+      } else if (label === "MIDI") {
+        btn.addEventListener("click", () => {
+          if (this.inputManager.getMidiInputs().length > 0) {
+            this.inputManager.closeMidi();
+          } else {
+            this.inputManager.requestMidiAccess();
+          }
+        });
+      }
+
+      buttonRow.append(btn);
+    });
+    controls.append(buttonRow);
+
+    const midiContainer = document.createElement("div");
+    midiContainer.id = "midiSelecter";
+    midiContainer.className = "midi-selecter";
+    controls.append(midiContainer);
+
+    // 故意不设置 moduleId 和 paramPath,防止此控件成为调制目标
+    controls.append(
+      this.createSliderControl({
+        label: "Master",
+        min: -36,
+        max: 6,
+        step: 0.1,
+        value: this.state.global.volume,
+        formatter: formatDb,
+        onInput: (value) => {
+          this.state.global.volume = value;
+          this.selectedPresetId = "custom";
+          this.engine.updateGlobal(this.state.global);
+        },
+      })
+    );
+
+    const scopeContainer = document.createElement("div");
+    scopeContainer.className = "main-card__scope";
+
+    const scopeCanvas = document.createElement("canvas");
+    scopeCanvas.id = "oscilloscope";
+    scopeContainer.append(scopeCanvas);
+
+    const scopeControls = document.createElement("div");
+    scopeControls.className = "scope-controls";
+    ["scopeZoomOutH", "scopeZoomInH", "scopeZoomOutV", "scopeZoomInV"].forEach((id) => {
+      const btn = document.createElement("button");
+      btn.className = "scope-btn";
+      btn.id = id;
+      if (id.includes("H")) {
+        btn.textContent = id.includes("Out") ? "◀" : "▶";
+      } else {
+        btn.textContent = id.includes("Out") ? "▼" : "▲";
+      }
+      scopeControls.append(btn);
+    });
+
+    const hLabel = document.createElement("span");
+    hLabel.className = "scope-label";
+    hLabel.id = "scopeHLabel";
+    hLabel.textContent = "1x";
+
+    const vLabel = document.createElement("span");
+    vLabel.className = "scope-label";
+    vLabel.id = "scopeVLabel";
+    vLabel.textContent = "1x";
+
+    scopeControls.append(hLabel, vLabel);
+    scopeContainer.append(scopeControls);
+    controls.append(scopeContainer);
+
+    const keyboardHint = document.createElement("div");
+    keyboardHint.className = "keyboard-hint";
+    ["A-K 演奏", "Z/X 八度", "C/V 力度"].forEach((text) => {
+      const span = document.createElement("span");
+      span.textContent = text;
+      keyboardHint.append(span);
+    });
+    controls.append(keyboardHint);
+
+    const keyboard = document.createElement("div");
+    keyboard.id = "virtualKeyboard";
+    keyboard.className = "virtual-keyboard virtual-keyboard--compact";
+    controls.append(keyboard);
+
+    card.append(controls);
+    return card;
   }
 
   /* -------------------------------------------------------------------------- */
@@ -1260,11 +1424,15 @@ class ModularSynthApp {
       return;
     }
 
-    // 保留 addModuleCard，清空其他内容
     const addCard = container.querySelector(".add-module-card");
     container.innerHTML = "";
     if (addCard) {
       container.appendChild(addCard);
+    }
+
+    const mainCard = this.renderMainCard();
+    if (mainCard) {
+      container.insertBefore(mainCard, addCard);
     }
 
     const modules = this.state.modules || [];
@@ -1716,13 +1884,25 @@ class ModularSynthApp {
     onToggleModulation = null,
     showModulationAnchor = false,
     onModulationAnchorPointerDown = null,
+    isMainCard = false,
   }) {
+    if (isMainCard) {
+      accent = "indigo";
+      title = "Main";
+      removable = false;
+      index = null;
+      onRemove = null;
+    }
+
     const card = document.createElement("section");
     card.className = "module-card";
     if (!enabled) {
       card.classList.add("disabled");
     }
     card.dataset.accent = accent;
+    if (isMainCard) {
+      card.dataset.mainCard = "true";
+    }
     if (moduleRef) {
       card.dataset.moduleRef = moduleRef;
       card.dataset.moduleId = moduleRef;
@@ -1734,7 +1914,7 @@ class ModularSynthApp {
     const head = document.createElement("div");
     head.className = "module-head";
 
-    if (index !== null) {
+    if (index !== null && !isMainCard) {
       const indexBadge = document.createElement("span");
       indexBadge.className = "module-index";
       indexBadge.textContent = `${index}`;
@@ -1747,15 +1927,19 @@ class ModularSynthApp {
       head.append(indexBadge);
     }
 
-    if (titleOptions && onTitleChange) {
+    if ((titleOptions && onTitleChange) && !isMainCard) {
       head.append(this.createTitleSelect({ accent, title, options: titleOptions, value: title, onChange: onTitleChange }));
     } else {
-      const titleNode = document.createElement("h3");
+      const titleWrap = document.createElement("div");
+      titleWrap.className = isMainCard ? "module-title" : "";
+      const titleNode = document.createElement(isMainCard ? "span" : "h3");
+      titleNode.className = isMainCard ? "module-title-input" : "";
       titleNode.textContent = title;
-      head.append(titleNode);
+      titleWrap.append(titleNode);
+      head.append(titleWrap);
     }
 
-    if (removable && onRemove) {
+    if (removable && onRemove && !isMainCard) {
       const removeButton = document.createElement("button");
       removeButton.type = "button";
       removeButton.className = "module-remove";
@@ -1902,25 +2086,42 @@ class ModularSynthApp {
       return;
     }
 
-    // 获取所有非拖拽中的模块卡片
-    const moduleCards = [...container.querySelectorAll(".module-card:not(.dragging)")];
+    // 获取所有非拖拽中的模块卡片,排除 Main Card（Main Card 保护机制）
+    const moduleCards = [...container.querySelectorAll(".module-card:not(.dragging):not([data-main-card='true'])")];
     let targetCard = null;
     let targetIndex = -1;
 
     // 遍历查找鼠标所在位置的卡片
     // 判断规则：鼠标在卡片矩形范围内，则插入到该卡片前面
     for (let i = 0; i < moduleCards.length; i++) {
-      const rect = moduleCards[i].getBoundingClientRect();
+      const card = moduleCards[i];
+
+      // 跳过 Main Card（双重保护）
+      if (card.hasAttribute("data-main-card")) {
+        continue;
+      }
+
+      const rect = card.getBoundingClientRect();
       if (
         event.clientX >= rect.left &&
         event.clientX <= rect.right &&
         event.clientY >= rect.top &&
         event.clientY <= rect.bottom
       ) {
-        targetCard = moduleCards[i];
+        targetCard = card;
         targetIndex = i;
         break;
       }
+    }
+
+    // Main Card 保护：防止拖拽到 Main Card 位置（index=0 是 Main Card）
+    // 由于排除了 Main Card，实际索引需要 +1 来对应 modules 数组中的真实位置
+    if (targetIndex >= 0) {
+      targetIndex += 1; // 补偿 Main Card 占用的位置
+    }
+    // 防止目标索引为 0（Main Card 位置）
+    if (targetIndex === 0) {
+      targetIndex = 1; // 强制插入到 Main Card 后面
     }
 
     this.dragState.targetIndex = targetIndex;
@@ -1936,6 +2137,12 @@ class ModularSynthApp {
    * @param {number} targetIndex - 目标索引
    */
   updateDragIndicator(targetCard, targetIndex) {
+    // Main Card 保护：如果目标卡片是 Main Card，则不显示指示线
+    if (targetCard?.hasAttribute("data-main-card")) {
+      this.removeDragIndicator();
+      return;
+    }
+
     // 无目标卡片且不是插入到最后，则移除指示线
     if (!targetCard && targetIndex !== this.state.modules.length) {
       this.removeDragIndicator();
@@ -2028,7 +2235,13 @@ class ModularSynthApp {
 
       // 在容器内且有有效目标位置，执行重排序
       if (!isOutsideContainer && this.dragState.targetIndex >= 0) {
-        const toIndex = this.dragState.targetIndex;
+        let toIndex = this.dragState.targetIndex;
+
+        // Main Card 保护：防止将模块移动到 Main Card 位置（index 0）
+        if (toIndex === 0) {
+          toIndex = 1; // 强制放到位置 1（Main Card 后面）
+        }
+
         // 位置未变化则不执行重排序
         if (toIndex !== this.dragState.dragIndex) {
           this.reorderModule(this.dragState.dragIndex, toIndex);

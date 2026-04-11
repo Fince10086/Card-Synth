@@ -25,67 +25,6 @@
           </div>
         </main>
 
-        <footer class="bottom-bar" id="bottomBar">
-          <div class="bottom-bar__handle" id="bottomBarHandle">
-            <div class="bottom-bar__handle-line"></div>
-          </div>
-          <div class="bottom-bar__content">
-            <div class="bottom-bar__item bottom-bar__presets" id="presetControls">
-            <div class="preset-section">
-              <label class="control">
-                <div class="control-label">
-                  <div class="control-title"><strong>Preset</strong></div>
-                </div>
-                <select class="select-input" id="presetSelect">
-                  <option value="init">Init Patch</option>
-                  <option value="fmBell">FM Bell Stack</option>
-                  <option value="cinematicDust">Cinematic Dust</option>
-                  <option value="percussionLab">Percussion Lab</option>
-                  <option value="custom">Current Patch</option>
-                </select>
-              </label>
-              <div class="preset-buttons">
-                <button type="button" class="pill-button" id="importBtn">Import</button>
-                <button type="button" class="pill-button" id="exportBtn">Export</button>
-                <button type="button" class="pill-button" id="resetBtn">Init</button>
-                <button type="button" class="pill-button" id="randomBtn">Random</button>
-                <button type="button" class="pill-button" id="midiBtn">MIDI</button>
-              </div>
-              <div class="midi-selecter" id="midiSelecter"></div>
-            </div>
-          </div>
-          <div class="bottom-bar__item bottom-bar__volume" id="masterControls">
-            <label class="control control-fader">
-              <div class="control-label">
-                <div class="control-title"><strong>Master</strong></div>
-                <span class="control-readout" id="masterReadout">-12 dB</span>
-              </div>
-              <div class="slider-shell">
-                <input type="range" class="slider-input" id="masterFader" min="-36" max="6" step="0.1" value="-12">
-              </div>
-            </label>
-          </div>
-            <div class="bottom-bar__item bottom-bar__scope">
-              <canvas id="oscilloscope"></canvas>
-              <div class="scope-controls">
-                <button class="scope-btn" id="scopeZoomOutH" title="横向缩小">◀</button>
-                <span class="scope-label" id="scopeHLabel">1x</span>
-                <button class="scope-btn" id="scopeZoomInH" title="横向放大">▶</button>
-                <button class="scope-btn" id="scopeZoomOutV" title="纵向缩小">▼</button>
-                <span class="scope-label" id="scopeVLabel">1x</span>
-                <button class="scope-btn" id="scopeZoomInV" title="纵向放大">▲</button>
-              </div>
-            </div>
-            <div class="bottom-bar__item bottom-bar__keyboard">
-              <div class="keyboard-hint">
-                <span>A-K 演奏</span>
-                <span>Z/X 八度</span>
-                <span>C/V 力度</span>
-              </div>
-              <div id="virtualKeyboard" class="virtual-keyboard virtual-keyboard--compact"></div>
-            </div>
-          </div>
-        </footer>
       </div>
 
     <input id="presetFileInput" type="file" accept=".json,application/json" hidden />
