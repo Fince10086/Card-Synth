@@ -15,6 +15,7 @@ import {
   createSliderControl,
   createAudioImportControl,
 } from "../controls/index.js";
+import { createModuleCard } from "../components/ModuleCard.js";
 
 export function renderModuleCard(module, index, app) {
   const definition = getModuleDefinition(module);
@@ -24,7 +25,7 @@ export function renderModuleCard(module, index, app) {
   const canToggleModulation = module.category === "source";
   const canCreateCable = modulationSource;
 
-  const card = app.createModuleCard({
+  const card = createModuleCard({
     accent,
     kicker,
     title: module.type,

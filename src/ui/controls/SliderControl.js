@@ -46,6 +46,8 @@ export function createSliderControl({
   input.value = String(value);
   input.className = "slider-input";
 
+  shell.append(input);
+
   const updateVisual = (nextValue) => {
     const numericValue = Number(nextValue);
     const percent = (numericValue - min) / (max - min);

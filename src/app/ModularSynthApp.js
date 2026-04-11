@@ -340,7 +340,7 @@ export class ModularSynthApp {
     this.controlBindings = new Map();
 
     const sections = [
-      ["main-card content", () => this.renderMainCardContent()],
+      ["main-card content", () => this.updateMainCardContent()],
       ["modules", () => this.renderModulesRack()],
       ["keyboard", () => this.renderKeyboard()],
       ["transport", () => this.inputManager.updateTransportInfo()],
