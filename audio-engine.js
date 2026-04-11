@@ -626,6 +626,10 @@ class AudioEngine {
             safeSet(voice.node, moduleState.options);
             applyPlayerLikeOptions(voice.node, moduleState.options);
           }
+
+          if (moduleState.modulationFrequency !== undefined && voice.node.frequency) {
+            voice.node.frequency.value = moduleState.modulationFrequency;
+          }
         });
       },
 
