@@ -193,6 +193,11 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
       app.selectedPresetId = "custom";
       onCommit();
     },
+    engine: app.engine,
+    modulationManager: app.modulationManager,
+    onPresetChange: (presetId) => {
+      app.selectedPresetId = presetId;
+    },
   });
 }
 

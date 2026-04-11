@@ -1,7 +1,11 @@
+import * as Tone from "tone";
+import { getByPath } from "../../utils/helpers.js";
+
 /**
  * ModulationManager - 调制连接管理器
  * 负责处理模块间调制连接的创建、编辑、删除和可视化
  * 支持拖拽方式建立调制连接，实时渲染连接线
+ * 管理调制运行时和音频连接
  */
 export class ModulationManager {
   /**
@@ -31,6 +35,9 @@ export class ModulationManager {
     
     // requestAnimationFrame的帧ID
     this.modulationFrame = 0;
+    
+    // 调制运行时，存储音频连接和缩放器
+    this.modulationRuntimes = [];
   }
 
   /**
@@ -317,6 +324,101 @@ export class ModulationManager {
       (item) => item.sourceModuleId !== moduleId && item.targetModuleId !== moduleId,
     );
     this.app.selectedPresetId = "custom";
+  }
+
+  /**
+   * 初始化所有调制范围
+   * @param {Array} ranges - 调制范围配置数组
+   */
+  initAllModulationRanges(ranges) {
+    if (!Array.isArray(ranges)) {
+      return;
+    }
+    ranges.forEach(({ modulationId, radius, currentSliderValue, paramMin, paramMax }) => {
+      const centerValue = currentSliderValue;
+      this.updateModulationRange(modulationId, centerValue, radius);
+    });
+  }
+
+  /**
+   * 更新调制范围
+   * @param {string} modulationId - 调制ID
+   * @param {number} centerValue - 中心值
+   * @param {number} radius - 范围半径
+   */
+  updateModulationRange(modulationId, centerValue, radius) {
+    const item = this.modulationRuntimes.find(m => m.id === modulationId);
+    if (!item?.scale) return;
+
+    const scale = item.scale;
+    scale.min = centerValue - radius;
+    scale.max = centerValue + radius;
+  }
+
+  /**
+   * 连接调制
+   * @param {Array} modules - 模块数组
+   */
+  connectModulations(modules) {
+    const modulations = Array.isArray(this.app.state?.modulations) ? this.app.state.modulations : [];
+    if (!modulations.length) return;
+
+    this.clearModulationRuntimes();
+
+    modulations.forEach(mod => {
+      const sourceOutput = this.getModulationSourceOutput(mod);
+      const targetParam = this.getModulationTargetParam(mod);
+      if (!sourceOutput || !targetParam) return;
+
+      const audioToGain = new Tone.AudioToGain();
+      const scale = new Tone.Scale();
+
+      sourceOutput.connect(audioToGain);
+      audioToGain.connect(scale);
+      scale.connect(targetParam);
+
+      this.modulationRuntimes.push({ id: mod.id, scale, audioToGain });
+    });
+  }
+
+  /**
+   * 清除调制运行时
+   */
+  clearModulationRuntimes() {
+    this.modulationRuntimes.forEach((item) => {
+      if (item.scale && typeof item.scale.dispose === "function") {
+        item.scale.dispose();
+      }
+      if (item.audioToGain && typeof item.audioToGain.dispose === "function") {
+        item.audioToGain.dispose();
+      }
+    });
+    this.modulationRuntimes = [];
+  }
+
+  /**
+   * 获取调制源输出
+   * @param {Object} modulation - 调制对象
+   * @returns {Object|null} 调制源输出节点
+   */
+  getModulationSourceOutput(modulation) {
+    const sourceRuntime = this.app.engine.moduleRuntimes.get(modulation.sourceModuleId);
+    if (!sourceRuntime?.getModulationOutput) return null;
+    return sourceRuntime.getModulationOutput(0);
+  }
+
+  /**
+   * 获取调制目标参数
+   * @param {Object} modulation - 调制对象
+   * @returns {Object|null} 调制目标参数
+   */
+  getModulationTargetParam(modulation) {
+    const targetModule = this.app.state.modules.find(m => m.id === modulation.targetModuleId);
+    const runtime = this.app.engine.moduleRuntimes.get(targetModule?.id);
+    if (!runtime?.node) return null;
+
+    const paramPath = modulation.targetParamPath.replace(/^options\./, '');
+    return getByPath(runtime.node, paramPath);
   }
 
   /**

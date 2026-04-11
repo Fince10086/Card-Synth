@@ -9,15 +9,14 @@ import {
 } from "../utils/helpers.js";
 
 export class AudioEngine {
-  constructor() {
+  constructor(app) {
+    this.app = app;
     this.ready = false;
     this.state = null;
     
     this.moduleRuntimes = new Map();
     
     this.activeNotes = new Set();
-
-    this.modulationRuntimes = [];
   }
 
   async start(state) {
@@ -37,6 +36,11 @@ export class AudioEngine {
     this.masterVolume.connect(this.analyser);
 
     this.rebuildSignalChain();
+    
+    // 调用 ModulationManager 连接调制
+    if (this.app && this.app.modulationManager) {
+      this.app.modulationManager.connectModulations(this.state.modules || []);
+    }
   }
 
   getAnalyser() {
@@ -52,16 +56,11 @@ export class AudioEngine {
     rampParam(this.masterVolume.volume, state.global.volume);
     this.silenceAll();
     this.rebuildSignalChain();
-  }
-
-  initAllModulationRanges(ranges) {
-    if (!Array.isArray(ranges)) {
-      return;
+    
+    // 调用 ModulationManager 连接调制
+    if (this.app && this.app.modulationManager) {
+      this.app.modulationManager.connectModulations(this.state.modules || []);
     }
-    ranges.forEach(({ modulationId, radius, currentSliderValue, paramMin, paramMax }) => {
-      const centerValue = currentSliderValue;
-      this.updateModulationRange(modulationId, centerValue, radius);
-    });
   }
 
   updateGlobal(globalState) {
@@ -70,15 +69,6 @@ export class AudioEngine {
       return;
     }
     rampParam(this.masterVolume.volume, globalState.volume);
-  }
-
-  updateModulationRange(modulationId, centerValue, radius) {
-    const item = this.modulationRuntimes.find(m => m.id === modulationId);
-    if (!item?.scale) return;
-
-    const scale = item.scale;
-    scale.min = centerValue - radius;
-    scale.max = centerValue + radius;
   }
 
   isSourceModule(module) {
@@ -148,12 +138,6 @@ export class AudioEngine {
       }
     });
     this.moduleRuntimes.clear();
-    this.modulationRuntimes.forEach((item) => {
-      if (item.scale && typeof item.scale.dispose === "function") {
-        item.scale.dispose();
-      }
-    });
-    this.modulationRuntimes = [];
 
     const modules = this.state.modules || [];
     if (modules.length === 0) {
@@ -166,7 +150,6 @@ export class AudioEngine {
     });
 
     this.connectSignalChain(modules);
-    this.connectModulations(modules);
   }
 
   connectSignalChain(modules) {
@@ -600,40 +583,7 @@ export class AudioEngine {
     };
   }
 
-  connectModulations(modules) {
-    const modulations = Array.isArray(this.state?.modulations) ? this.state.modulations : [];
-    if (!modulations.length) return;
 
-    modulations.forEach(mod => {
-      const sourceOutput = this.getModulationSourceOutput(mod);
-      const targetParam = this.getModulationTargetParam(mod);
-      if (!sourceOutput || !targetParam) return;
-
-      const audioToGain = new Tone.AudioToGain();
-      const scale = new Tone.Scale();
-
-      sourceOutput.connect(audioToGain);
-      audioToGain.connect(scale);
-      scale.connect(targetParam);
-
-      this.modulationRuntimes.push({ id: mod.id, scale, audioToGain });
-    });
-  }
-
-  getModulationSourceOutput(modulation) {
-    const sourceRuntime = this.moduleRuntimes.get(modulation.sourceModuleId);
-    if (!sourceRuntime?.getModulationOutput) return null;
-    return sourceRuntime.getModulationOutput(0);
-  }
-
-  getModulationTargetParam(modulation) {
-    const targetModule = this.state.modules.find(m => m.id === modulation.targetModuleId);
-    const runtime = this.moduleRuntimes.get(targetModule?.id);
-    if (!runtime?.node) return null;
-
-    const paramPath = modulation.targetParamPath.replace(/^options\./, '');
-    return getByPath(runtime.node, paramPath);
-  }
 
   createEffectRuntime(module) {
     if (module.type === "AmplitudeEnvelope") {

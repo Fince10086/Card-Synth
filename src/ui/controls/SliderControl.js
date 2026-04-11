@@ -14,6 +14,7 @@ export function createSliderControl({
   modulation = null,
   controlBindings = null,
   engine = null,
+  modulationManager = null,
   onPresetChange = null,
 }) {
   const wrapper = document.createElement("label");
@@ -78,7 +79,7 @@ export function createSliderControl({
       paintRange();
       const centerValue = nextValue;
       const radius = modulation.radius ?? ((max - min) * 0.15);
-      engine?.updateModulationRange(
+      modulationManager?.updateModulationRange(
         modulation.id,
         centerValue,
         radius
@@ -99,7 +100,7 @@ export function createSliderControl({
         paintRange();
         const centerValue = nextValue;
         const radius = modulation.radius ?? ((max - min) * 0.15);
-        engine?.updateModulationRange(
+        modulationManager?.updateModulationRange(
           modulation.id,
           centerValue,
           radius
@@ -143,7 +144,7 @@ export function createSliderControl({
         paintRange();
         const centerValue = newValue;
         const radius = modulation.radius ?? ((max - min) * 0.15);
-        engine?.updateModulationRange(
+        modulationManager?.updateModulationRange(
           modulation.id,
           centerValue,
           radius
@@ -241,7 +242,7 @@ export function createSliderControl({
           modulation.radius = Math.abs(valueAtMarker - centerValue);
           paintRange();
 
-          engine?.updateModulationRange(modulation.id, centerValue, modulation.radius);
+          modulationManager?.updateModulationRange(modulation.id, centerValue, modulation.radius);
         };
         const onMove = (moveEvent) => {
           updateFromPointer(moveEvent.clientX);

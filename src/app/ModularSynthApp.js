@@ -29,7 +29,6 @@ import { formatDb } from "../core/formatters.js";
 export class ModularSynthApp {
   constructor() {
     this.state = createBasePreset();
-    this.engine = new AudioEngine();
     this.selectedPresetId = "init";
     this.audioBooted = false;
 
@@ -43,6 +42,7 @@ export class ModularSynthApp {
 
     this.modulationManager = new ModulationManager(this);
     this.dragManager = new ModuleDragManager(this);
+    this.engine = new AudioEngine(this);
 
     this.inputManager = new InputManager({
       onAttack: (note, velocity) => this.engine.attack(note, velocity),
