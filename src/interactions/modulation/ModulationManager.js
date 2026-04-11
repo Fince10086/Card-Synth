@@ -366,19 +366,19 @@ export class ModulationManager {
    */
   updateModulationRange(modulationId, centerValue, radius) {
     console.log("[ModulationManager] updateModulationRange called:", { modulationId, centerValue, radius });
-    
-    const item = this.modulationRuntimes.find(m => m.id === modulationId);
-    if (!item?.scale) {
+
+    const items = this.modulationRuntimes.filter((item) => item.modulationId === modulationId);
+    if (!items.length) {
       console.warn("[ModulationManager] Scale not found for modulation:", modulationId);
-      console.warn("[ModulationManager] Available modulationRuntimes:", this.modulationRuntimes.map(m => m.id));
+      console.warn("[ModulationManager] Available modulationRuntimes:", this.modulationRuntimes.map((m) => m.modulationId));
       return;
     }
 
-    const scale = item.scale;
-    scale.min = centerValue - radius;
-    scale.max = centerValue + radius;
-    
-    console.log("[ModulationManager] Scale updated for", modulationId, "min:", scale.min, "max:", scale.max);
+    items.forEach(({ scale }) => {
+      scale.min = centerValue - radius;
+      scale.max = centerValue + radius;
+      console.log("[ModulationManager] Scale updated for", modulationId, "min:", scale.min, "max:", scale.max);
+    });
   }
 
   /**
@@ -398,33 +398,44 @@ export class ModulationManager {
 
     modulations.forEach(mod => {
       console.log("[ModulationManager] Processing modulation:", mod.id);
-      
-      const sourceOutput = this.getModulationSourceOutput(mod);
-      const targetParam = this.getModulationTargetParam(mod);
-      
-      if (!sourceOutput) {
-        console.warn("[ModulationManager] Source output not found for modulation:", mod.id);
-        return;
-      }
-      if (!targetParam) {
+
+      const targets = this.getModulationTargetParams(mod);
+      if (!targets.length) {
         console.warn("[ModulationManager] Target param not found for modulation:", mod.id);
         return;
       }
 
-      const audioToGain = new Tone.AudioToGain();
-      const scale = new Tone.Scale();
+      targets.forEach(({ param, voiceIndex }) => {
+        const sourceVoiceIndex = Number.isFinite(voiceIndex)
+          ? voiceIndex
+          : Number(mod.sourceVoiceIndex ?? 0);
+        const sourceOutput = this.getModulationSourceOutput(mod, sourceVoiceIndex);
+        if (!sourceOutput) {
+          console.warn("[ModulationManager] Source output not found for modulation:", mod.id, "voice:", sourceVoiceIndex);
+          return;
+        }
 
-      console.log("[ModulationManager] Setting default scale range for modulation:", mod.id);
-      scale.min = 0;
-      scale.max = 1;
+        const audioToGain = new Tone.AudioToGain();
+        const scale = new Tone.Scale();
 
-      sourceOutput.connect(audioToGain);
-      audioToGain.connect(scale);
-      scale.connect(targetParam);
+        console.log("[ModulationManager] Setting default scale range for modulation:", mod.id, "voice:", sourceVoiceIndex);
+        scale.min = 0;
+        scale.max = 1;
 
-      this.modulationRuntimes.push({ id: mod.id, scale, audioToGain });
-      
-      console.log("[ModulationManager] Modulation connected:", mod.id);
+        sourceOutput.connect(audioToGain);
+        audioToGain.connect(scale);
+        scale.connect(param);
+
+        this.modulationRuntimes.push({
+          id: `${mod.id}-${sourceVoiceIndex}`,
+          modulationId: mod.id,
+          sourceVoiceIndex,
+          scale,
+          audioToGain,
+        });
+
+        console.log("[ModulationManager] Modulation connected:", mod.id, "voice:", sourceVoiceIndex);
+      });
       
       // 立即尝试初始化范围
       const targetModule = this.app.state.modules.find(m => m.id === mod.targetModuleId);
@@ -459,7 +470,7 @@ export class ModulationManager {
    * @param {Object} modulation - 调制对象
    * @returns {Object|null} 调制源输出节点
    */
-  getModulationSourceOutput(modulation) {
+  getModulationSourceOutput(modulation, sourceVoiceIndex = 0) {
     console.log("[ModulationManager] getModulationSourceOutput called for modulation:", modulation.id);
     console.log("[ModulationManager] Source module ID:", modulation.sourceModuleId);
     
@@ -474,11 +485,14 @@ export class ModulationManager {
       return null;
     }
     
-    const output = sourceRuntime.getModulationOutput(0);
+    const voiceIndex = Number.isFinite(Number(sourceVoiceIndex))
+      ? Number(sourceVoiceIndex)
+      : Number(modulation.sourceVoiceIndex ?? 0);
+    const output = sourceRuntime.getModulationOutput(voiceIndex);
     if (!output) {
-      console.warn("[ModulationManager] Source module output is null:", modulation.sourceModuleId);
+      console.warn("[ModulationManager] Source module output is null:", modulation.sourceModuleId, "voice:", voiceIndex);
     } else {
-      console.log("[ModulationManager] Source module output found:", output);
+      console.log("[ModulationManager] Source module output found:", output, "voice:", voiceIndex);
     }
     
     return output;
@@ -489,7 +503,7 @@ export class ModulationManager {
    * @param {Object} modulation - 调制对象
    * @returns {Object|null} 调制目标参数
    */
-  getModulationTargetParam(modulation) {
+  getModulationTargetParams(modulation) {
     console.log("[ModulationManager] getModulationTargetParam called for modulation:", modulation.id);
     console.log("[ModulationManager] Target module ID:", modulation.targetModuleId);
     console.log("[ModulationManager] Target param path:", modulation.targetParamPath);
@@ -499,7 +513,7 @@ export class ModulationManager {
     if (!targetModule) {
       console.warn("[ModulationManager] Target module not found:", modulation.targetModuleId);
       console.log("[ModulationManager] Available modules:", this.app.state.modules.map(m => m.id));
-      return null;
+      return [];
     }
     console.log("[ModulationManager] Target module found:", targetModule.type, "category:", targetModule.category);
     
@@ -508,12 +522,31 @@ export class ModulationManager {
     if (!runtime) {
       console.warn("[ModulationManager] Target module runtime not found:", targetModule.id);
       console.log("[ModulationManager] Available runtimes:", Array.from(this.app.engine.moduleRuntimes.keys()));
-      return null;
+      return [];
     }
+
+    if (runtime.category === "source" && Array.isArray(runtime.voices)) {
+      const targets = runtime.voices
+        .map((voice, voiceIndex) => {
+          const param = this.getSourceVoiceTargetParam(voice, modulation.targetParamPath);
+          if (!param || typeof param === "number") {
+            return null;
+          }
+          return { param, voiceIndex };
+        })
+        .filter(Boolean);
+
+      if (!targets.length) {
+        console.warn("[ModulationManager] No valid source voice target params found for:", modulation.targetParamPath);
+      }
+
+      return targets;
+    }
+
     if (!runtime.node) {
       console.warn("[ModulationManager] Target module runtime has no node:", targetModule.id, "type:", targetModule.type);
       console.warn("[ModulationManager] Runtime details:", runtime);
-      return null;
+      return [];
     }
     console.log("[ModulationManager] Target module runtime found:", runtime.type);
     
@@ -527,10 +560,43 @@ export class ModulationManager {
       console.warn("[ModulationManager] Param not found at path:", paramPath);
       console.log("[ModulationManager] Runtime node:", runtime.node);
       console.log("[ModulationManager] Node keys:", Object.keys(runtime.node));
+      return [];
+    }
+    if (typeof param === "number") {
+      console.warn("[ModulationManager] Param is not audio-connectable at path:", paramPath);
+      return [];
+    }
+
+    return [{ param, voiceIndex: null }];
+  }
+
+  /**
+   * 获取 Source 模块单个 voice 的目标参数
+   * @param {Object} voice - Source voice 运行时
+   * @param {string} targetParamPath - 目标参数路径
+   * @returns {Object|null} 可连接参数
+   */
+  getSourceVoiceTargetParam(voice, targetParamPath) {
+    if (!voice || !targetParamPath) {
+      return null;
+    }
+
+    if (targetParamPath === "volume") {
+      return voice.volumeNode?.volume || null;
+    }
+
+    if (targetParamPath === "pan") {
+      return voice.panNode?.pan || null;
+    }
+
+    const paramPath = targetParamPath.replace(/^options\./, "");
+    const param = getByPath(voice.node, paramPath);
+    if (!param || typeof param === "number") {
+      return null;
     } else {
       console.log("[ModulationManager] Param found:", param);
     }
-    
+
     return param;
   }
 
