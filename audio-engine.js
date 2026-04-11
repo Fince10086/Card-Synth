@@ -91,16 +91,15 @@ class AudioEngine {
 
   /**
    * 批量初始化所有调制连接的范围
-   * 应由 UI 层在 fullSync 后调用，传入每个调制的当前滑块值和 rangeRadius
-   * @param {Array<{modulationId: string, rangeRadius: number, currentSliderValue: number, paramMin: number, paramMax: number}>} ranges - 范围配置数组
+   * 应由 UI 层在 fullSync 后调用，传入每个调制的当前滑块值和 radius
+   * @param {Array<{modulationId: string, radius: number, currentSliderValue: number, paramMin: number, paramMax: number}>} ranges - 范围配置数组
    */
   initAllModulationRanges(ranges) {
     if (!Array.isArray(ranges)) {
       return;
     }
-    ranges.forEach(({ modulationId, rangeRadius, currentSliderValue, paramMin, paramMax }) => {
+    ranges.forEach(({ modulationId, radius, currentSliderValue, paramMin, paramMax }) => {
       const centerValue = currentSliderValue;
-      const radius = (paramMax - paramMin) * (rangeRadius ?? 0.15);
       this.updateModulationRange(modulationId, centerValue, radius);
     });
   }
@@ -805,7 +804,7 @@ class AudioEngine {
       if (!sourceOutput || !targetParam) return;
 
       const audioToGain = new Tone.AudioToGain();
-      const scale = new Tone.Scale(-1, 1, 0, 1);
+      const scale = new Tone.Scale();
 
       sourceOutput.connect(audioToGain);
       audioToGain.connect(scale);
