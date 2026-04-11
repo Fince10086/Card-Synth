@@ -1,37 +1,68 @@
+/**
+ * ModulationManager - 调制连接管理器
+ * 负责处理模块间调制连接的创建、编辑、删除和可视化
+ * 支持拖拽方式建立调制连接，实时渲染连接线
+ */
 export class ModulationManager {
+  /**
+   * 构造函数
+   * @param {Object} app - 应用实例
+   */
   constructor(app) {
     this.app = app;
+    
+    // 调制拖拽状态
     this.modulationDrag = {
-      active: false,
-      pointerId: 0,
-      sourceModuleId: "",
-      updateConnectionId: "",
-      startX: 0,
-      startY: 0,
-      x: 0,
-      y: 0,
+      active: false,         // 是否正在拖拽
+      pointerId: 0,          // 指针ID
+      sourceModuleId: "",    // 源模块ID
+      updateConnectionId: "",// 正在更新的连接ID
+      startX: 0,             // 起始X坐标
+      startY: 0,             // 起始Y坐标
+      x: 0,                  // 当前X坐标
+      y: 0,                  // 当前Y坐标
     };
+    
+    // SVG元素用于渲染调制连接线
     this.modulationSvg = null;
+    
+    // 存储连接线的视觉状态，用于平滑动画
     this.cableVisuals = new Map();
+    
+    // requestAnimationFrame的帧ID
     this.modulationFrame = 0;
   }
 
+  /**
+   * 绑定全局事件监听器
+   */
   bindEvents() {
     document.addEventListener("pointermove", (event) => this.handleModulationPointerMove(event));
     document.addEventListener("pointerup", (event) => this.handleModulationPointerUp(event));
     document.addEventListener("pointercancel", () => this.cancelModulationDrag());
   }
 
+  /**
+   * 判断一个模块是否可以作为调制源
+   * @param {Object} module - 模块对象
+   * @returns {boolean} 是否为有效的调制源
+   */
   isModulationSource(module) {
     if (!module) {
       return false;
     }
+    // Envelope类型的模块总是作为调制源
     if (module.type === "Envelope") {
       return true;
     }
+    // 或者是source类别且开启了modulationMode的模块
     return module.category === "source" && Boolean(module.modulationMode);
   }
 
+  /**
+   * 获取所有调制连接
+   * @returns {Array} 调制连接数组
+   */
   getModulations() {
     if (!Array.isArray(this.app.state.modulations)) {
       this.app.state.modulations = [];
@@ -39,10 +70,21 @@ export class ModulationManager {
     return this.app.state.modulations;
   }
 
+  /**
+   * 获取指定模块作为源的所有输出调制连接
+   * @param {string} sourceModuleId - 源模块ID
+   * @returns {Array} 输出调制连接数组
+   */
   getOutgoingModulations(sourceModuleId) {
     return this.getModulations().filter((item) => item.sourceModuleId === sourceModuleId);
   }
 
+  /**
+   * 根据目标模块和参数路径查找调制连接
+   * @param {string} targetModuleId - 目标模块ID
+   * @param {string} targetParamPath - 目标参数路径
+   * @returns {Object|null} 找到的调制连接或null
+   */
   getModulationByTarget(targetModuleId, targetParamPath) {
     return (
       this.getModulations().find(
@@ -51,10 +93,20 @@ export class ModulationManager {
     );
   }
 
+  /**
+   * 根据连接ID查找调制连接
+   * @param {string} connectionId - 连接ID
+   * @returns {Object|null} 找到的调制连接或null
+   */
   getModulationById(connectionId) {
     return this.getModulations().find((item) => item.id === connectionId) || null;
   }
 
+  /**
+   * 获取下一个可用的调制声道索引（0-7）
+   * @param {string} sourceModuleId - 源模块ID
+   * @returns {number} 可用的声道索引，无可用则返回-1
+   */
   getNextModulationVoiceIndex(sourceModuleId) {
     const used = new Set(this.getOutgoingModulations(sourceModuleId).map((item) => Number(item.sourceVoiceIndex)));
     for (let i = 0; i < 8; i += 1) {
@@ -65,6 +117,13 @@ export class ModulationManager {
     return -1;
   }
 
+  /**
+   * 开始调制连接拖拽
+   * @param {Object} params - 参数对象
+   * @param {PointerEvent} params.event - 指针事件
+   * @param {string} params.sourceModuleId - 源模块ID
+   * @param {string} params.updateConnectionId - 要更新的连接ID（可选）
+   */
   startModulationDrag({ event, sourceModuleId, updateConnectionId = "" }) {
     event.preventDefault();
     this.modulationDrag = {
@@ -80,6 +139,10 @@ export class ModulationManager {
     this.renderModulationOverlay();
   }
 
+  /**
+   * 处理调制拖拽过程中的指针移动事件
+   * @param {PointerEvent} event - 指针移动事件
+   */
   handleModulationPointerMove(event) {
     if (!this.modulationDrag.active) {
       return;
@@ -87,9 +150,12 @@ export class ModulationManager {
     this.modulationDrag.x = event.clientX;
     this.modulationDrag.y = event.clientY;
 
+    // 清除之前的悬停样式
     document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
       node.classList.remove("mod-target-hover");
     });
+    
+    // 检查是否悬停在有效的滑块控件上
     const slider = event.target?.closest?.(".control.control-slider[data-module-id][data-param-path]");
     if (slider) {
       slider.classList.add("mod-target-hover");
@@ -98,6 +164,10 @@ export class ModulationManager {
     this.renderModulationOverlay();
   }
 
+  /**
+   * 处理调制拖拽结束时的指针抬起事件
+   * @param {PointerEvent} event - 指针抬起事件
+   */
   handleModulationPointerUp(event) {
     if (!this.modulationDrag.active) {
       return;
@@ -106,6 +176,7 @@ export class ModulationManager {
     const drag = { ...this.modulationDrag };
     const targetControl = event.target?.closest?.(".control.control-slider[data-module-id][data-param-path]");
 
+    // 检查目标是否是主卡（主卡参数不能被调制）
     if (targetControl) {
       const mainCard = targetControl.closest(".module-card[data-main-card='true']");
       if (mainCard) {
@@ -118,11 +189,14 @@ export class ModulationManager {
       }
     }
 
+    // 清除所有悬停样式
     document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
       node.classList.remove("mod-target-hover");
     });
 
+    // 如果没有找到有效的目标控件
     if (!targetControl) {
+      // 如果是在更新现有连接，则删除该连接
       if (drag.updateConnectionId) {
         this.removeModulationById(drag.updateConnectionId);
         this.app.engine.fullSync(this.app.state);
@@ -132,6 +206,7 @@ export class ModulationManager {
       return;
     }
 
+    // 提交新的调制连接
     const targetModuleId = targetControl.dataset.moduleId;
     const targetParamPath = targetControl.dataset.paramPath;
     this.commitModulationTarget({
@@ -143,17 +218,28 @@ export class ModulationManager {
     this.cancelModulationDrag();
   }
 
+  /**
+   * 提交并创建/更新调制连接
+   * @param {Object} params - 参数对象
+   * @param {string} params.sourceModuleId - 源模块ID
+   * @param {string} params.targetModuleId - 目标模块ID
+   * @param {string} params.targetParamPath - 目标参数路径
+   * @param {string} params.updateConnectionId - 要更新的连接ID（可选）
+   */
   commitModulationTarget({ sourceModuleId, targetModuleId, targetParamPath, updateConnectionId = "" }) {
+    // 基本有效性检查
     if (!sourceModuleId || !targetModuleId || !targetParamPath || sourceModuleId === targetModuleId) {
       return;
     }
 
+    // 再次检查目标是否是主卡
     const targetModuleCard = document.querySelector(`.module-card[data-module-id="${targetModuleId}"][data-main-card='true']`);
     if (targetModuleCard) {
       this.app.setStatus("Main Card parameters cannot be modulated.", "error");
       return;
     }
 
+    // 查找源模块和目标模块
     const sourceModule = this.app.state.modules.find((item) => item.id === sourceModuleId);
     const targetModule = this.app.state.modules.find((item) => item.id === targetModuleId);
     if (!sourceModule || !targetModule) {
@@ -163,12 +249,14 @@ export class ModulationManager {
       return;
     }
 
+    // 检查目标参数是否已有调制连接
     const existingTarget = this.getModulationByTarget(targetModuleId, targetParamPath);
     if (existingTarget && existingTarget.id !== updateConnectionId) {
       this.app.setStatus("A target parameter can only have one modulation connection.", "error");
       return;
     }
 
+    // 更新现有连接
     if (updateConnectionId) {
       const current = this.getModulationById(updateConnectionId);
       if (!current) {
@@ -177,6 +265,7 @@ export class ModulationManager {
       current.targetModuleId = targetModuleId;
       current.targetParamPath = targetParamPath;
     } else {
+      // 创建新连接
       if (this.getOutgoingModulations(sourceModuleId).length >= 8) {
         this.app.setStatus("Each modulation source can connect up to 8 targets.", "error");
         return;
@@ -195,21 +284,34 @@ export class ModulationManager {
       });
     }
 
+    // 更新预设状态并同步渲染
     this.app.selectedPresetId = "custom";
     this.app.engine.fullSync(this.app.state);
     this.app.renderAll();
   }
 
+  /**
+   * 根据ID删除调制连接
+   * @param {string} connectionId - 连接ID
+   */
   removeModulationById(connectionId) {
     this.app.state.modulations = this.getModulations().filter((item) => item.id !== connectionId);
     this.app.selectedPresetId = "custom";
   }
 
+  /**
+   * 删除指定模块的所有输出调制连接
+   * @param {string} sourceModuleId - 源模块ID
+   */
   removeOutgoingModulations(sourceModuleId) {
     this.app.state.modulations = this.getModulations().filter((item) => item.sourceModuleId !== sourceModuleId);
     this.app.selectedPresetId = "custom";
   }
 
+  /**
+   * 删除与指定模块相关的所有调制连接（作为源或目标）
+   * @param {string} moduleId - 模块ID
+   */
   removeModuleModulations(moduleId) {
     this.app.state.modulations = this.getModulations().filter(
       (item) => item.sourceModuleId !== moduleId && item.targetModuleId !== moduleId,
@@ -217,6 +319,9 @@ export class ModulationManager {
     this.app.selectedPresetId = "custom";
   }
 
+  /**
+   * 取消调制拖拽，重置拖拽状态
+   */
   cancelModulationDrag() {
     this.modulationDrag = {
       active: false,
@@ -231,6 +336,11 @@ export class ModulationManager {
     this.renderModulationOverlay();
   }
 
+  /**
+   * 获取元素在信号流容器中的相对坐标（中心点）
+   * @param {HTMLElement} element - DOM元素
+   * @returns {Object|null} 包含x和y坐标的对象，或null
+   */
   getPointInSignalFlowShell(element) {
     const shell = this.app.elements.signalFlowShell;
     if (!shell || !element) {
@@ -244,6 +354,13 @@ export class ModulationManager {
     };
   }
 
+  /**
+   * 线性插值平滑移动点
+   * @param {Object} current - 当前点坐标
+   * @param {Object} target - 目标点坐标
+   * @param {number} damping - 阻尼系数（0-1）
+   * @returns {boolean} 是否还在移动中
+   */
   lerpPoint(current, target, damping) {
     current.x += (target.x - current.x) * damping;
     current.y += (target.y - current.y) * damping;
@@ -257,16 +374,22 @@ export class ModulationManager {
     return !settled;
   }
 
+  /**
+   * 渲染调制连接线覆盖层
+   * 使用SVG绘制平滑的贝塞尔曲线连接线
+   */
   renderModulationOverlay() {
     const shell = this.app.elements.signalFlowShell;
     if (!shell) return;
 
+    // 创建SVG元素（如果不存在）
     if (!this.modulationSvg) {
       this.modulationSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       this.modulationSvg.classList.add("modulation-cables");
       shell.appendChild(this.modulationSvg);
     }
 
+    // 设置SVG尺寸
     const shellRect = shell.getBoundingClientRect();
     const svg = this.modulationSvg;
     svg.setAttribute("width", String(Math.max(1, shellRect.width)));
@@ -278,14 +401,19 @@ export class ModulationManager {
     const activeKeys = new Set();
     let shouldContinue = Boolean(this.modulationDrag.active);
 
+    /**
+     * 创建连接线SVG路径
+     * @param {Object} from - 起点坐标
+     * @param {Object} to - 终点坐标
+     * @param {boolean} isGhost - 是否为幽灵线（拖拽预览）
+     */
     const createCablePath = (from, to, isGhost = false) => {
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       const horizontalDist = Math.abs(to.x - from.x);
 
+      // 计算二次贝塞尔曲线的控制点
       const cx = (from.x + to.x) / 2;
-
       const sag = 15 + horizontalDist * 0.25;
-
       const cy = Math.max(from.y, to.y) + sag;
 
       path.setAttribute("d", `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`);
@@ -300,6 +428,12 @@ export class ModulationManager {
       svg.appendChild(path);
     };
 
+    /**
+     * 创建连接点（圆形节点）
+     * @param {Object} point - 点坐标
+     * @param {boolean} interactive - 是否可交互
+     * @param {Object|null} meta - 元数据
+     */
     const createSocket = (point, interactive = false, meta = null) => {
       const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       dot.setAttribute("cx", String(point.x));
@@ -324,14 +458,22 @@ export class ModulationManager {
       svg.appendChild(dot);
     };
 
+    /**
+     * 渲染单条连接线
+     * @param {Object} route - 路由信息
+     * @param {boolean} interactive - 是否可交互
+     * @param {boolean} isGhost - 是否为幽灵线
+     */
     const renderCable = (route, interactive = true, isGhost = false) => {
       activeKeys.add(route.id);
 
+      // 获取或初始化视觉状态
       const visual = this.cableVisuals.get(route.id) || {
         from: { x: route.from.x, y: route.from.y },
         to: { x: route.to.x, y: route.to.y },
       };
 
+      // 平滑移动
       const movingFrom = this.lerpPoint(visual.from, route.from, damping);
       const movingTo = this.lerpPoint(visual.to, route.to, damping);
 
@@ -339,6 +481,7 @@ export class ModulationManager {
 
       if (movingFrom || movingTo) shouldContinue = true;
 
+      // 绘制连接线和连接点
       createCablePath(visual.from, visual.to, isGhost);
 
       if (interactive) {
@@ -350,6 +493,7 @@ export class ModulationManager {
       }
     };
 
+    // 渲染所有已建立的调制连接
     this.getModulations().forEach((connection) => {
       const fromEl = this.app.elements.signalFlow?.querySelector(
         `.module-mod-anchor[data-module-id="${connection.sourceModuleId}"]`,
@@ -370,6 +514,7 @@ export class ModulationManager {
       }
     });
 
+    // 渲染正在拖拽的连接线预览
     if (this.modulationDrag.active) {
       const fromEl = this.app.elements.signalFlow?.querySelector(
         `.module-mod-anchor[data-module-id="${this.modulationDrag.sourceModuleId}"]`,
@@ -389,10 +534,12 @@ export class ModulationManager {
       }
     }
 
+    // 清理不再使用的视觉状态
     this.cableVisuals.forEach((_, key) => {
       if (!activeKeys.has(key)) this.cableVisuals.delete(key);
     });
 
+    // 如果需要继续动画，请求下一帧
     if (shouldContinue) {
       this.modulationFrame = requestAnimationFrame(() => this.renderModulationOverlay());
     } else {
