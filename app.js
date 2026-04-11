@@ -2391,7 +2391,6 @@ class ModularSynthApp {
     formatter,
     onInput,
     accent = "source",
-    variant = "slider",
     path = null,
     eventName = "input",
     moduleId = "",
@@ -2399,8 +2398,8 @@ class ModularSynthApp {
     modulation = null,
   }) {
     const wrapper = document.createElement("label");
-    wrapper.className = `control control-${variant}`;
-    if (moduleId && paramPath && variant === "slider") {
+    wrapper.className = "control control-slider";
+    if (moduleId && paramPath) {
       wrapper.dataset.moduleId = moduleId;
       wrapper.dataset.paramPath = paramPath;
     }
@@ -2426,27 +2425,14 @@ class ModularSynthApp {
     input.max = String(max);
     input.step = String(step);
     input.value = String(value);
-    input.className = variant === "knob" ? "knob-input" : "slider-input";
+    input.className = "slider-input";
 
     const updateVisual = (nextValue) => {
       const numericValue = Number(nextValue);
       const percent = (numericValue - min) / (max - min);
       readout.textContent = formatter(numericValue);
       shell.style.setProperty("--percent", percent.toString());
-      if (variant === "knob" && dial) {
-        dial.style.setProperty("--rotation", `${-135 + percent * 270}deg`);
-      }
     };
-
-    let dial = null;
-    if (variant === "knob") {
-      shell.className = "knob-shell";
-      dial = document.createElement("div");
-      dial.className = "knob-dial";
-      shell.append(dial, input);
-    } else {
-      shell.append(input);
-    }
 
     updateVisual(value);
 
