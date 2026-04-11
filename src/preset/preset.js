@@ -1,8 +1,15 @@
-/* -------------------------------------------------------------------------- */
-/* 内置预设模板                                                               */
-/* -------------------------------------------------------------------------- */
+import {
+  createId,
+  resetModuleCounter,
+  deepMerge,
+  clamp,
+  normalizeAnyModule,
+  createSourceModule,
+  createComponentModule,
+  createEffectModule,
+} from "../utils/helpers.js";
 
-const BUILTIN_PRESET_TEMPLATES = {
+export const BUILTIN_PRESET_TEMPLATES = {
   init: {
     name: "Init Patch",
     global: { volume: -8, octave: 4, velocity: 0.8 },
@@ -33,15 +40,11 @@ const BUILTIN_PRESET_TEMPLATES = {
   },
 };
 
-/* -------------------------------------------------------------------------- */
-/* 预设工具函数                                                               */
-/* -------------------------------------------------------------------------- */
-
-function createBasePreset() {
+export function createBasePreset() {
   return normalizePreset(BUILTIN_PRESET_TEMPLATES.init);
 }
 
-function normalizePreset(preset = {}) {
+export function normalizePreset(preset = {}) {
   resetModuleCounter();
 
   const fallback = {
@@ -71,16 +74,12 @@ function normalizePreset(preset = {}) {
   merged.modulations = Array.isArray(merged.modulations)
     ? merged.modulations
       .map((item) => {
-        let radius = 0.15; // 默认值
+        let radius = 0.15;
 
-        // 尝试从新格式读取
         if (typeof item?.radius === "number" && !Number.isNaN(item.radius)) {
           radius = item.radius;
         }
-        // 可选：从旧格式转换（如果需要兼容性）
         else if (typeof item?.scaleMin === "number" && typeof item?.scaleMax === "number") {
-          // 旧格式存在但不再做复杂转换，直接使用默认值
-        // 或者可以基于旧值估算一个 radius（可选）
           console.warn("Legacy modulation format detected (scaleMin/scaleMax), using default radius");
         }
 
@@ -99,10 +98,6 @@ function normalizePreset(preset = {}) {
   return merged;
 }
 
-/* -------------------------------------------------------------------------- */
-/* 文件下载工具                                                               */
-/* -------------------------------------------------------------------------- */
-
 function downloadJson(filename, data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
@@ -114,17 +109,13 @@ function downloadJson(filename, data) {
   link.remove();
 }
 
-/* -------------------------------------------------------------------------- */
-/* 预设导入导出                                                               */
-/* -------------------------------------------------------------------------- */
-
-async function importPresetFromFile(file) {
+export async function importPresetFromFile(file) {
   const text = await file.text();
   const preset = normalizePreset(JSON.parse(text));
   return preset;
 }
 
-function exportPresetToFile(state) {
+export function exportPresetToFile(state) {
   const filename = `${(state.name || "tone-preset").toLowerCase().replace(/\s+/g, "-")}.json`;
   downloadJson(filename, state);
   return filename;

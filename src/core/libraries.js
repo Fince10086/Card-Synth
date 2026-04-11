@@ -1,266 +1,39 @@
-/**
- * constants.js
- * 常量和配置定义
- * 
- * 包含：
- * - 格式化函数（用于库配置中的 formatter）
- * - 音名表和键盘布局
- * - 波形和噪声类型选项
- * - 模块库定义（声源、效果器、组件）
- * - 滤波器类型
- * - 内置预设模板
- */
+import {
+  formatPlain,
+  formatSeconds,
+  formatPercent,
+  formatDb,
+  formatCents,
+  formatRatio,
+  formatHertz,
+  formatFrequency,
+  formatMultiplier,
+} from "./formatters.js";
 
-const Tone = window.Tone || null;
+import { NOTE_NAMES } from "./keyboard.js";
 
-/* -------------------------------------------------------------------------- */
-/* 格式化函数                                                                 */
-/* -------------------------------------------------------------------------- */
+import { DEFAULT_SAMPLE_LIBRARY } from "./samples.js";
 
-/**
- * 格式化普通数值
- * @param {number} value - 要格式化的值
- * @returns {string} - 格式化后的字符串
- */
-function formatPlain(value) {
-  return Number(value).toFixed(Math.abs(value) < 10 ? 2 : 1).replace(/\.0+$/, "");
-}
-
-/**
- * 格式化秒数
- * @param {number} value - 秒数
- * @returns {string} - 格式化后的字符串
- */
-function formatSeconds(value) {
-  return `${Number(value).toFixed(value < 0.1 ? 3 : value < 1 ? 2 : 1).replace(/0+$/, "").replace(/\.$/, "")}s`;
-}
-
-/**
- * 格式化百分比
- * @param {number} value - 百分比值 (0-1)
- * @returns {string} - 格式化后的字符串
- */
-function formatPercent(value) {
-  return `${Math.round(Number(value) * 100)}%`;
-}
-
-/**
- * 格式化分贝值
- * @param {number} value - 分贝值
- * @returns {string} - 格式化后的字符串
- */
-function formatDb(value) {
-  return `${Number(value).toFixed(1)} dB`;
-}
-
-/**
- * 格式化音分值
- * @param {number} value - 音分值
- * @returns {string} - 格式化后的字符串
- */
-function formatCents(value) {
-  return `${Math.round(value)} ct`;
-}
-
-/**
- * 格式化比率
- * @param {number} value - 比率值
- * @returns {string} - 格式化后的字符串
- */
-function formatRatio(value) {
-  return `${Number(value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}:1`;
-}
-
-/**
- * 格式化赫兹值
- * @param {number} value - 赫兹值
- * @returns {string} - 格式化后的字符串
- */
-function formatHertz(value) {
-  return `${Number(value).toFixed(value < 1 ? 2 : 1).replace(/0+$/, "").replace(/\.$/, "")} Hz`;
-}
-
-/**
- * 格式化频率值
- * @param {number} value - 频率值
- * @returns {string} - 格式化后的字符串
- */
-function formatFrequency(value) {
-  if (value >= 1000) {
-    return `${Number(value / 1000).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} kHz`;
-  }
-  return `${Math.round(value)} Hz`;
-}
-
-/**
- * 格式化倍数
- * @param {number} value - 倍数值
- * @returns {string} - 格式化后的字符串
- */
-function formatMultiplier(value) {
-  return `${Number(value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}x`;
-}
-
-/* -------------------------------------------------------------------------- */
-/* 音名和键盘布局                                                            */
-/* -------------------------------------------------------------------------- */
-
-// 12 平均律音名表，用于把键盘偏移量映射成真实音名
-const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-// 虚拟键盘布局描述：
-// key 是电脑键盘按键，offset 是相对当前八度的半音偏移，
-// whiteIndex 用于计算白键/黑键的可视位置
-const KEYBOARD_LAYOUT = [
-  { key: "a", offset: 0, whiteIndex: 0, black: false },
-  { key: "w", offset: 1, whiteIndex: 0, black: true },
-  { key: "s", offset: 2, whiteIndex: 1, black: false },
-  { key: "e", offset: 3, whiteIndex: 1, black: true },
-  { key: "d", offset: 4, whiteIndex: 2, black: false },
-  { key: "f", offset: 5, whiteIndex: 3, black: false },
-  { key: "t", offset: 6, whiteIndex: 3, black: true },
-  { key: "g", offset: 7, whiteIndex: 4, black: false },
-  { key: "y", offset: 8, whiteIndex: 4, black: true },
-  { key: "h", offset: 9, whiteIndex: 5, black: false },
-  { key: "u", offset: 10, whiteIndex: 5, black: true },
-  { key: "j", offset: 11, whiteIndex: 6, black: false },
-  { key: "k", offset: 12, whiteIndex: 7, black: false },
-];
-
-// 在多个模块间复用的波形选项
-const SHARED_WAVE_OPTIONS = [
+export const SHARED_WAVE_OPTIONS = [
   { label: "Sine", value: "sine" },
   { label: "Triangle", value: "triangle" },
   { label: "Saw", value: "sawtooth" },
   { label: "Square", value: "square" },
 ];
 
-// 噪声类型选项
-const NOISE_TYPE_OPTIONS = [
+export const NOISE_TYPE_OPTIONS = [
   { label: "White", value: "white" },
   { label: "Pink", value: "pink" },
   { label: "Brown", value: "brown" },
 ];
 
-// 根音符选项（6个八度）
-const ROOT_NOTE_OPTIONS = Array.from({ length: 6 * 12 }, (_, index) => {
+export const ROOT_NOTE_OPTIONS = Array.from({ length: 6 * 12 }, (_, index) => {
   const octave = 1 + Math.floor(index / 12);
   const note = `${NOTE_NAMES[index % 12]}${octave}`;
   return { label: note, value: note };
 });
 
-/* -------------------------------------------------------------------------- */
-/* 样本生成工具                                                            */
-/* -------------------------------------------------------------------------- */
-
-/**
- * 生成样本数据的 Data URL
- * @param {Object} options - 生成选项
- * @returns {string} - WAV 格式的 Data URL
- */
-function createSampleDataUrl({ mode = "pluck", frequency = 220, duration = 0.28, sampleRate = 11025 } = {}) {
-  const frameCount = Math.max(1, Math.floor(duration * sampleRate));
-  const bytesPerSample = 2;
-  const dataSize = frameCount * bytesPerSample;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-
-  const writeString = (offset, value) => {
-    for (let index = 0; index < value.length; index += 1) {
-      view.setUint8(offset + index, value.charCodeAt(index));
-    }
-  };
-
-  // WAV 文件头
-  writeString(0, "RIFF");
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(8, "WAVE");
-  writeString(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * bytesPerSample, true);
-  view.setUint16(32, bytesPerSample, true);
-  view.setUint16(34, 16, true);
-  writeString(36, "data");
-  view.setUint32(40, dataSize, true);
-
-  // 生成音频样本
-  let seed = 173;
-  for (let index = 0; index < frameCount; index += 1) {
-    const t = index / sampleRate;
-    const progress = index / frameCount;
-    const decay = Math.exp(-4.5 * progress);
-    let sample = 0;
-
-    if (mode === "bell") {
-      sample =
-        Math.sin(Math.PI * 2 * frequency * t) * 0.56
-        + Math.sin(Math.PI * 2 * frequency * 2.73 * t) * 0.24
-        + Math.sin(Math.PI * 2 * frequency * 4.19 * t) * 0.12;
-      sample *= Math.exp(-3.2 * progress);
-    } else if (mode === "texture") {
-      seed = (seed * 16807) % 2147483647;
-      const noise = (seed / 2147483647) * 2 - 1;
-      sample =
-        Math.sin(Math.PI * 2 * frequency * 0.5 * t) * 0.22
-        + Math.sin(Math.PI * 2 * frequency * 1.5 * t) * 0.1
-        + noise * 0.24;
-      sample *= Math.exp(-2.4 * progress);
-    } else {
-      sample =
-        Math.sin(Math.PI * 2 * frequency * t)
-        + Math.sin(Math.PI * 2 * frequency * 2 * t) * 0.38
-        + Math.sin(Math.PI * 2 * frequency * 3.4 * t) * 0.18;
-      sample *= decay;
-    }
-
-    const clamped = Math.max(-1, Math.min(1, sample * 0.72));
-    view.setInt16(44 + index * 2, Math.round(clamped * 32767), true);
-  }
-
-  // 转换为 Base64 Data URL
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return `data:audio/wav;base64,${btoa(binary)}`;
-}
-
-/**
- * 读取文件为 Data URL
- * @param {File} file - 要读取的文件
- * @returns {Promise<string>} - Data URL
- */
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Unable to read audio file."));
-    reader.readAsDataURL(file);
-  });
-}
-
-// 默认样本库
-const DEFAULT_SAMPLE_LIBRARY = {
-  pluck: createSampleDataUrl({ mode: "pluck", frequency: 196, duration: 0.24 }),
-  bell: createSampleDataUrl({ mode: "bell", frequency: 440, duration: 0.62 }),
-  texture: createSampleDataUrl({ mode: "texture", frequency: 140, duration: 0.46 }),
-};
-
-/* -------------------------------------------------------------------------- */
-/* 模块库定义                                                                */
-/* -------------------------------------------------------------------------- */
-
-/**
- * 声源库
- * runtime 用来描述当前 source 在 AudioEngine 中该如何实例化和触发
- * controls 只负责 UI 层暴露哪些参数，不直接参与 Tone.js 节点创建
- */
-
-const SOURCE_LIBRARY = {
+export const SOURCE_LIBRARY = {
   Noise: {
     accent: "source",
     tag: "Osc",
@@ -318,11 +91,7 @@ const SOURCE_LIBRARY = {
   },
 };
 
-/**
- * 效果器库
- * 效果器与 component 一样都会被串到主信号链上
- */
-const EFFECT_LIBRARY = {
+export const EFFECT_LIBRARY = {
   AutoFilter: {
     accent: "fx",
     tag: "Effect",
@@ -526,11 +295,7 @@ const EFFECT_LIBRARY = {
   },
 };
 
-/**
- * 组件库
- * 相较于 effect，更偏工具型或增益结构型节点
- */
-const COMPONENT_LIBRARY = {
+export const COMPONENT_LIBRARY = {
   Filter: {
     accent: "component",
     tag: "Component",

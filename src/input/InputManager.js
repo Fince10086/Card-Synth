@@ -1,14 +1,8 @@
-/**
- * input.js
- * 输入管理器 - InputManager
- *
- * 负责：
- * - MIDI 输入设备管理和消息处理
- * - 电脑键盘输入处理
- * - 音符触发和释放的引用计数
- */
+import { clamp, noteFromOffset } from "../utils/helpers.js";
+import { KEYBOARD_LAYOUT } from "../core/keyboard.js";
+import * as Tone from "tone";
 
-class InputManager {
+export class InputManager {
   constructor(options = {}) {
     this.onAttack = options.onAttack || (() => {});
     this.onRelease = options.onRelease || (() => {});
