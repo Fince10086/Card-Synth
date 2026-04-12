@@ -31,9 +31,11 @@ export class AudioEngine {
 
     this.masterVolume = new Tone.Volume(state.global.volume);
     this.analyser = new Tone.Analyser("waveform", 1024);
+    this.spectrumAnalyser = new Tone.Analyser("fft", 2048);
 
     this.masterVolume.toDestination();
     this.masterVolume.connect(this.analyser);
+    this.masterVolume.connect(this.spectrumAnalyser);
 
     this.rebuildSignalChain();
     
@@ -45,6 +47,10 @@ export class AudioEngine {
 
   getAnalyser() {
     return this.analyser;
+  }
+
+  getSpectrumAnalyser() {
+    return this.spectrumAnalyser;
   }
 
   fullSync(state) {

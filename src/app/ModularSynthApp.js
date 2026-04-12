@@ -7,7 +7,8 @@ import {
   createModuleCard,
   renderKeyboard,
   resizeScopeCanvas,
-  drawOscilloscope,
+  startScopeRendering,
+  stopScopeRendering,
   renderMainCard,
   renderMainCardContent,
   cacheDynamicElements as cacheDynamicElementsFn,
@@ -34,6 +35,8 @@ export class ModularSynthApp {
     this.heldPointerNotes = new Set();
 
     this.controlBindings = new Map();
+
+    this.scopeMode = "scope";
 
     this.modulationManager = new ModulationManager(this);
     this.dragManager = new ModuleDragManager(this);
@@ -338,6 +341,10 @@ export class ModularSynthApp {
 
     if (dynamicElements.oscilloscope) {
       this.scopeContext = dynamicElements.scopeContext || null;
+
+      dynamicElements.oscilloscope.addEventListener("click", () => {
+        this.toggleScopeMode();
+      });
     }
 
     this.resizeScopeCanvas();
@@ -495,12 +502,23 @@ export class ModularSynthApp {
   }
 
   drawOscilloscope() {
-    drawOscilloscope({
+    stopScopeRendering();
+    startScopeRendering({
       getCanvasFn: () => this.elements.oscilloscope,
       getContextFn: () => this.scopeContext,
       getAnalyserFn: () => this.engine.getAnalyser(),
+      getSpectrumAnalyserFn: () => this.engine.getSpectrumAnalyser(),
       getAudioBootedFn: () => this.audioBooted,
+      getModeFn: () => this.scopeMode,
     });
+  }
+
+  toggleScopeMode() {
+    this.scopeMode = this.scopeMode === "scope" ? "spectrum" : "scope";
+    const modeLabel = document.getElementById("scopeModeLabel");
+    if (modeLabel) {
+      modeLabel.textContent = this.scopeMode === "scope" ? "SCOPE" : "SPECTRUM";
+    }
   }
 
   isModulationSource(module) {

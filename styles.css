@@ -1075,4 +1075,16 @@ select {
   display: block;
   background: #ffffff;
   border-radius: 4px;
+  cursor: pointer;
+}
+
+.main-card__scope .scope-mode-label {
+  display: inline-flex;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #7c8298;
+  background: rgba(0, 0, 0, 0.5);
+  text-transform: uppercase;
 }

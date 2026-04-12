@@ -105,6 +105,12 @@ export function renderMainCard({
   const scopeContainer = document.createElement("div");
   scopeContainer.className = "main-card__scope";
 
+  const modeLabel = document.createElement("span");
+  modeLabel.className = "scope-mode-label";
+  modeLabel.id = "scopeModeLabel";
+  modeLabel.textContent = "SCOPE";
+  scopeContainer.append(modeLabel);
+
   const scopeCanvas = document.createElement("canvas");
   scopeCanvas.id = "oscilloscope";
   scopeContainer.append(scopeCanvas);

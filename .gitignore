@@ -27,5 +27,5 @@ dist-ssr
 frontend-analysis.md
 modulation-demo.html
 old_backup
-ref/Oscilloscope.tsx
+ref
 .gitignore
