@@ -15,12 +15,15 @@ export function resizeScopeCanvas(canvas, context) {
 }
 
 export function drawOscilloscope({
-  canvas,
-  context,
+  getCanvasFn,
+  getContextFn,
   getAnalyserFn,
   getAudioBootedFn,
 }) {
-  requestAnimationFrame(() => drawOscilloscope({ canvas, context, getAnalyserFn, getAudioBootedFn }));
+  requestAnimationFrame(() => drawOscilloscope({ getCanvasFn, getContextFn, getAnalyserFn, getAudioBootedFn }));
+
+  const canvas = getCanvasFn();
+  const context = getContextFn();
 
   if (!canvas || !context) {
     return;

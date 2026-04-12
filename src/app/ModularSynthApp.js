@@ -364,6 +364,12 @@ export class ModularSynthApp {
     const dynamicElements = cacheDynamicElementsFn();
     Object.assign(this.elements, dynamicElements);
 
+    if (dynamicElements.oscilloscope) {
+      this.scopeContext = dynamicElements.scopeContext || null;
+    }
+
+    this.resizeScopeCanvas();
+
     this.layoutModuleMasonry();
     this.modulationManager.renderModulationOverlay();
 
@@ -518,13 +524,17 @@ export class ModularSynthApp {
   }
 
   resizeScopeCanvas() {
-    resizeScopeCanvas(this.elements.oscilloscope, this.scopeContext);
+    const canvas = this.elements.oscilloscope;
+    const context = this.scopeContext;
+    if (canvas && context) {
+      resizeScopeCanvas(canvas, context);
+    }
   }
 
   drawOscilloscope() {
     drawOscilloscope({
-      canvas: this.elements.oscilloscope,
-      context: this.scopeContext,
+      getCanvasFn: () => this.elements.oscilloscope,
+      getContextFn: () => this.scopeContext,
       getAnalyserFn: () => this.engine.getAnalyser(),
       getAudioBootedFn: () => this.audioBooted,
     });
