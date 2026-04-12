@@ -374,9 +374,17 @@ export class ModulationManager {
       return;
     }
 
-    items.forEach(({ scale }) => {
-      scale.min = centerValue - radius;
-      scale.max = centerValue + radius;
+    items.forEach(({ scale, targetParamPath }) => {
+      let minVal = centerValue - radius;
+      let maxVal = centerValue + radius;
+      
+      if (targetParamPath === "volume") {
+        minVal = Tone.dbToGain(minVal);
+        maxVal = Tone.dbToGain(maxVal);
+      }
+      
+      scale.min = minVal;
+      scale.max = maxVal;
       console.log("[ModulationManager] Scale updated for", modulationId, "min:", scale.min, "max:", scale.max);
     });
   }
@@ -430,6 +438,7 @@ export class ModulationManager {
           id: `${mod.id}-${sourceVoiceIndex}`,
           modulationId: mod.id,
           sourceVoiceIndex,
+          targetParamPath: mod.targetParamPath,
           scale,
           audioToGain,
         });
@@ -582,7 +591,7 @@ export class ModulationManager {
     }
 
     if (targetParamPath === "volume") {
-      return voice.volumeNode?.volume || null;
+      return voice.volumeNode?.gain || null;
     }
 
     if (targetParamPath === "pan") {
