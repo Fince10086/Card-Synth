@@ -1099,11 +1099,10 @@ select {
 
 .main-card__scope #oscilloscope {
   width: 100%;
-  min-height: 100px;
+  height: 120px;
   display: block;
-  background: #111113;
+  background: #ffffff;
   border-radius: 4px;
-  border: 1px solid #333;
 }
 
 .main-card__scope .scope-controls {

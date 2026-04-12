@@ -33,7 +33,7 @@ export function drawOscilloscope({
     return;
   }
 
-  context.fillStyle = "#111113";
+  context.fillStyle = "#ffffff";
   context.fillRect(0, 0, width, height);
 
   const analyser = getAnalyserFn();
@@ -66,7 +66,7 @@ export function drawOscilloscope({
   }
 
   context.lineWidth = 1.5;
-  context.strokeStyle = "#d4d4d8";
+  context.strokeStyle = "#4B0082";
   context.beginPath();
 
   const sliceWidth = width / validLength;
