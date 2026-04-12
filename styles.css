@@ -10,6 +10,7 @@
   --disabled: #8a8a8a;
   --white-key: #fdfbf7;
   --black-key: #2b2b31;
+  --main: #4b0082;
   --transition: 180ms ease;
 }
 
@@ -1058,15 +1059,16 @@ select {
 
 /* Main Card 特殊样式 */
 .module-card[data-main-card="true"] {
-  --accent: #4B0082;
+  --accent: var(--main);
 }
 
 .module-card[data-main-card="true"] .module-title-input {
-  color: #4B0082;
+  color: var(--main);
 }
 
 .main-card__scope {
-  margin-top: 10px;
+    gap: 4px;
+    display: inline-grid;
 }
 
 .main-card__scope #oscilloscope {
@@ -1076,15 +1078,6 @@ select {
   background: #ffffff;
   border-radius: 4px;
   cursor: pointer;
+  border: 1px solid #e0e2eb;
 }
 
-.main-card__scope .scope-mode-label {
-  display: inline-flex;
-  padding: 2px 6px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: #7c8298;
-  background: rgba(0, 0, 0, 0.5);
-  text-transform: uppercase;
-}

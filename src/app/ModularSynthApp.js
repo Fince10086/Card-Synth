@@ -515,10 +515,6 @@ export class ModularSynthApp {
 
   toggleScopeMode() {
     this.scopeMode = this.scopeMode === "scope" ? "spectrum" : "scope";
-    const modeLabel = document.getElementById("scopeModeLabel");
-    if (modeLabel) {
-      modeLabel.textContent = this.scopeMode === "scope" ? "SCOPE" : "SPECTRUM";
-    }
   }
 
   isModulationSource(module) {

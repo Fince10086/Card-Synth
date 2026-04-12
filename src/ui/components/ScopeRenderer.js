@@ -1,6 +1,11 @@
 let currentAnimationId = null;
 let currentMode = null;
 
+function getMainColor() {
+  const style = getComputedStyle(document.documentElement);
+  return style.getPropertyValue("--main").trim() || "#4b0082";
+}
+
 export function resizeScopeCanvas(canvas, context) {
   if (!canvas || !context) {
     return;
@@ -93,7 +98,7 @@ function renderOscilloscope(canvas, context, width, height, analyser) {
   }
 
   context.lineWidth = 1.5;
-  context.strokeStyle = "#4B0082";
+  context.strokeStyle = getMainColor();
   context.beginPath();
 
   const sliceWidth = width / validLength;
@@ -149,7 +154,7 @@ function renderSpectrum(canvas, context, width, height, analyser, spectrumAnalys
             const x = i * binWidth;
             const y = height - barHeight;
 
-            context.fillStyle = "#4B0082";
+            context.fillStyle = getMainColor();
             context.fillRect(x, y, barWidth, barHeight);
           }
         }
@@ -172,8 +177,8 @@ function renderSpectrum(canvas, context, width, height, analyser, spectrumAnalys
         const x = i * binWidth;
         const y = height - barHeight;
 
-        context.fillStyle = "#4B0082";
-        context.fillRect(x, y, barWidth, barHeight);
+        context.fillStyle = getMainColor();
+        context.fillRect(x, y, barWidth, barWidth);
       }
     }
   }

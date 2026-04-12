@@ -93,7 +93,7 @@ export function renderMainCard({
     createToggleControl({
       label: "Velocity",
       value: state.global.velocityEnabled,
-      accent: "#4B0082",
+      accent: getComputedStyle(document.documentElement).getPropertyValue("--main").trim() || "#4b0082",
       onToggle: (value) => {
         if (onVelocityEnabledChange) {
           onVelocityEnabledChange(value);
@@ -105,11 +105,12 @@ export function renderMainCard({
   const scopeContainer = document.createElement("div");
   scopeContainer.className = "main-card__scope";
 
-  const modeLabel = document.createElement("span");
-  modeLabel.className = "scope-mode-label";
-  modeLabel.id = "scopeModeLabel";
-  modeLabel.textContent = "SCOPE";
-  scopeContainer.append(modeLabel);
+  const scopeLabel = document.createElement("div");
+  scopeLabel.className = "control-label";
+  const scopeLabelStrong = document.createElement("strong");
+  scopeLabelStrong.textContent = "Visualization";
+  scopeLabel.append(scopeLabelStrong);
+  scopeContainer.append(scopeLabel);
 
   const scopeCanvas = document.createElement("canvas");
   scopeCanvas.id = "oscilloscope";
