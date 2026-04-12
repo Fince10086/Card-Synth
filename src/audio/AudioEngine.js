@@ -217,7 +217,8 @@ export class AudioEngine {
 
       runtime.voices.forEach((voice, i) => {
         if (ampEnvRuntime && ampEnvRuntime.voices && ampEnvRuntime.voices[i]) {
-          voice.panNode.connect(ampEnvRuntime.voices[i]);
+          const outputNode = voice.panNode || voice.hiddenAmpEnv;
+          outputNode.connect(ampEnvRuntime.voices[i]);
         }
       });
     } else {
@@ -325,8 +326,8 @@ export class AudioEngine {
 
     const createVoice = () => {
       const volumeNode = new Tone.Gain(Tone.dbToGain(module.enabled ? module.volume : -48));
-      const panNode = new Tone.Panner(module.pan);
-      volumeNode.connect(panNode);
+      const isModulationMode = moduleState.modulationMode;
+      let panNode = null;
 
       const hiddenAmpEnv = new Tone.AmplitudeEnvelope({
         attack: 0.005,
@@ -334,7 +335,14 @@ export class AudioEngine {
         sustain: 1,
         release: 0.005,
       });
-      panNode.connect(hiddenAmpEnv);
+
+      if (isModulationMode) {
+        volumeNode.connect(hiddenAmpEnv);
+      } else {
+        panNode = new Tone.Panner(module.pan);
+        volumeNode.connect(panNode);
+        panNode.connect(hiddenAmpEnv);
+      }
 
       let node;
       if (definition.runtime === "pitchedSource") {
@@ -428,14 +436,16 @@ export class AudioEngine {
 
       getModulationOutput: (voiceIndex) => {
         const voice = voices[voiceIndex];
-        return voice ? voice.panNode : null;
+        return voice ? (voice.panNode || voice.volumeNode) : null;
       },
 
       apply: (nextModule) => {
         moduleState = deepClone(nextModule);
         voices.forEach((voice) => {
           rampParam(voice.volumeNode.gain, Tone.dbToGain(moduleState.enabled ? moduleState.volume : -48));
-          rampParam(voice.panNode.pan, moduleState.pan);
+          if (voice.panNode) {
+            rampParam(voice.panNode.pan, moduleState.pan);
+          }
 
           if (definition.runtime === "pitchedSource") {
             safeSet(voice.node, moduleState.options);
@@ -551,7 +561,9 @@ export class AudioEngine {
             voice.node.dispose();
           }
           voice.volumeNode.dispose();
-          voice.panNode.dispose();
+          if (voice.panNode) {
+            voice.panNode.dispose();
+          }
           voice.hiddenAmpEnv.dispose();
         });
       },
