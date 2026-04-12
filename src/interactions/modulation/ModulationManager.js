@@ -789,7 +789,7 @@ export class ModulationManager {
         `.module-mod-anchor[data-module-id="${connection.sourceModuleId}"]`,
       );
       const toEl = this.app.elements.signalFlow?.querySelector(
-        `.control-readout[data-module-id="${connection.targetModuleId}"][data-param-path="${connection.targetParamPath}"]`,
+        `.modulation-target[data-module-id="${connection.targetModuleId}"][data-param-path="${connection.targetParamPath}"]`,
       );
 
       const from = this.getPointInSignalFlowShell(fromEl);

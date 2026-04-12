@@ -476,6 +476,36 @@ select {
   color: #181d6b;
 }
 
+.value-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modulation-target {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: transparent;
+  border: 1.5px solid #ccc;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.modulation-target:hover {
+  background-color: var(--modulation, #8b5cf6);
+  border-color: var(--modulation, #8b5cf6);
+  transform: scale(1.2);
+}
+
+.modulation-target.is-connected {
+  background-color: var(--modulation, #8b5cf6);
+  border-color: var(--modulation, #8b5cf6);
+}
+
 .control-readout--modulated {
   color: var(--accent);
   cursor: pointer;

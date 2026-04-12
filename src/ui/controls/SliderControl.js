@@ -28,13 +28,37 @@ export function createSliderControl({
   controlLabel.className = "control-label";
   const strong = document.createElement("strong");
   strong.textContent = label;
+  const modulationTarget = document.createElement("span");
+  modulationTarget.className = "modulation-target";
+  if (moduleId && paramPath) {
+    modulationTarget.dataset.moduleId = moduleId;
+    modulationTarget.dataset.paramPath = paramPath;
+  }
+
+  modulationTarget.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (modulationManager) {
+      const existingModulation = modulationManager.getModulationByTarget(moduleId, paramPath);
+      if (existingModulation) {
+        modulationManager.startModulationDrag({
+          event,
+          sourceModuleId: existingModulation.sourceModuleId,
+          updateConnectionId: existingModulation.id,
+        });
+      }
+    }
+  });
+
   const readout = document.createElement("span");
   readout.className = "control-readout";
-  if (moduleId && paramPath) {
-    readout.dataset.moduleId = moduleId;
-    readout.dataset.paramPath = paramPath;
-  }
-  controlLabel.append(strong, readout);
+
+  const valueGroup = document.createElement("span");
+  valueGroup.className = "value-group";
+  valueGroup.append(modulationTarget, readout);
+
+  controlLabel.append(strong, valueGroup);
 
   const shell = document.createElement("div");
   shell.className = "slider-shell";
