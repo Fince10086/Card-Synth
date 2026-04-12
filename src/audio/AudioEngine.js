@@ -324,7 +324,7 @@ export class AudioEngine {
     };
 
     const createVoice = () => {
-      const volumeNode = new Tone.Volume(module.enabled ? module.volume : -48);
+      const volumeNode = new Tone.Gain(module.enabled ? module.volume : -48, "decibels");
       const panNode = new Tone.Panner(module.pan);
       volumeNode.connect(panNode);
 
@@ -434,7 +434,7 @@ export class AudioEngine {
       apply: (nextModule) => {
         moduleState = deepClone(nextModule);
         voices.forEach((voice) => {
-          rampParam(voice.volumeNode.volume, moduleState.enabled ? moduleState.volume : -48);
+          rampParam(voice.volumeNode.gain, moduleState.enabled ? moduleState.volume : -48);
           rampParam(voice.panNode.pan, moduleState.pan);
 
           if (definition.runtime === "pitchedSource") {
