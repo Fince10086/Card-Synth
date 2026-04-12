@@ -1,4 +1,4 @@
-import { createSelectControl, createSliderControl } from "../controls/index.js";
+import { createSelectControl, createSliderControl, createToggleControl } from "../controls/index.js";
 import { formatDb } from "../../core/formatters.js";
 import { exportPresetToFile } from "../../preset/preset.js";
 import { createModuleCard } from "./ModuleCard.js";
@@ -14,6 +14,7 @@ export function renderMainCard({
   onRandomClick,
   onMidiClick,
   onMasterVolumeChange,
+  onVelocityEnabledChange,
 }) {
   const card = createModuleCard({
     accent: "indigo",
@@ -83,6 +84,19 @@ export function renderMainCard({
       onInput: (value) => {
         if (onMasterVolumeChange) {
           onMasterVolumeChange(value);
+        }
+      },
+    })
+  );
+
+  controls.append(
+    createToggleControl({
+      label: "Velocity",
+      value: state.global.velocityEnabled,
+      accent: "#4B0082",
+      onToggle: (value) => {
+        if (onVelocityEnabledChange) {
+          onVelocityEnabledChange(value);
         }
       },
     })

@@ -464,7 +464,7 @@ export class AudioEngine {
         voice.note = note;
         voice.startTime = Tone.now();
 
-        const effectiveVelocity = moduleState.modulationMode ? 1 : velocity;
+        const effectiveVelocity = (!this.state.global.velocityEnabled || moduleState.modulationMode) ? 1 : velocity;
 
         if (runtime.hasAmpEnv) {
           triggerAmpEnvAttack(index, effectiveVelocity);

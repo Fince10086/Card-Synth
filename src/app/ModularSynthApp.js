@@ -482,6 +482,11 @@ export class ModularSynthApp {
         this.selectedPresetId = "custom";
         this.engine.updateGlobal(this.state.global);
       },
+      onVelocityEnabledChange: (value) => {
+        this.state.global.velocityEnabled = value;
+        this.selectedPresetId = "custom";
+        this.engine.updateGlobal(this.state.global);
+      },
     });
     if (mainCard) {
       container.insertBefore(mainCard, addCard);

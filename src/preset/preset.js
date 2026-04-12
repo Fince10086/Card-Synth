@@ -12,7 +12,7 @@ import {
 export const BUILTIN_PRESET_TEMPLATES = {
   init: {
     name: "Init Patch",
-    global: { volume: -8, octave: 4, velocity: 0.8 },
+    global: { volume: -8, octave: 4, velocity: 0.8, velocityEnabled: true },
     modules: [
       { type: "Oscillator", category: "source", enabled: true, volume: -9, pan: -0.12, options: { type: "sawtooth", detune: -8 } },
       { type: "PulseOscillator", category: "source", enabled: true, volume: -14, pan: 0.12, options: { width: 0.5, detune: 6 } },
@@ -25,7 +25,7 @@ export const BUILTIN_PRESET_TEMPLATES = {
   },
   cinematicDust: {
     name: "Cinematic Dust",
-    global: { volume: -11, octave: 3, velocity: 0.72 },
+    global: { volume: -11, octave: 3, velocity: 0.72, velocityEnabled: true },
     modules: [
       { type: "Oscillator", category: "source", enabled: true, volume: -8, pan: -0.22, options: { type: "triangle", detune: 0 } },
       { type: "Noise", category: "source", enabled: true, volume: -18, pan: 0.24, options: { type: "pink", playbackRate: 0.86 } },
@@ -49,7 +49,7 @@ export function normalizePreset(preset = {}) {
 
   const fallback = {
     name: "Untitled Patch",
-    global: { volume: -8, octave: 4, velocity: 0.8 },
+    global: { volume: -8, octave: 4, velocity: 0.8, velocityEnabled: true },
     modules: [],
     modulations: [],
   };
@@ -70,6 +70,7 @@ export function normalizePreset(preset = {}) {
   merged.global.octave = clamp(Number(merged.global.octave || 4), 1, 7);
   merged.global.velocity = clamp(Number(merged.global.velocity || 0.8), 0.1, 1);
   merged.global.volume = clamp(Number(merged.global.volume || -8), -36, 6);
+  merged.global.velocityEnabled = merged.global.velocityEnabled !== false;
 
   merged.modulations = Array.isArray(merged.modulations)
     ? merged.modulations
