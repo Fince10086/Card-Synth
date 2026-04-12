@@ -40,8 +40,8 @@ export const SOURCE_LIBRARY = {
     runtime: "noise",
     options: { type: "pink", playbackRate: 1 },
     controls: [
-      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
+      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "options.type", kind: "select", label: "Color", options: NOISE_TYPE_OPTIONS },
       { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.1, max: 1, step: 0.01, formatter: formatMultiplier },
     ],
@@ -52,8 +52,8 @@ export const SOURCE_LIBRARY = {
     runtime: "pitchedSource",
     options: { type: "sawtooth", detune: 0, phase: 0 },
     controls: [
-      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
+      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "options.type", kind: "select", label: "Wave", options: SHARED_WAVE_OPTIONS },
       { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
       { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
@@ -66,8 +66,8 @@ export const SOURCE_LIBRARY = {
     moduleDefaults: { rootNote: "C4", assetName: "Factory Pluck" },
     options: { url: DEFAULT_SAMPLE_LIBRARY.pluck, playbackRate: 1, loop: false, reverse: false, loopStart: 0, loopEnd: 0 },
     controls: [
-      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
+      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "rootNote", kind: "select", label: "Root", options: ROOT_NOTE_OPTIONS },
       { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.1, max: 3, step: 0.01, formatter: formatMultiplier },
       { path: "options.loop", kind: "toggle", label: "Loop" },
@@ -82,8 +82,8 @@ export const SOURCE_LIBRARY = {
     runtime: "pitchedSource",
     options: { width: 0.22, detune: 0, phase: 0 },
     controls: [
-      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
+      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "options.width", kind: "range", label: "Width", min: 0.01, max: 0.99, step: 0.001, formatter: formatPercent },
       { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
       { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
