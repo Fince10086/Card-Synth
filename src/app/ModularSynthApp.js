@@ -34,10 +34,6 @@ export class ModularSynthApp {
     this.heldPointerNotes = new Set();
 
     this.controlBindings = new Map();
-    this.scopeZoom = {
-      horizontal: 1,
-      vertical: 1,
-    };
 
     this.modulationManager = new ModulationManager(this);
     this.dragManager = new ModuleDragManager(this);
@@ -105,12 +101,6 @@ export class ModularSynthApp {
       midiBtn: document.getElementById("midiBtn"),
       masterReadout: document.getElementById("masterReadout"),
       midiSelecter: document.getElementById("midiSelecter"),
-      scopeZoomInH: document.getElementById("scopeZoomInH"),
-      scopeZoomOutH: document.getElementById("scopeZoomOutH"),
-      scopeZoomInV: document.getElementById("scopeZoomInV"),
-      scopeZoomOutV: document.getElementById("scopeZoomOutV"),
-      scopeHLabel: document.getElementById("scopeHLabel"),
-      scopeVLabel: document.getElementById("scopeVLabel"),
     };
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
   }
@@ -158,24 +148,6 @@ export class ModularSynthApp {
         event.target.value = "";
       }
     });
-
-    this.elements.scopeZoomInH?.addEventListener("click", () => {
-      this.scopeZoom.horizontal = Math.min(8, this.scopeZoom.horizontal * 2);
-      this.updateScopeZoomLabels();
-    });
-    this.elements.scopeZoomOutH?.addEventListener("click", () => {
-      this.scopeZoom.horizontal = Math.max(0.25, this.scopeZoom.horizontal / 2);
-      this.updateScopeZoomLabels();
-    });
-    this.elements.scopeZoomInV?.addEventListener("click", () => {
-      this.scopeZoom.vertical = Math.min(4, this.scopeZoom.vertical * 1.5);
-      this.updateScopeZoomLabels();
-    });
-    this.elements.scopeZoomOutV?.addEventListener("click", () => {
-      this.scopeZoom.vertical = Math.max(0.25, this.scopeZoom.vertical / 1.5);
-      this.updateScopeZoomLabels();
-    });
-    this.updateScopeZoomLabels();
 
     this.modulationManager.bindEvents();
   }
@@ -447,15 +419,6 @@ export class ModularSynthApp {
 
     container.innerHTML = "";
     container.appendChild(selectControl);
-  }
-
-  updateScopeZoomLabels() {
-    if (this.elements.scopeHLabel) {
-      this.elements.scopeHLabel.textContent = `${this.scopeZoom.horizontal}x`;
-    }
-    if (this.elements.scopeVLabel) {
-      this.elements.scopeVLabel.textContent = `${this.scopeZoom.vertical.toFixed(1)}x`;
-    }
   }
 
   renderModulesRack() {

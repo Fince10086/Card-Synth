@@ -108,33 +108,6 @@ export function renderMainCard({
   const scopeCanvas = document.createElement("canvas");
   scopeCanvas.id = "oscilloscope";
   scopeContainer.append(scopeCanvas);
-
-  const scopeControls = document.createElement("div");
-  scopeControls.className = "scope-controls";
-  ["scopeZoomOutH", "scopeZoomInH", "scopeZoomOutV", "scopeZoomInV"].forEach((id) => {
-    const btn = document.createElement("button");
-    btn.className = "scope-btn";
-    btn.id = id;
-    if (id.includes("H")) {
-      btn.textContent = id.includes("Out") ? "◀" : "▶";
-    } else {
-      btn.textContent = id.includes("Out") ? "▼" : "▲";
-    }
-    scopeControls.append(btn);
-  });
-
-  const hLabel = document.createElement("span");
-  hLabel.className = "scope-label";
-  hLabel.id = "scopeHLabel";
-  hLabel.textContent = "1x";
-
-  const vLabel = document.createElement("span");
-  vLabel.className = "scope-label";
-  vLabel.id = "scopeVLabel";
-  vLabel.textContent = "1x";
-
-  scopeControls.append(hLabel, vLabel);
-  scopeContainer.append(scopeControls);
   controls.append(scopeContainer);
 
   const keyboardHint = document.createElement("div");
@@ -171,13 +144,6 @@ export function cacheDynamicElements() {
   elements.keyboard = document.getElementById("virtualKeyboard");
   elements.oscilloscope = document.getElementById("oscilloscope");
   elements.scopeContext = elements.oscilloscope?.getContext("2d") || null;
-
-  elements.scopeZoomInH = document.getElementById("scopeZoomInH");
-  elements.scopeZoomOutH = document.getElementById("scopeZoomOutH");
-  elements.scopeZoomInV = document.getElementById("scopeZoomInV");
-  elements.scopeZoomOutV = document.getElementById("scopeZoomOutV");
-  elements.scopeHLabel = document.getElementById("scopeHLabel");
-  elements.scopeVLabel = document.getElementById("scopeVLabel");
 
   return elements;
 }

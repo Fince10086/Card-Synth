@@ -957,34 +957,6 @@ select {
   padding: 4px 8px;
 }
 
-/* 示波器按钮和标签 */
-
-.scope-btn {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: #5a6070;
-  font-size: 10px;
-  cursor: pointer;
-  border-radius: 3px;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.scope-btn:hover {
-  background: #e8ebf0;
-  color: #2a241b;
-}
-
-.scope-label {
-  min-width: 28px;
-  text-align: center;
-  font-size: 0.65rem;
-  color: #7c8298;
-  font-weight: 500;
-}
-
 /* 键盘提示 */
 
 .keyboard-hint {
@@ -1103,12 +1075,4 @@ select {
   display: block;
   background: #ffffff;
   border-radius: 4px;
-}
-
-.main-card__scope .scope-controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  margin-top: 4px;
 }
