@@ -6,7 +6,6 @@ import { ModuleDragManager } from "../interactions/drag/ModuleDragManager.js";
 import {
   createModuleCard,
   renderKeyboard,
-  findAutocorrelationPeak,
   resizeScopeCanvas,
   drawOscilloscope,
   renderMainCard,
@@ -69,6 +68,13 @@ export class ModularSynthApp {
     this.bindEvents();
 
     this.renderAll();
+
+    const scopeEl = document.getElementById("oscilloscope");
+    if (scopeEl) {
+      this.elements.oscilloscope = scopeEl;
+      this.scopeContext = scopeEl.getContext("2d") || null;
+    }
+
     this.resizeScopeCanvas();
     this.drawOscilloscope();
 
@@ -520,8 +526,7 @@ export class ModularSynthApp {
       canvas: this.elements.oscilloscope,
       context: this.scopeContext,
       getAnalyserFn: () => this.engine.getAnalyser(),
-      audioBooted: this.audioBooted,
-      scopeZoom: this.scopeZoom,
+      getAudioBootedFn: () => this.audioBooted,
     });
   }
 
