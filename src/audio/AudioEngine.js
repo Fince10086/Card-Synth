@@ -464,10 +464,12 @@ export class AudioEngine {
         voice.note = note;
         voice.startTime = Tone.now();
 
+        const effectiveVelocity = moduleState.modulationMode ? 1 : velocity;
+
         if (runtime.hasAmpEnv) {
-          triggerAmpEnvAttack(index, velocity);
+          triggerAmpEnvAttack(index, effectiveVelocity);
         } else {
-          voice.hiddenAmpEnv.triggerAttack(Tone.now(), velocity);
+          voice.hiddenAmpEnv.triggerAttack(Tone.now(), effectiveVelocity);
         }
 
         if (definition.runtime === "pitchedSource") {
