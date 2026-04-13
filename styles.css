@@ -370,11 +370,11 @@ select {
   justify-content: center;
   cursor: pointer;
   user-select: none;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
 }
 
 .chain-index.is-selected {
-  border-color: #000;
+  border-color: #d499ff;
 }
 
 .chain-index.is-disabled {
