@@ -33,6 +33,9 @@ export function createSliderControl({
   if (moduleId && paramPath) {
     modulationTarget.dataset.moduleId = moduleId;
     modulationTarget.dataset.paramPath = paramPath;
+    if (modulationManager && modulationManager.getModulationByTarget(moduleId, paramPath)) {
+      modulationTarget.classList.add("is-connected");
+    }
   }
 
   modulationTarget.addEventListener("pointerdown", (event) => {
