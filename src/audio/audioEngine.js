@@ -492,9 +492,21 @@ export class AudioEngine {
           }
 
           if (definition.runtime === "pitchedSource") {
-            safeSet(voice.node, moduleState.options);
+            const optsForSafeSet = (moduleState.modulationMode && moduleState.midiOn)
+              ? { ...moduleState.options, frequency: undefined }
+              : moduleState.options;
+            safeSet(voice.node, optsForSafeSet);
             if (moduleState.modulationMode && voice.node.frequency) {
-              voice.node.frequency.rampTo(getModulationFrequency(), 0.02);
+              if (moduleState.midiOn && voice.note) {
+                let nextFrequency = getNoteFrequency(voice.note);
+                const octave = Number(moduleState?.options?.octave) || 0;
+                if (octave !== 0) {
+                  nextFrequency *= Math.pow(2, octave);
+                }
+                voice.node.frequency.rampTo(nextFrequency, 0.02);
+              } else if (!moduleState.midiOn) {
+                voice.node.frequency.rampTo(getModulationFrequency(), 0.02);
+              }
             }
           } else if (definition.runtime === "noise") {
             safeSet(voice.node, moduleState.options);
@@ -528,11 +540,12 @@ export class AudioEngine {
 
         if (definition.runtime === "pitchedSource") {
           if (voice.node.frequency) {
-            let nextFrequency = moduleState.modulationMode
-              ? getModulationFrequency()
-              : getNoteFrequency(note);
+            const useMidiPitch = !moduleState.modulationMode || moduleState.midiOn;
+            let nextFrequency = useMidiPitch
+              ? getNoteFrequency(note)
+              : getModulationFrequency();
 
-            if (!moduleState.modulationMode) {
+            if (useMidiPitch) {
               const octave = Number(moduleState?.options?.octave) || 0;
               if (octave !== 0) {
                 nextFrequency *= Math.pow(2, octave);

@@ -39,6 +39,7 @@ export function renderModuleCard(module, index, app) {
         replacement.volume = module.volume;
         replacement.pan = module.pan;
         replacement.modulationMode = module.modulationMode;
+        replacement.midiOn = module.midiOn;
         const sourceFrequency = Number(module?.options?.frequency);
         if (Number.isFinite(sourceFrequency) && sourceFrequency > 0) {
           replacement.options.frequency = sourceFrequency;
@@ -73,6 +74,7 @@ export function renderModuleCard(module, index, app) {
       module.modulationMode = !module.modulationMode;
       if (!module.modulationMode) {
         app.removeOutgoingModulations(module.id);
+        module.midiOn = false;
       }
       app.selectedPresetId = "custom";
       app.renderAll();
@@ -112,6 +114,27 @@ export function renderModuleCard(module, index, app) {
     module.modulationMode &&
     (module.type === "Oscillator" || module.type === "PulseOscillator")
   ) {
+    controls.append(
+      createToggleControl({
+        label: "MIDI",
+        accent: "modulation",
+        value: Boolean(module.midiOn),
+        onToggle: (nextValue) => {
+          module.midiOn = nextValue;
+          app.selectedPresetId = "custom";
+          app.renderAll();
+          app.engine.fullSync(app.state);
+        },
+      }),
+    );
+  }
+
+  if (
+    module.category === "source" &&
+    module.modulationMode &&
+    !module.midiOn &&
+    (module.type === "Oscillator" || module.type === "PulseOscillator")
+  ) {
     const modulationFrequency = Number(module?.options?.frequency);
     const initialFrequency = Number.isFinite(modulationFrequency) && modulationFrequency > 0
       ? modulationFrequency
@@ -139,7 +162,7 @@ export function renderModuleCard(module, index, app) {
   }
 
   definition.controls.forEach((control) => {
-    if (module.category === "source" && module.modulationMode && (control.path === "pan" || control.path === "options.octave")) {
+    if (module.category === "source" && module.modulationMode && (control.path === "pan" || (control.path === "options.octave" && !module.midiOn))) {
       return;
     }
 
