@@ -149,11 +149,16 @@ export function createSliderControl({
     inputField.className = "readout-input";
 
     readout.style.display = "none";
-    controlLabel.insertBefore(inputField, readout);
+    readout.parentNode.insertBefore(inputField, readout);
     inputField.focus();
     inputField.select();
 
+    let isCommitting = false;
+
     const commitValue = () => {
+      if (isCommitting) return;
+      isCommitting = true;
+
       let newValue = Number(inputField.value);
       if (Number.isNaN(newValue)) {
         newValue = Number(input.value);
@@ -177,6 +182,8 @@ export function createSliderControl({
     };
 
     const cancelEdit = () => {
+      if (isCommitting) return;
+      isCommitting = true;
       inputField.remove();
       readout.style.display = "";
     };
