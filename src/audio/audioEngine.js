@@ -32,10 +32,12 @@ export class AudioEngine {
     this.ready = true;
 
     this.masterVolume = new Tone.Volume(state.global.volume);
+    this.limiter = new Tone.Limiter(-10);
     this.analyser = new Tone.Analyser("waveform", 1024);
     this.spectrumAnalyser = new Tone.Analyser("fft", 2048);
 
-    this.masterVolume.toDestination();
+    this.masterVolume.connect(this.limiter);
+    this.limiter.toDestination();
     this.masterVolume.connect(this.analyser);
     this.masterVolume.connect(this.spectrumAnalyser);
 
