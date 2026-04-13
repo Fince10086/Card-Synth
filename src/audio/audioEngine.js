@@ -13,9 +13,11 @@ export class AudioEngine {
     this.app = app;
     this.ready = false;
     this.state = null;
-    
+
+    this.chainRuntimes = new Map();
+    // Backward-compatible reference for callers that still expect current-chain map.
     this.moduleRuntimes = new Map();
-    
+
     this.activeNotes = new Set();
   }
 
@@ -37,11 +39,10 @@ export class AudioEngine {
     this.masterVolume.connect(this.analyser);
     this.masterVolume.connect(this.spectrumAnalyser);
 
-    this.rebuildSignalChain();
-    
-    // 调用 ModulationManager 连接调制
+    this.rebuildSignalChains();
+
     if (this.app && this.app.modulationManager) {
-      this.app.modulationManager.connectModulations(this.state.modules || []);
+      this.app.modulationManager.connectAllModulations();
     }
   }
 
@@ -61,11 +62,10 @@ export class AudioEngine {
 
     rampParam(this.masterVolume.volume, state.global.volume);
     this.silenceAll();
-    this.rebuildSignalChain();
-    
-    // 调用 ModulationManager 连接调制
+    this.rebuildSignalChains();
+
     if (this.app && this.app.modulationManager) {
-      this.app.modulationManager.connectModulations(this.state.modules || []);
+      this.app.modulationManager.connectAllModulations();
     }
   }
 
@@ -133,32 +133,68 @@ export class AudioEngine {
     };
   }
 
-  rebuildSignalChain() {
-    if (!this.masterVolume) {
+  getChainState(chainIndex) {
+    const chains = Array.isArray(this.state?.chains) ? this.state.chains : [];
+    return chains[chainIndex] || { enabled: false, modules: [], modulations: [] };
+  }
+
+  getChainRuntimeMap(chainIndex) {
+    return this.chainRuntimes.get(chainIndex) || null;
+  }
+
+  getModuleRuntime(chainIndex, moduleId) {
+    const map = this.getChainRuntimeMap(chainIndex);
+    return map ? map.get(moduleId) || null : null;
+  }
+
+  disposeRuntimeMap(runtimeMap) {
+    if (!runtimeMap) {
       return;
     }
-
-    this.moduleRuntimes.forEach((runtime) => {
+    runtimeMap.forEach((runtime) => {
       if (runtime.dispose) {
         runtime.dispose();
       }
     });
-    this.moduleRuntimes.clear();
+    runtimeMap.clear();
+  }
 
-    const modules = this.state.modules || [];
-    if (modules.length === 0) {
+  refreshCurrentRuntimeAlias() {
+    const selectedChain = this.app?.getSelectedChainIndex?.() ?? 0;
+    this.moduleRuntimes = this.getChainRuntimeMap(selectedChain) || new Map();
+  }
+
+  rebuildSignalChains() {
+    if (!this.masterVolume) {
       return;
     }
 
-    modules.forEach((module) => {
-      const runtime = this.createModuleRuntime(module);
-      this.moduleRuntimes.set(module.id, runtime);
+    this.chainRuntimes.forEach((runtimeMap) => {
+      this.disposeRuntimeMap(runtimeMap);
+    });
+    this.chainRuntimes.clear();
+
+    const chains = Array.isArray(this.state?.chains) ? this.state.chains : [];
+    chains.forEach((chain, chainIndex) => {
+      const modules = Array.isArray(chain?.modules) ? chain.modules : [];
+      if (!chain?.enabled || !modules.length) {
+        return;
+      }
+
+      const runtimeMap = new Map();
+      modules.forEach((module) => {
+        const runtime = this.createModuleRuntime(module);
+        runtimeMap.set(module.id, runtime);
+      });
+
+      this.connectSignalChain(modules, runtimeMap);
+      this.chainRuntimes.set(chainIndex, runtimeMap);
     });
 
-    this.connectSignalChain(modules);
+    this.refreshCurrentRuntimeAlias();
   }
 
-  connectSignalChain(modules) {
+  connectSignalChain(modules, runtimeMap) {
     const ampEnvIndices = new Set();
     modules.forEach((module, index) => {
       if (this.isAmpEnvModule(module) && module.enabled) {
@@ -167,20 +203,20 @@ export class AudioEngine {
     });
 
     modules.forEach((module, index) => {
-      const runtime = this.moduleRuntimes.get(module.id);
+      const runtime = runtimeMap.get(module.id);
       if (!runtime || !module.enabled) {
         return;
       }
 
       if (this.isSourceModule(module)) {
-        this.connectSourceModule(modules, index, runtime, ampEnvIndices);
+        this.connectSourceModule(modules, index, runtime, ampEnvIndices, runtimeMap);
       } else {
-        this.connectNonSourceModule(modules, index, runtime);
+        this.connectNonSourceModule(modules, index, runtime, runtimeMap);
       }
     });
   }
 
-  connectSourceModule(modules, sourceIndex, runtime, ampEnvIndices) {
+  connectSourceModule(modules, sourceIndex, runtime, ampEnvIndices, runtimeMap) {
     const sourceModule = modules[sourceIndex];
     if (sourceModule?.type === "Envelope") {
       return;
@@ -218,7 +254,7 @@ export class AudioEngine {
 
     if (isFirstModuleAmpEnv) {
       const ampEnvModule = modules[targetIndex];
-      const ampEnvRuntime = this.moduleRuntimes.get(ampEnvModule.id);
+      const ampEnvRuntime = runtimeMap.get(ampEnvModule.id);
       runtime.ampEnvRuntime = ampEnvRuntime;
 
       runtime.voices.forEach((voice, i) => {
@@ -233,7 +269,7 @@ export class AudioEngine {
       let targetNode;
       if (targetIndex >= 0) {
         const targetModule = modules[targetIndex];
-        const targetRuntime = this.moduleRuntimes.get(targetModule.id);
+        const targetRuntime = runtimeMap.get(targetModule.id);
         targetNode = targetRuntime && targetRuntime.node;
       } else {
         targetNode = this.masterVolume;
@@ -247,7 +283,7 @@ export class AudioEngine {
     }
   }
 
-  connectNonSourceModule(modules, moduleIndex, runtime) {
+  connectNonSourceModule(modules, moduleIndex, runtime, runtimeMap) {
     if (runtime.type === "AmplitudeEnvelope") {
       let targetIndex = -1;
       for (let i = moduleIndex + 1; i < modules.length; i++) {
@@ -260,7 +296,7 @@ export class AudioEngine {
       let targetNode;
       if (targetIndex >= 0) {
         const targetModule = modules[targetIndex];
-        const targetRuntime = this.moduleRuntimes.get(targetModule.id);
+        const targetRuntime = runtimeMap.get(targetModule.id);
         targetNode = targetRuntime && targetRuntime.node;
       } else {
         targetNode = this.masterVolume;
@@ -287,7 +323,7 @@ export class AudioEngine {
 
     if (targetIndex >= 0) {
       const targetModule = modules[targetIndex];
-      const targetRuntime = this.moduleRuntimes.get(targetModule.id);
+      const targetRuntime = runtimeMap.get(targetModule.id);
       if (targetRuntime && targetRuntime.node) {
         runtime.node.connect(targetRuntime.node);
       }
@@ -715,40 +751,53 @@ export class AudioEngine {
     };
   }
 
-  updateModule(moduleId, updates) {
-    const moduleIndex = this.state.modules.findIndex((m) => m.id === moduleId);
+  forEachRuntime(callback) {
+    this.chainRuntimes.forEach((runtimeMap, chainIndex) => {
+      runtimeMap.forEach((runtime, moduleId) => {
+        callback(runtime, chainIndex, moduleId);
+      });
+    });
+  }
+
+  updateModule(moduleId, updates, chainIndex = this.app?.getSelectedChainIndex?.() ?? 0) {
+    const chain = this.getChainState(chainIndex);
+    const modules = Array.isArray(chain.modules) ? chain.modules : [];
+    const moduleIndex = modules.findIndex((m) => m.id === moduleId);
     if (moduleIndex < 0) {
       return;
     }
 
-    this.state.modules[moduleIndex] = { ...this.state.modules[moduleIndex], ...updates };
+    modules[moduleIndex] = { ...modules[moduleIndex], ...updates };
 
     if (!this.ready) {
       return;
     }
 
-    const runtime = this.moduleRuntimes.get(moduleId);
+    const runtime = this.getModuleRuntime(chainIndex, moduleId);
     if (runtime && runtime.apply) {
-      runtime.apply(this.state.modules[moduleIndex]);
+      runtime.apply(modules[moduleIndex]);
     }
   }
 
-  updateSource(module) {
-    this.updateModule(module.id, module);
+  updateSource(module, chainIndex = this.app?.getSelectedChainIndex?.() ?? 0) {
+    this.updateModule(module.id, module, chainIndex);
   }
 
-  updateComponent(module) {
-    const moduleIndex = this.state.modules.findIndex((m) => m.id === module.id);
+  updateComponent(module, chainIndex = this.app?.getSelectedChainIndex?.() ?? 0) {
+    const chain = this.getChainState(chainIndex);
+    const modules = Array.isArray(chain.modules) ? chain.modules : [];
+    const moduleIndex = modules.findIndex((m) => m.id === module.id);
     if (moduleIndex >= 0) {
-      this.state.modules[moduleIndex] = deepClone(module);
+      modules[moduleIndex] = deepClone(module);
     }
     if (this.ready) {
-      this.rebuildSignalChain();
+      this.rebuildSignalChains();
+      this.app?.modulationManager?.connectAllModulations?.();
     }
   }
 
-  updateEffect(module) {
-    this.updateComponent(module);
+  updateEffect(module, chainIndex = this.app?.getSelectedChainIndex?.() ?? 0) {
+    this.updateComponent(module, chainIndex);
   }
 
   attack(note, velocity) {
@@ -758,13 +807,13 @@ export class AudioEngine {
 
     this.activeNotes.add(note);
 
-    this.moduleRuntimes.forEach((runtime) => {
+    this.forEachRuntime((runtime) => {
       if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.triggerAttack) {
         runtime.triggerAttack(note, velocity);
       }
     });
 
-    this.moduleRuntimes.forEach((runtime) => {
+    this.forEachRuntime((runtime) => {
       if (runtime.type === "AmplitudeEnvelope" && runtime.node && runtime.triggerAttack) {
         runtime.triggerAttack(note, velocity);
       }
@@ -778,13 +827,13 @@ export class AudioEngine {
 
     this.activeNotes.delete(note);
 
-    this.moduleRuntimes.forEach((runtime) => {
+    this.forEachRuntime((runtime) => {
       if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.triggerRelease) {
         runtime.triggerRelease(note);
       }
     });
 
-    this.moduleRuntimes.forEach((runtime) => {
+    this.forEachRuntime((runtime) => {
       if (runtime.type === "AmplitudeEnvelope" && runtime.node && runtime.triggerRelease) {
         runtime.triggerRelease(note);
       }
@@ -797,13 +846,13 @@ export class AudioEngine {
       return;
     }
 
-    this.moduleRuntimes.forEach((runtime) => {
+    this.forEachRuntime((runtime) => {
       if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.releaseAll) {
         runtime.releaseAll();
       }
     });
 
-    this.moduleRuntimes.forEach((runtime) => {
+    this.forEachRuntime((runtime) => {
       if (runtime.type === "AmplitudeEnvelope" && runtime.node && runtime.releaseAll) {
         runtime.releaseAll();
       }

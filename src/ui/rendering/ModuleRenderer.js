@@ -18,6 +18,7 @@ import {
 import { createModuleCard } from "../components/moduleCard.js";
 
 export function renderModuleCard(module, index, app) {
+  const chainIndex = app.getSelectedChainIndex();
   const definition = getModuleDefinition(module);
   const modulationSource = app.isModulationSource(module);
   const accent = modulationSource ? "modulation" : getModuleAccent(module);
@@ -46,7 +47,7 @@ export function renderModuleCard(module, index, app) {
       if (!app.isModulationSource(replacement)) {
         app.removeOutgoingModulations(module.id);
       }
-      app.state.modules[index] = replacement;
+      app.getCurrentModules()[index] = replacement;
       app.selectedPresetId = "custom";
       app.renderAll();
       app.engine.fullSync(app.state);
@@ -61,7 +62,7 @@ export function renderModuleCard(module, index, app) {
     },
     onRemove: () => {
       app.removeModuleModulations(module.id);
-      app.state.modules.splice(index, 1);
+      app.getCurrentModules().splice(index, 1);
       app.selectedPresetId = "custom";
       app.renderAll();
       app.engine.fullSync(app.state);
@@ -124,7 +125,7 @@ export function renderModuleCard(module, index, app) {
         max: 100,
         step: 0.01,
         value: initialFrequency,
-        path: `modules.${index}.options.frequency`,
+        path: `chains.${chainIndex}.modules.${index}.options.frequency`,
         moduleId: module.id,
         paramPath: "options.frequency",
         formatter: formatHertz,
@@ -148,7 +149,7 @@ export function renderModuleCard(module, index, app) {
         control,
         () => app.engine.updateModule(module.id, module),
         accent,
-        `modules.${index}.${control.path}`,
+        `chains.${chainIndex}.modules.${index}.${control.path}`,
         app,
       ),
     );
@@ -267,7 +268,7 @@ export async function importSourceSample(module, index, slot, file, app) {
   const dataUrl = await readFileAsDataUrl(file);
   setByPath(module, slot.path, dataUrl);
   setByPath(module, slot.namePath, file.name);
-  app.state.modules[index] = normalizeSourceModule(module);
+  app.getCurrentModules()[index] = normalizeSourceModule(module);
   app.selectedPresetId = "custom";
   app.renderAll();
   app.engine.fullSync(app.state);

@@ -345,6 +345,42 @@ select {
     z-index: 5;
 }
 
+.module-head--main {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.chain-index-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.chain-index {
+  width: 30px;
+  height: 30px;
+  background: var(--main);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  border: 2px solid transparent;
+}
+
+.chain-index.is-selected {
+  border-color: #000;
+}
+
+.chain-index.is-disabled {
+  background: var(--disabled);
+}
+
 /* 标题本身也可作为模块类型切换入口。 */
 .module-title,
 .module-title-select {

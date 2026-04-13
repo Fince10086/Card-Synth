@@ -2,12 +2,16 @@ import {
   createId,
   resetModuleCounter,
   deepMerge,
+  deepClone,
   clamp,
   normalizeAnyModule,
   createSourceModule,
   createComponentModule,
   createEffectModule,
 } from "../utils/helpers.js";
+
+const CHAIN_COUNT = 4;
+const DEFAULT_GLOBAL = { volume: -8, octave: 4, velocity: 0.8, velocityEnabled: true };
 
 export const BUILTIN_PRESET_TEMPLATES = {
   init: {
@@ -40,40 +44,27 @@ export const BUILTIN_PRESET_TEMPLATES = {
   },
 };
 
-export function createBasePreset() {
-  return normalizePreset(BUILTIN_PRESET_TEMPLATES.init);
+function createStarterModules() {
+  return [
+    createSourceModule("Oscillator"),
+    createComponentModule("Filter"),
+    createComponentModule("AmplitudeEnvelope"),
+    createEffectModule("Chorus"),
+  ];
 }
 
-export function normalizePreset(preset = {}) {
-  resetModuleCounter();
+function normalizeGlobalState(global = {}) {
+  const merged = deepMerge(DEFAULT_GLOBAL, global || {});
+  merged.octave = clamp(Number(merged.octave || 4), 1, 7);
+  merged.velocity = clamp(Number(merged.velocity || 0.8), 0.1, 1);
+  merged.volume = clamp(Number(merged.volume || -8), -36, 6);
+  merged.velocityEnabled = merged.velocityEnabled !== false;
+  return merged;
+}
 
-  const fallback = {
-    name: "Untitled Patch",
-    global: { volume: -8, octave: 4, velocity: 0.8, velocityEnabled: true },
-    modules: [],
-    modulations: [],
-  };
-
-  const merged = deepMerge(fallback, preset);
-
-  if (Array.isArray(preset.modules) && preset.modules.length > 0) {
-    merged.modules = preset.modules.map((module) => normalizeAnyModule(module));
-  } else {
-    merged.modules = [
-      createSourceModule("Oscillator"),
-      createComponentModule("Filter"),
-      createComponentModule("AmplitudeEnvelope"),
-      createEffectModule("Chorus"),
-    ];
-  }
-
-  merged.global.octave = clamp(Number(merged.global.octave || 4), 1, 7);
-  merged.global.velocity = clamp(Number(merged.global.velocity || 0.8), 0.1, 1);
-  merged.global.volume = clamp(Number(merged.global.volume || -8), -36, 6);
-  merged.global.velocityEnabled = merged.global.velocityEnabled !== false;
-
-  merged.modulations = Array.isArray(merged.modulations)
-    ? merged.modulations
+function normalizeModulations(modulations = []) {
+  return Array.isArray(modulations)
+    ? modulations
       .map((item) => {
         let radius = 0.15;
 
@@ -90,13 +81,89 @@ export function normalizePreset(preset = {}) {
           sourceVoiceIndex: clamp(Number(item?.sourceVoiceIndex ?? 0), 0, 7),
           targetModuleId: String(item?.targetModuleId || ""),
           targetParamPath: String(item?.targetParamPath || ""),
-          radius: radius,
+          radius,
         };
       })
       .filter((item) => item.sourceModuleId && item.targetModuleId && item.targetParamPath)
     : [];
+}
 
-  return merged;
+function normalizeChain(chain = {}, { defaultEnabled = false, defaultModules = [] } = {}) {
+  const hasModulesField = Array.isArray(chain?.modules);
+  const modules = hasModulesField
+    ? chain.modules.map((module) => normalizeAnyModule(module))
+    : defaultModules.map((module) => normalizeAnyModule(module));
+
+  const rawModulations = Array.isArray(chain?.modulations) ? chain.modulations : [];
+
+  return {
+    enabled: chain?.enabled === undefined ? defaultEnabled : Boolean(chain.enabled),
+    modules,
+    modulations: normalizeModulations(rawModulations),
+  };
+}
+
+function emptyChain() {
+  return { enabled: false, modules: [], modulations: [] };
+}
+
+export function normalizeCurrentPresetData(preset = {}) {
+  const modules = Array.isArray(preset.modules)
+    ? preset.modules.map((module) => normalizeAnyModule(module))
+    : createStarterModules();
+
+  return {
+    name: String(preset.name || "Untitled Patch"),
+    global: normalizeGlobalState(preset.global || {}),
+    modules,
+    modulations: normalizeModulations(Array.isArray(preset.modulations) ? preset.modulations : []),
+  };
+}
+
+export function createBasePreset() {
+  const init = normalizeCurrentPresetData(BUILTIN_PRESET_TEMPLATES.init);
+  return {
+    name: init.name,
+    global: init.global,
+    selectedChainIndex: 0,
+    chains: [
+      { enabled: true, modules: init.modules, modulations: init.modulations },
+      emptyChain(),
+      emptyChain(),
+      emptyChain(),
+    ],
+  };
+}
+
+export function normalizePreset(preset = {}) {
+  resetModuleCounter();
+
+  if (Array.isArray(preset?.chains)) {
+    const chains = Array.from({ length: CHAIN_COUNT }, (_, index) => {
+      const incoming = preset.chains[index] || {};
+      return normalizeChain(incoming, { defaultEnabled: index === 0, defaultModules: [] });
+    });
+
+    return {
+      name: String(preset.name || "Untitled Patch"),
+      global: normalizeGlobalState(preset.global || {}),
+      selectedChainIndex: clamp(Number(preset.selectedChainIndex ?? 0), 0, CHAIN_COUNT - 1),
+      chains,
+    };
+  }
+
+  const current = normalizeCurrentPresetData(preset);
+  return {
+    name: current.name,
+    global: current.global,
+    selectedChainIndex: 0,
+    chains: [
+      { enabled: true, modules: current.modules, modulations: current.modulations },
+      emptyChain(),
+      emptyChain(),
+      emptyChain(),
+    ],
+  };
 }
 
 function downloadJson(filename, data) {
@@ -112,12 +179,58 @@ function downloadJson(filename, data) {
 
 export async function importPresetFromFile(file) {
   const text = await file.text();
-  const preset = normalizePreset(JSON.parse(text));
-  return preset;
+  const raw = JSON.parse(text);
+
+  if (Array.isArray(raw?.chains) || raw?.presetType === "all") {
+    return {
+      type: "all",
+      preset: normalizePreset(raw),
+    };
+  }
+
+  return {
+    type: "current",
+    chain: normalizeCurrentPresetData(raw),
+  };
+}
+
+export function exportCurrentPresetToFile(state, chainIndex = 0) {
+  const selectedIndex = clamp(Number(chainIndex || 0), 0, CHAIN_COUNT - 1);
+  const chain = state?.chains?.[selectedIndex] || emptyChain();
+  const slug = (state?.name || "tone-preset").toLowerCase().replace(/\s+/g, "-");
+  const filename = `${slug}-current.json`;
+
+  const payload = {
+    presetType: "current",
+    name: state?.name || "Current Chain",
+    global: deepClone(state?.global || DEFAULT_GLOBAL),
+    modules: deepClone(chain.modules || []),
+    modulations: deepClone(chain.modulations || []),
+  };
+
+  downloadJson(filename, payload);
+  return filename;
+}
+
+export function exportAllPresetToFile(state) {
+  const slug = (state?.name || "tone-preset").toLowerCase().replace(/\s+/g, "-");
+  const filename = `${slug}-all.json`;
+
+  const payload = normalizePreset({
+    presetType: "all",
+    name: state?.name || "All Chains",
+    global: deepClone(state?.global || DEFAULT_GLOBAL),
+    selectedChainIndex: clamp(Number(state?.selectedChainIndex ?? 0), 0, CHAIN_COUNT - 1),
+    chains: deepClone(state?.chains || []),
+  });
+
+  payload.presetType = "all";
+  downloadJson(filename, payload);
+  return filename;
 }
 
 export function exportPresetToFile(state) {
-  const filename = `${(state.name || "tone-preset").toLowerCase().replace(/\s+/g, "-")}.json`;
-  downloadJson(filename, state);
+  const selectedChainIndex = clamp(Number(state?.selectedChainIndex ?? 0), 0, CHAIN_COUNT - 1);
+  const filename = exportCurrentPresetToFile(state, selectedChainIndex);
   return filename;
 }

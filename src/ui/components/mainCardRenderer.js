@@ -1,15 +1,18 @@
 import { createSelectControl, createSliderControl, createToggleControl } from "../controls/index.js";
 import { formatDb } from "../../core/formatters.js";
-import { exportPresetToFile } from "../../preset/preset.js";
 import { createModuleCard } from "./moduleCard.js";
 
 export function renderMainCard({
   selectedPresetId,
   state,
+  selectedChainIndex,
+  chains,
   audioBooted,
   onPresetChange,
+  onChainIndexClick,
   onImportClick,
-  onExportClick,
+  onExportCurrentClick,
+  onExportAllClick,
   onResetClick,
   onRandomClick,
   onMidiClick,
@@ -21,6 +24,46 @@ export function renderMainCard({
     title: "Main",
     isMainCard: true,
   });
+
+  const head = card.querySelector(".module-head");
+  const titleWrap = card.querySelector(".module-title");
+  if (head && titleWrap) {
+    head.classList.add("module-head--main");
+    head.innerHTML = "";
+
+    const leftGroup = document.createElement("div");
+    leftGroup.className = "chain-index-group chain-index-group--left";
+
+    const rightGroup = document.createElement("div");
+    rightGroup.className = "chain-index-group chain-index-group--right";
+
+    [0, 1, 2, 3].forEach((chainIndex) => {
+      const chain = chains?.[chainIndex] || { enabled: false };
+      const badge = document.createElement("span");
+      badge.className = "chain-index";
+      badge.textContent = `${["I", "II", "III", "IV"][chainIndex]}`;
+
+      const isSelected = selectedChainIndex === chainIndex;
+      if (isSelected) {
+        badge.classList.add("is-selected");
+      }
+      if (!chain.enabled) {
+        badge.classList.add("is-disabled");
+      }
+
+      badge.addEventListener("click", () => {
+        onChainIndexClick?.(chainIndex, isSelected);
+      });
+
+      if (chainIndex < 2) {
+        leftGroup.append(badge);
+      } else {
+        rightGroup.append(badge);
+      }
+    });
+
+    head.append(leftGroup, titleWrap, rightGroup);
+  }
 
   const controls = document.createElement("div");
   controls.className = "module-grid";
@@ -46,7 +89,7 @@ export function renderMainCard({
 
   const buttonRow = document.createElement("div");
   buttonRow.className = "preset-buttons";
-  ["Import", "Export", "Reset", "Random", "MIDI"].forEach((label) => {
+  ["Import", "Export Current", "Export All", "Reset", "Random", "MIDI"].forEach((label) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "pill-button";
@@ -54,8 +97,10 @@ export function renderMainCard({
 
     if (label === "Import") {
       btn.addEventListener("click", () => onImportClick?.());
-    } else if (label === "Export") {
-      btn.addEventListener("click", () => onExportClick?.(state, audioBooted));
+    } else if (label === "Export Current") {
+      btn.addEventListener("click", () => onExportCurrentClick?.());
+    } else if (label === "Export All") {
+      btn.addEventListener("click", () => onExportAllClick?.());
     } else if (label === "Reset") {
       btn.addEventListener("click", () => onResetClick?.());
     } else if (label === "Random") {

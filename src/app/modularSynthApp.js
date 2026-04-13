@@ -1,10 +1,17 @@
-import { createBasePreset, BUILTIN_PRESET_TEMPLATES, normalizePreset, importPresetFromFile, exportPresetToFile } from "../preset/preset.js";
+import {
+  createBasePreset,
+  BUILTIN_PRESET_TEMPLATES,
+  normalizeCurrentPresetData,
+  normalizePreset,
+  importPresetFromFile,
+  exportCurrentPresetToFile,
+  exportAllPresetToFile,
+} from "../preset/preset.js";
 import { AudioEngine } from "../audio/AudioEngine.js";
 import { InputManager } from "../input/InputManager.js";
 import { ModulationManager } from "../interactions/modulation/ModulationManager.js";
 import { ModuleDragManager } from "../interactions/drag/ModuleDragManager.js";
 import {
-  createModuleCard,
   renderKeyboard,
   resizeScopeCanvas,
   startScopeRendering,
@@ -13,9 +20,9 @@ import {
   renderMainCardContent,
   cacheDynamicElements as cacheDynamicElementsFn,
 } from "../ui/components/index.js";
-import { renderModuleCard, renderModuleControl } from "../ui/rendering/ModuleRenderer.js";
+import { renderModuleCard } from "../ui/rendering/ModuleRenderer.js";
 import { layoutModuleMasonry } from "../ui/layout/MasonryLayout.js";
-import { createSelectControl, createToggleControl, createSliderControl, createAudioImportControl } from "../ui/controls/index.js";
+import { createSelectControl } from "../ui/controls/index.js";
 import {
   deepClone,
   getByPath,
@@ -23,12 +30,16 @@ import {
   createModule,
   getAddableModuleOptions,
   clamp,
+  getModuleDefinition,
 } from "../utils/helpers.js";
 import { formatDb } from "../core/formatters.js";
+
+const CHAIN_COUNT = 4;
 
 export class ModularSynthApp {
   constructor() {
     this.state = createBasePreset();
+    this.ensureChainsState();
     this.selectedPresetId = "init";
     this.audioBooted = false;
 
@@ -82,6 +93,70 @@ export class ModularSynthApp {
       this.layoutModuleMasonry();
       this.modulationManager.renderModulationOverlay();
     });
+  }
+
+  ensureChainsState() {
+    this.state = normalizePreset(this.state);
+    this.selectedChainIndex = clamp(Number(this.state.selectedChainIndex ?? 0), 0, CHAIN_COUNT - 1);
+    this.state.selectedChainIndex = this.selectedChainIndex;
+  }
+
+  getChainCount() {
+    return CHAIN_COUNT;
+  }
+
+  getSelectedChainIndex() {
+    return this.selectedChainIndex;
+  }
+
+  setSelectedChainIndex(index) {
+    this.selectedChainIndex = clamp(Number(index || 0), 0, CHAIN_COUNT - 1);
+    this.state.selectedChainIndex = this.selectedChainIndex;
+    this.engine?.refreshCurrentRuntimeAlias?.();
+  }
+
+  getChain(chainIndex = this.selectedChainIndex) {
+    const index = clamp(Number(chainIndex || 0), 0, CHAIN_COUNT - 1);
+    if (!Array.isArray(this.state.chains)) {
+      this.state.chains = [];
+    }
+    if (!this.state.chains[index]) {
+      this.state.chains[index] = { enabled: false, modules: [], modulations: [] };
+    }
+    const chain = this.state.chains[index];
+    if (!Array.isArray(chain.modules)) {
+      chain.modules = [];
+    }
+    if (!Array.isArray(chain.modulations)) {
+      chain.modulations = [];
+    }
+    chain.enabled = Boolean(chain.enabled);
+    return chain;
+  }
+
+  getCurrentChain() {
+    return this.getChain(this.selectedChainIndex);
+  }
+
+  getCurrentModules() {
+    return this.getCurrentChain().modules;
+  }
+
+  getCurrentModulations() {
+    return this.getCurrentChain().modulations;
+  }
+
+  setCurrentModulations(nextModulations) {
+    this.getCurrentChain().modulations = Array.isArray(nextModulations) ? nextModulations : [];
+  }
+
+  isChainEnabled(chainIndex) {
+    return Boolean(this.getChain(chainIndex).enabled);
+  }
+
+  setChainEnabled(chainIndex, enabled) {
+    const chain = this.getChain(chainIndex);
+    chain.enabled = Boolean(enabled);
   }
 
   cacheElements() {
@@ -138,13 +213,28 @@ export class ModularSynthApp {
       }
 
       try {
-        const preset = await importPresetFromFile(file);
+        const imported = await importPresetFromFile(file);
         const previousState = deepClone(this.state);
-        this.state = preset;
+
+        if (imported.type === "all") {
+          this.state = normalizePreset(imported.preset);
+          this.setSelectedChainIndex(this.state.selectedChainIndex ?? 0);
+        } else {
+          const chain = this.getCurrentChain();
+          chain.modules = imported.chain.modules;
+          chain.modulations = imported.chain.modulations;
+          this.state.name = imported.chain.name || this.state.name;
+        }
+
         this.selectedPresetId = "custom";
         this.renderAll(previousState);
         this.engine.fullSync(this.state);
-        this.setStatus(`Imported preset from ${file.name}.`, "live");
+        this.setStatus(
+          imported.type === "all"
+            ? `Imported all chains from ${file.name}.`
+            : `Imported current chain from ${file.name}.`,
+          "live",
+        );
       } catch (error) {
         this.setStatus(`Import failed: ${error.message}`, "error");
       } finally {
@@ -310,7 +400,7 @@ export class ModularSynthApp {
 
     const [category, type] = value.split(":");
     const newModule = createModule(category, type);
-    this.state.modules.push(newModule);
+    this.getCurrentModules().push(newModule);
     this.selectedPresetId = "custom";
     this.renderAll();
     this.engine.fullSync(this.state);
@@ -366,7 +456,7 @@ export class ModularSynthApp {
     const addCard = container.querySelector(".add-module-card");
     const mainCard = container.querySelector('.module-card[data-main-card="true"]');
 
-    layoutModuleMasonry({ container, modules: this.state.modules, addCard, mainCard });
+    layoutModuleMasonry({ container, modules: this.getCurrentModules(), addCard, mainCard });
   }
 
   updateMainCardContent() {
@@ -443,12 +533,30 @@ export class ModularSynthApp {
     const mainCard = renderMainCard({
       selectedPresetId: this.selectedPresetId,
       state: this.state,
+      selectedChainIndex: this.getSelectedChainIndex(),
+      chains: this.state.chains,
       audioBooted: this.audioBooted,
       onPresetChange: (value) => this.applyBuiltinPreset(value),
+      onChainIndexClick: (chainIndex, isSelected) => {
+        if (!isSelected) {
+          this.setSelectedChainIndex(chainIndex);
+          this.renderAll();
+          return;
+        }
+
+        this.setChainEnabled(chainIndex, !this.isChainEnabled(chainIndex));
+        this.selectedPresetId = "custom";
+        this.renderAll();
+        this.engine.fullSync(this.state);
+      },
       onImportClick: () => this.elements.presetFileInput?.click(),
-      onExportClick: (state, audioBooted) => {
-        const filename = exportPresetToFile(state);
-        this.setStatus(`Exported ${filename}.`, audioBooted ? "live" : "neutral");
+      onExportCurrentClick: () => {
+        const filename = exportCurrentPresetToFile(this.state, this.getSelectedChainIndex());
+        this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
+      },
+      onExportAllClick: () => {
+        const filename = exportAllPresetToFile(this.state);
+        this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
       },
       onResetClick: () => this.applyBuiltinPreset("init"),
       onRandomClick: () => this.randomizeCurrentPatch(),
@@ -474,7 +582,7 @@ export class ModularSynthApp {
       container.insertBefore(mainCard, addCard);
     }
 
-    const modules = this.state.modules || [];
+    const modules = this.getCurrentModules();
     modules.forEach((module, index) => {
       const card = renderModuleCard(module, index, this);
       if (card) {
@@ -560,11 +668,18 @@ export class ModularSynthApp {
     }
 
     const previousState = deepClone(this.state);
-    this.state = normalizePreset(template);
+    const chainPreset = normalizeCurrentPresetData(template);
+    const chain = this.getCurrentChain();
+
+    chain.modules = chainPreset.modules;
+    chain.modulations = chainPreset.modulations;
+    chain.enabled = true;
+
+    this.state.name = chainPreset.name;
     this.selectedPresetId = presetId;
     this.renderAll(previousState);
     this.engine.fullSync(this.state);
-    this.setStatus(`LOADED PRESET: ${this.state.name}.`, this.audioBooted ? "live" : "neutral");
+    this.setStatus(`LOADED PRESET: ${chainPreset.name}.`, this.audioBooted ? "live" : "neutral");
   }
 
   syncControlsFromState() {
@@ -629,9 +744,9 @@ export class ModularSynthApp {
     this.state.global.volume = randomRange(-16, -4, 0.1);
     this.state.global.velocity = randomRange(0.55, 1, 0.01);
 
-    const modules = this.state.modules || [];
+    const modules = this.getCurrentModules();
     modules.forEach((module) => {
-      const definition = require("../utils/helpers").getModuleDefinition(module);
+      const definition = getModuleDefinition(module);
       if (module.category === "source") {
         module.volume = randomRange(-18, -4, 0.1);
         module.pan = randomRange(-0.45, 0.45, 0.01);

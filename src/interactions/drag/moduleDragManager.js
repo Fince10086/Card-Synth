@@ -19,7 +19,7 @@ export class ModuleDragManager {
   }
 
   initModuleDrag(event, card, moduleIndex) {
-    const modules = this.app.state.modules || [];
+    const modules = this.app.getCurrentModules();
     if (modules.length <= 1) {
       return;
     }
@@ -106,7 +106,7 @@ export class ModuleDragManager {
       ) {
         targetCard = card;
         const moduleId = card.dataset.moduleId;
-        const modules = this.app.state.modules || [];
+        const modules = this.app.getCurrentModules();
         targetIndex = modules.findIndex((m) => m.id === moduleId);
         break;
       }
@@ -122,7 +122,7 @@ export class ModuleDragManager {
       return;
     }
 
-    if (!targetCard && targetIndex !== this.app.state.modules.length) {
+    if (!targetCard && targetIndex !== this.app.getCurrentModules().length) {
       this.removeDragIndicator();
       return;
     }
@@ -219,7 +219,7 @@ export class ModuleDragManager {
   }
 
   reorderModule(fromIndex, toIndex) {
-    const modules = this.app.state.modules;
+    const modules = this.app.getCurrentModules();
 
     if (fromIndex < 0 || fromIndex >= modules.length || toIndex < 0 || toIndex >= modules.length) {
       return;
