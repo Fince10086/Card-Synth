@@ -526,9 +526,17 @@ export class AudioEngine {
 
         if (definition.runtime === "pitchedSource") {
           if (voice.node.frequency) {
-            const nextFrequency = moduleState.modulationMode
+            let nextFrequency = moduleState.modulationMode
               ? getModulationFrequency()
               : getNoteFrequency(note);
+
+            if (!moduleState.modulationMode) {
+              const octave = Number(moduleState?.options?.octave) || 0;
+              if (octave !== 0) {
+                nextFrequency *= Math.pow(2, octave);
+              }
+            }
+
             voice.node.frequency.rampTo(nextFrequency, 0.02);
           }
         } else if (definition.runtime === "noise") {

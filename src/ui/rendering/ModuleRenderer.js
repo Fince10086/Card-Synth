@@ -139,7 +139,7 @@ export function renderModuleCard(module, index, app) {
   }
 
   definition.controls.forEach((control) => {
-    if (module.category === "source" && module.modulationMode && control.path === "pan") {
+    if (module.category === "source" && module.modulationMode && (control.path === "pan" || control.path === "options.octave")) {
       return;
     }
 
