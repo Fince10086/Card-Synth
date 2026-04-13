@@ -14,6 +14,11 @@ export const KEYBOARD_LAYOUT = [
   { key: "u", offset: 10, whiteIndex: 5, black: true },
   { key: "j", offset: 11, whiteIndex: 6, black: false },
   { key: "k", offset: 12, whiteIndex: 7, black: false },
+  { key: "o", offset: 13, whiteIndex: 7, black: true },
+  { key: "l", offset: 14, whiteIndex: 8, black: false },
+  { key: "p", offset: 15, whiteIndex: 8, black: true },
+  { key: ";", offset: 16, whiteIndex: 9, black: false },
+  { key: "'", offset: 17, whiteIndex: 10, black: false },
 ];
 
 export function noteFromOffset(baseOctave, offset) {
