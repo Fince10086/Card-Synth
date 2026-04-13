@@ -1,5 +1,6 @@
 import * as Tone from "tone";
 import { getByPath } from "../../utils/helpers.js";
+import { MODULATION_BLACKLIST } from "./modulationBlacklist.js";
 
 /**
  * ModulationManager - 调制连接管理器
@@ -166,7 +167,13 @@ export class ModulationManager {
     // 检查是否悬停在有效的滑块控件上
     const slider = event.target?.closest?.(".control.control-slider[data-module-id][data-param-path]");
     if (slider) {
-      slider.classList.add("mod-target-hover");
+      const mainCard = slider.closest(".module-card[data-main-card='true']");
+      const paramPath = slider.dataset.paramPath;
+      const isBlacklisted = MODULATION_BLACKLIST.includes(paramPath);
+      
+      if (!mainCard && !isBlacklisted) {
+        slider.classList.add("mod-target-hover");
+      }
     }
 
     this.renderModulationOverlay();
@@ -192,6 +199,16 @@ export class ModulationManager {
           node.classList.remove("mod-target-hover");
         });
         this.app.setStatus("Main Card parameters cannot be modulated.", "error");
+        this.cancelModulationDrag();
+        return;
+      }
+
+      const paramPath = targetControl.dataset.paramPath;
+      if (MODULATION_BLACKLIST.includes(paramPath)) {
+        document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
+          node.classList.remove("mod-target-hover");
+        });
+        this.app.setStatus(`Parameter "${paramPath}" cannot be modulated.`, "error");
         this.cancelModulationDrag();
         return;
       }
@@ -248,6 +265,12 @@ export class ModulationManager {
     const targetModuleCard = document.querySelector(`.module-card[data-module-id="${targetModuleId}"][data-main-card='true']`);
     if (targetModuleCard) {
       this.app.setStatus("Main Card parameters cannot be modulated.", "error");
+      return;
+    }
+
+    // 检查目标参数是否在黑名单中
+    if (MODULATION_BLACKLIST.includes(targetParamPath)) {
+      this.app.setStatus(`Parameter "${targetParamPath}" cannot be modulated.`, "error");
       return;
     }
 

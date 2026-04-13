@@ -15,7 +15,7 @@ import {
   createSliderControl,
   createAudioImportControl,
 } from "../controls/index.js";
-import { createModuleCard } from "../components/ModuleCard.js";
+import { createModuleCard } from "../components/moduleCard.js";
 
 export function renderModuleCard(module, index, app) {
   const definition = getModuleDefinition(module);
