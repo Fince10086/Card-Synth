@@ -348,6 +348,7 @@ export class AudioEngine {
     const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
     let moduleState = deepClone(module);
     const VOICE_COUNT = 8;
+    const PLAYER_IDLE_DISPOSE_SECONDS = 6;
     const VOICE_STATE = {
       IDLE: "idle",
       ACTIVE: "active",
@@ -421,10 +422,38 @@ export class AudioEngine {
         startTime: 0,
         state: VOICE_STATE.IDLE,
         releaseEndTime: 0,
+        idleSince: 0,
       };
     };
 
     const voices = Array.from({ length: VOICE_COUNT }, createVoice);
+
+    const createPlayerNodeForVoice = (voice) => {
+      const playerNode = new Tone.Player(moduleState.options);
+      applyPlayerLikeOptions(playerNode, moduleState.options);
+      playerNode.connect(voice.volumeNode);
+      voice.node = playerNode;
+      return playerNode;
+    };
+
+    const disposeVoiceNode = (voice) => {
+      if (!voice.node || typeof voice.node.dispose !== "function") {
+        voice.node = null;
+        return;
+      }
+      voice.node.dispose();
+      voice.node = null;
+    };
+
+    const ensureVoiceNode = (voice) => {
+      if (definition.runtime !== "player") {
+        return voice.node;
+      }
+      if (voice.node) {
+        return voice.node;
+      }
+      return createPlayerNodeForVoice(voice);
+    };
 
     const getVoiceReleaseDuration = (voice, voiceIndex) => {
       if (runtime.hasAmpEnv) {
@@ -447,6 +476,7 @@ export class AudioEngine {
       if (voice.state === VOICE_STATE.RELEASING && now >= voice.releaseEndTime) {
         voice.state = VOICE_STATE.IDLE;
         voice.releaseEndTime = 0;
+        voice.idleSince = now;
         if (!voice.note) {
           voice.startTime = 0;
         }
@@ -454,6 +484,17 @@ export class AudioEngine {
 
       if (voice.state === VOICE_STATE.IDLE && voice.note) {
         voice.state = VOICE_STATE.ACTIVE;
+        voice.idleSince = 0;
+      }
+
+      if (
+        definition.runtime === "player"
+        && voice.state === VOICE_STATE.IDLE
+        && voice.node
+        && voice.idleSince > 0
+        && now - voice.idleSince >= PLAYER_IDLE_DISPOSE_SECONDS
+      ) {
+        disposeVoiceNode(voice);
       }
     };
 
@@ -466,6 +507,7 @@ export class AudioEngine {
     const scheduleVoiceRelease = (voice, voiceIndex, now = Tone.now()) => {
       voice.state = VOICE_STATE.RELEASING;
       voice.releaseEndTime = now + getVoiceReleaseDuration(voice, voiceIndex);
+      voice.idleSince = 0;
     };
 
     const releaseVoice = (voice, voiceIndex, now = Tone.now()) => {
@@ -479,9 +521,11 @@ export class AudioEngine {
       }
 
       if (definition.runtime === "player") {
-        try {
-          voice.node.stop(now);
-        } catch {}
+        if (voice.node) {
+          try {
+            voice.node.stop(now);
+          } catch {}
+        }
       }
 
       if (hadAssignedNote || voice.state !== VOICE_STATE.IDLE) {
@@ -568,6 +612,7 @@ export class AudioEngine {
 
       apply: (nextModule) => {
         moduleState = deepClone(nextModule);
+        refreshAllVoiceLifecycles();
         voices.forEach((voice) => {
           rampParam(voice.volumeNode.gain, Tone.dbToGain(moduleState.enabled ? moduleState.volume : -48));
           if (voice.panNode) {
@@ -594,8 +639,10 @@ export class AudioEngine {
           } else if (definition.runtime === "noise") {
             safeSet(voice.node, moduleState.options);
           } else if (definition.runtime === "player") {
-            safeSet(voice.node, moduleState.options);
-            applyPlayerLikeOptions(voice.node, moduleState.options);
+            if (voice.node) {
+              safeSet(voice.node, moduleState.options);
+              applyPlayerLikeOptions(voice.node, moduleState.options);
+            }
           }
         });
       },
@@ -619,6 +666,7 @@ export class AudioEngine {
         voice.startTime = now;
         voice.state = VOICE_STATE.ACTIVE;
         voice.releaseEndTime = 0;
+        voice.idleSince = 0;
 
         const effectiveVelocity = (!this.state.global.velocityEnabled || moduleState.modulationMode) ? 1 : velocity;
 
@@ -646,18 +694,19 @@ export class AudioEngine {
           }
         } else if (definition.runtime === "noise") {
         } else if (definition.runtime === "player") {
-          if (!voice.node.loaded) {
+          const playerNode = ensureVoiceNode(voice);
+          if (!playerNode || !playerNode.loaded) {
             releaseVoice(voice, index, now);
             updateHiddenAmpEnvRelease();
             return;
           }
-          if ("playbackRate" in voice.node) {
-            voice.node.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
+          if ("playbackRate" in playerNode) {
+            playerNode.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
           }
           try {
-            voice.node.stop(now);
+            playerNode.stop(now);
           } catch {}
-          voice.node.start(now);
+          playerNode.start(now);
         }
         updateHiddenAmpEnvRelease();
       },
