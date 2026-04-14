@@ -1,4 +1,4 @@
-import { ModularSynthApp } from "./app/ModularSynthApp.js";
+import { ModularSynthApp } from "./app/modularSynthApp.js";
 
 window.addEventListener("DOMContentLoaded", () => {
   try {

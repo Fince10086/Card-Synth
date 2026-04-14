@@ -7,10 +7,10 @@ import {
   exportCurrentPresetToFile,
   exportAllPresetToFile,
 } from "../preset/preset.js";
-import { AudioEngine } from "../audio/AudioEngine.js";
-import { InputManager } from "../input/InputManager.js";
-import { ModulationManager } from "../interactions/modulation/ModulationManager.js";
-import { ModuleDragManager } from "../interactions/drag/ModuleDragManager.js";
+import { AudioEngine } from "../audio/audioEngine.js";
+import { InputManager } from "../input/inputManager.js";
+import { ModulationManager } from "../interactions/modulation/modulationManager.js";
+import { ModuleDragManager } from "../interactions/drag/moduleDragManager.js";
 import {
   renderKeyboard,
   resizeScopeCanvas,
@@ -20,8 +20,8 @@ import {
   renderMainCardContent,
   cacheDynamicElements as cacheDynamicElementsFn,
 } from "../ui/components/index.js";
-import { renderModuleCard } from "../ui/rendering/ModuleRenderer.js";
-import { layoutModuleMasonry } from "../ui/layout/MasonryLayout.js";
+import { renderModuleCard } from "../ui/rendering/moduleRenderer.js";
+import { layoutModuleMasonry } from "../ui/layout/masonryLayout.js";
 import { createSelectControl } from "../ui/controls/index.js";
 import {
   deepClone,
