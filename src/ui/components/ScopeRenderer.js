@@ -13,12 +13,21 @@ export function resizeScopeCanvas(canvas, context) {
   const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
 
-  if (rect.width === 0 || rect.height === 0) {
+  const computedStyle = getComputedStyle(canvas);
+  const borderLeft = parseFloat(computedStyle.borderLeftWidth) || 0;
+  const borderRight = parseFloat(computedStyle.borderRightWidth) || 0;
+  const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
+  const borderBottom = parseFloat(computedStyle.borderBottomWidth) || 0;
+
+  const width = rect.width - borderLeft - borderRight;
+  const height = rect.height - borderTop - borderBottom;
+
+  if (width <= 0 || height <= 0) {
     return;
   }
 
-  canvas.width = Math.round(rect.width * dpr);
-  canvas.height = Math.round(rect.height * dpr);
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
@@ -44,10 +53,17 @@ export function startScopeRendering({
       return;
     }
 
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
+    const rect = canvas.getBoundingClientRect();
+    const computedStyle = getComputedStyle(canvas);
+    const borderLeft = parseFloat(computedStyle.borderLeftWidth) || 0;
+    const borderRight = parseFloat(computedStyle.borderRightWidth) || 0;
+    const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
+    const borderBottom = parseFloat(computedStyle.borderBottomWidth) || 0;
 
-    if (width === 0 || height === 0) {
+    const width = rect.width - borderLeft - borderRight;
+    const height = rect.height - borderTop - borderBottom;
+
+    if (width <= 0 || height <= 0) {
       return;
     }
 
