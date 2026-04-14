@@ -348,6 +348,11 @@ export class AudioEngine {
     const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
     let moduleState = deepClone(module);
     const VOICE_COUNT = 8;
+    const VOICE_STATE = {
+      IDLE: "idle",
+      ACTIVE: "active",
+      RELEASING: "releasing",
+    };
 
     const getNoteFrequency = (note) => Tone.Frequency(note).toFrequency();
     const getPitchRatio = (note) => {
@@ -414,27 +419,105 @@ export class AudioEngine {
         hiddenAmpEnv,
         note: null,
         startTime: 0,
+        state: VOICE_STATE.IDLE,
+        releaseEndTime: 0,
       };
     };
 
     const voices = Array.from({ length: VOICE_COUNT }, createVoice);
 
-    const findAvailableVoice = () => {
-      let oldest = null;
-      let oldestIndex = -1;
-      for (let i = 0; i < voices.length; i++) {
-        if (!voices[i].note) {
-          return { voice: voices[i], index: i };
-        }
-        if (!oldest || voices[i].startTime < oldest.startTime) {
-          oldest = voices[i];
-          oldestIndex = i;
+    const getVoiceReleaseDuration = (voice, voiceIndex) => {
+      if (runtime.hasAmpEnv) {
+        const ampEnvVoice = runtime.ampEnvRuntime?.voices?.[voiceIndex];
+        const release = Number(ampEnvVoice?.release);
+        if (Number.isFinite(release) && release >= 0) {
+          return release;
         }
       }
-      return oldest ? { voice: oldest, index: oldestIndex } : null;
+
+      const hiddenRelease = Number(voice.hiddenAmpEnv?.release);
+      if (Number.isFinite(hiddenRelease) && hiddenRelease >= 0) {
+        return hiddenRelease;
+      }
+
+      return 0.01;
+    };
+
+    const refreshVoiceLifecycle = (voice, now = Tone.now()) => {
+      if (voice.state === VOICE_STATE.RELEASING && now >= voice.releaseEndTime) {
+        voice.state = VOICE_STATE.IDLE;
+        voice.releaseEndTime = 0;
+        if (!voice.note) {
+          voice.startTime = 0;
+        }
+      }
+
+      if (voice.state === VOICE_STATE.IDLE && voice.note) {
+        voice.state = VOICE_STATE.ACTIVE;
+      }
+    };
+
+    const refreshAllVoiceLifecycles = (now = Tone.now()) => {
+      voices.forEach((voice) => {
+        refreshVoiceLifecycle(voice, now);
+      });
+    };
+
+    const scheduleVoiceRelease = (voice, voiceIndex, now = Tone.now()) => {
+      voice.state = VOICE_STATE.RELEASING;
+      voice.releaseEndTime = now + getVoiceReleaseDuration(voice, voiceIndex);
+    };
+
+    const releaseVoice = (voice, voiceIndex, now = Tone.now()) => {
+      const hadAssignedNote = voice.note !== null;
+      voice.note = null;
+
+      if (runtime.hasAmpEnv) {
+        triggerAmpEnvRelease(voiceIndex);
+      } else {
+        voice.hiddenAmpEnv.triggerRelease(now);
+      }
+
+      if (definition.runtime === "player") {
+        try {
+          voice.node.stop(now);
+        } catch {}
+      }
+
+      if (hadAssignedNote || voice.state !== VOICE_STATE.IDLE) {
+        scheduleVoiceRelease(voice, voiceIndex, now);
+      } else {
+        refreshVoiceLifecycle(voice, now);
+      }
+    };
+
+    const findAvailableVoice = () => {
+      const now = Tone.now();
+      refreshAllVoiceLifecycles(now);
+
+      for (let i = 0; i < voices.length; i++) {
+        if (voices[i].state === VOICE_STATE.IDLE && !voices[i].note) {
+          return { voice: voices[i], index: i };
+        }
+      }
+
+      let oldestStealable = null;
+      let oldestStealableIndex = -1;
+      for (let i = 0; i < voices.length; i++) {
+        if (voices[i].state === VOICE_STATE.IDLE) {
+          continue;
+        }
+        if (!oldestStealable || voices[i].startTime < oldestStealable.startTime) {
+          oldestStealable = voices[i];
+          oldestStealableIndex = i;
+        }
+      }
+
+      return oldestStealable ? { voice: oldestStealable, index: oldestStealableIndex } : null;
     };
 
     const findVoiceByNote = (note) => {
+      refreshAllVoiceLifecycles();
       const index = voices.findIndex((v) => v.note === note);
       return index >= 0 ? { voice: voices[index], index } : null;
     };
@@ -526,16 +609,23 @@ export class AudioEngine {
           return;
         }
         const { voice, index } = result;
+        const now = Tone.now();
+
+        if (voice.note && voice.note !== note) {
+          releaseVoice(voice, index, now);
+        }
 
         voice.note = note;
-        voice.startTime = Tone.now();
+        voice.startTime = now;
+        voice.state = VOICE_STATE.ACTIVE;
+        voice.releaseEndTime = 0;
 
         const effectiveVelocity = (!this.state.global.velocityEnabled || moduleState.modulationMode) ? 1 : velocity;
 
         if (runtime.hasAmpEnv) {
           triggerAmpEnvAttack(index, effectiveVelocity);
         } else {
-          voice.hiddenAmpEnv.triggerAttack(Tone.now(), effectiveVelocity);
+          voice.hiddenAmpEnv.triggerAttack(now, effectiveVelocity);
         }
 
         if (definition.runtime === "pitchedSource") {
@@ -557,12 +647,7 @@ export class AudioEngine {
         } else if (definition.runtime === "noise") {
         } else if (definition.runtime === "player") {
           if (!voice.node.loaded) {
-            voice.note = null;
-            if (runtime.hasAmpEnv) {
-              triggerAmpEnvRelease(index);
-            } else {
-              voice.hiddenAmpEnv.triggerRelease(Tone.now());
-            }
+            releaseVoice(voice, index, now);
             updateHiddenAmpEnvRelease();
             return;
           }
@@ -570,9 +655,9 @@ export class AudioEngine {
             voice.node.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
           }
           try {
-            voice.node.stop(Tone.now());
+            voice.node.stop(now);
           } catch {}
-          voice.node.start(Tone.now());
+          voice.node.start(now);
         }
         updateHiddenAmpEnvRelease();
       },
@@ -583,38 +668,15 @@ export class AudioEngine {
           return;
         }
         const { voice, index } = result;
-        voice.note = null;
-
-        if (runtime.hasAmpEnv) {
-          triggerAmpEnvRelease(index);
-        } else {
-          voice.hiddenAmpEnv.triggerRelease(Tone.now());
-        }
-
-        if (definition.runtime === "pitchedSource") {
-        } else if (definition.runtime === "noise") {
-        } else if (definition.runtime === "player") {
-          try {
-            voice.node.stop(Tone.now());
-          } catch {}
-        }
+        releaseVoice(voice, index);
         updateHiddenAmpEnvRelease();
       },
 
       releaseAll: () => {
+        const now = Tone.now();
         voices.forEach((voice, index) => {
-          if (voice.note) {
-            voice.note = null;
-            if (runtime.hasAmpEnv) {
-              triggerAmpEnvRelease(index);
-            } else {
-              voice.hiddenAmpEnv.triggerRelease(Tone.now());
-            }
-          }
-          if (definition.runtime === "player") {
-            try {
-              voice.node.stop(Tone.now());
-            } catch {}
+          if (voice.note || voice.state !== VOICE_STATE.IDLE) {
+            releaseVoice(voice, index, now);
           }
         });
         updateHiddenAmpEnvRelease();
