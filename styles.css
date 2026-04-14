@@ -31,18 +31,12 @@ body {
   background: #eff0f5;
 }
 
-/* 历史装饰入口已弃用，显式关闭避免与新设计冲突。 */
-body::before {
-  display: none;
-}
-
 button,
 input,
 select {
   font: inherit;
 }
 
-/* 页面为"主内容 + 固定右侧边栏"预留空间。 */
 .page-shell {
   width: 100%;
   max-width: none;
@@ -84,20 +78,6 @@ select {
 .panel {
   background: #ffffff;
   box-shadow: none;
-}
-
-.toolbar-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: min(320px, 100%);
-  color: #7b8095;
-  font-size: 0.72rem;
-}
-
-.toolbar-field span {
-  font-weight: 600;
-  color: var(--ink);
 }
 
 .signal-flow {
