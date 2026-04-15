@@ -16,12 +16,18 @@ export function createSliderControl({
   engine = null,
   modulationManager = null,
   onPresetChange = null,
+  macroBinding = null,
+  onManualMacroInput = null,
+  onMacroRangeChange = null,
 }) {
   const wrapper = document.createElement("label");
   wrapper.className = "control control-slider";
   if (moduleId && paramPath) {
     wrapper.dataset.moduleId = moduleId;
     wrapper.dataset.paramPath = paramPath;
+    wrapper.dataset.sliderMin = String(min);
+    wrapper.dataset.sliderMax = String(max);
+    wrapper.dataset.sliderStep = String(step);
   }
 
   const controlLabel = document.createElement("div");
@@ -65,6 +71,7 @@ export function createSliderControl({
 
   const shell = document.createElement("div");
   shell.className = "slider-shell";
+  shell.style.setProperty("--thumb-fill", "#ffffff");
 
   const input = document.createElement("input");
   input.type = "range";
@@ -85,32 +92,49 @@ export function createSliderControl({
 
   updateVisual(value);
 
+  const syncModulationRange = (nextValue) => {
+    if (!(modulation && paintRange)) {
+      return;
+    }
+    paintRange();
+    const centerValue = Number(nextValue);
+    const radius = modulation.radius ?? ((max - min) * 0.15);
+    modulationManager?.updateModulationRange(modulation.id, centerValue, radius);
+  };
+
+  const setVisualValue = (nextValue) => {
+    input.value = String(nextValue);
+    updateVisual(nextValue);
+    syncModulationRange(nextValue);
+  };
+
   if (path && controlBindings) {
     controlBindings.set(path, {
-      setVisual: (nextValue) => {
-        input.value = String(nextValue);
-        updateVisual(nextValue);
-      },
+      setVisual: (nextValue) => setVisualValue(nextValue),
     });
   }
 
   let paintRange = null;
+  let clearMacroVisualState = null;
+  let macroBindingCleared = false;
+
+  const clearMacroBindingOnManualInput = () => {
+    if (macroBindingCleared) {
+      return;
+    }
+    const removed = onManualMacroInput?.();
+    if (removed) {
+      macroBindingCleared = true;
+      clearMacroVisualState?.();
+    }
+  };
 
   input.addEventListener("input", (event) => {
     const nextValue = Number(event.target.value);
-    updateVisual(nextValue);
+    clearMacroBindingOnManualInput();
+    setVisualValue(nextValue);
     if (eventName === "input") {
       onInput(nextValue);
-    }
-    if (modulation && paintRange) {
-      paintRange();
-      const centerValue = nextValue;
-      const radius = modulation.radius ?? ((max - min) * 0.15);
-      modulationManager?.updateModulationRange(
-        modulation.id,
-        centerValue,
-        radius
-      );
     }
   });
 
@@ -121,18 +145,10 @@ export function createSliderControl({
   if (eventName === "change") {
     input.addEventListener("change", (event) => {
       const nextValue = Number(event.target.value);
+      clearMacroBindingOnManualInput();
+      setVisualValue(nextValue);
       onInput(nextValue);
       input.blur();
-      if (modulation && paintRange) {
-        paintRange();
-        const centerValue = nextValue;
-        const radius = modulation.radius ?? ((max - min) * 0.15);
-        modulationManager?.updateModulationRange(
-          modulation.id,
-          centerValue,
-          radius
-        );
-      }
     });
   }
 
@@ -167,21 +183,11 @@ export function createSliderControl({
         newValue = Number(input.value);
       }
       newValue = Math.max(min, Math.min(max, newValue));
-      input.value = String(newValue);
-      updateVisual(newValue);
+      setVisualValue(newValue);
+      clearMacroBindingOnManualInput();
       onInput(newValue);
       inputField.remove();
       readout.style.display = "";
-      if (modulation && paintRange) {
-        paintRange();
-        const centerValue = newValue;
-        const radius = modulation.radius ?? ((max - min) * 0.15);
-        modulationManager?.updateModulationRange(
-          modulation.id,
-          centerValue,
-          radius
-        );
-      }
     };
 
     const cancelEdit = () => {
@@ -204,6 +210,75 @@ export function createSliderControl({
   };
 
   readout.addEventListener("dblclick", handleReadoutDoubleClick);
+
+  if (macroBinding) {
+    shell.classList.add("slider-shell--macro-bound");
+    shell.style.setProperty("--thumb-fill", macroBinding.color || "var(--ink)");
+
+    const markerStart = document.createElement("span");
+    markerStart.className = "macro-range-marker macro-range-marker--start";
+    markerStart.textContent = "┌";
+
+    const markerEnd = document.createElement("span");
+    markerEnd.className = "macro-range-marker macro-range-marker--end";
+    markerEnd.textContent = "┐";
+
+    shell.append(markerStart, markerEnd);
+
+    let rangeStart = Math.max(0, Math.min(1, Number(macroBinding.rangeStart ?? 0)));
+    let rangeEnd = Math.max(0, Math.min(1, Number(macroBinding.rangeEnd ?? 1)));
+
+    const paintMacroRange = () => {
+      markerStart.style.left = `${rangeStart * 100}%`;
+      markerEnd.style.left = `${rangeEnd * 100}%`;
+    };
+
+    const updateRangeFromPointer = (clientX, markerType) => {
+      const rect = shell.getBoundingClientRect();
+      if (!rect.width) {
+        return;
+      }
+      const norm = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      if (markerType === "start") {
+        rangeStart = norm;
+      } else {
+        rangeEnd = norm;
+      }
+      paintMacroRange();
+      onMacroRangeChange?.(rangeStart, rangeEnd);
+    };
+
+    const bindMacroMarkerDrag = (marker, markerType) => {
+      marker.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const onMove = (moveEvent) => {
+          updateRangeFromPointer(moveEvent.clientX, markerType);
+        };
+
+        const onUp = () => {
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+        };
+
+        updateRangeFromPointer(event.clientX, markerType);
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+      });
+    };
+
+    bindMacroMarkerDrag(markerStart, "start");
+    bindMacroMarkerDrag(markerEnd, "end");
+    paintMacroRange();
+
+    clearMacroVisualState = () => {
+      shell.classList.remove("slider-shell--macro-bound");
+      shell.style.setProperty("--thumb-fill", "#ffffff");
+      markerStart.remove();
+      markerEnd.remove();
+    };
+  }
 
   if (modulation) {
     shell.classList.add("slider-shell--mod-range");

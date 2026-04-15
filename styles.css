@@ -535,6 +535,10 @@ select {
   background: color-mix(in srgb, var(--modulation) 20%, transparent);
 }
 
+.control.macro-target-hover {
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
 .control-file {
   gap: 6px;
 }
@@ -644,13 +648,30 @@ select {
   transform: translate(-50%, 10%);
 }
 
+.macro-range-marker {
+  position: absolute;
+  top: -10px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: ew-resize;
+  user-select: none;
+  transform: translateX(-50%);
+}
+
+.macro-range-marker--start,
+.macro-range-marker--end {
+  transform: translateX(-50%);
+}
+
 .slider-input::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 12px;
   height: 12px;
   border-radius: 999px;
   border: 2px solid currentColor;
-  background: #ffffff;
+  background: var(--thumb-fill, #ffffff);
   box-shadow: none;
 }
 
@@ -659,7 +680,7 @@ select {
   height: 12px;
   border: 2px solid currentColor;
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--thumb-fill, #ffffff);
   box-shadow: none;
 }
 
@@ -1086,6 +1107,68 @@ select {
 .main-card__scope {
     gap: 4px;
     display: inline-grid;
+}
+
+.main-card__macro {
+  display: grid;
+  gap: 6px;
+}
+
+.macro-pad {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: #ffffff;
+  border: 1px solid #e0e2eb;
+  border-radius: 4px;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.macro-point {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #ffffff;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+}
+
+.macro-point:active {
+  cursor: grabbing;
+}
+
+.macro-point.is-selected {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 25%, white);
+}
+
+.macro-axis-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.macro-axis-handle {
+  min-height: 28px;
+  border: 1px solid #e0e2eb;
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: grab;
+}
+
+.macro-axis-handle:active {
+  cursor: grabbing;
+}
+
+.macro-axis-handle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .main-card__scope #oscilloscope {

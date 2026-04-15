@@ -7,6 +7,7 @@ export function renderMainCard({
   state,
   selectedChainIndex,
   chains,
+  macro,
   audioBooted,
   onPresetChange,
   onChainIndexClick,
@@ -18,6 +19,8 @@ export function renderMainCard({
   onMidiClick,
   onMasterVolumeChange,
   onVelocityEnabledChange,
+  onMacroPointPointerDown,
+  onMacroAxisPointerDown,
 }) {
   const card = createModuleCard({
     accent: "indigo",
@@ -146,6 +149,66 @@ export function renderMainCard({
       },
     })
   );
+
+  const macroContainer = document.createElement("div");
+  macroContainer.className = "main-card__macro";
+
+  const macroLabel = document.createElement("div");
+  macroLabel.className = "control-label";
+  const macroLabelStrong = document.createElement("strong");
+  macroLabelStrong.textContent = "Macro";
+  macroLabel.append(macroLabelStrong);
+  macroContainer.append(macroLabel);
+
+  const macroPad = document.createElement("div");
+  macroPad.className = "macro-pad";
+
+  const points = Array.isArray(macro?.points) ? macro.points : [];
+  points.forEach((point) => {
+    if (!point?.visible) {
+      return;
+    }
+
+    const macroPoint = document.createElement("button");
+    macroPoint.type = "button";
+    macroPoint.className = "macro-point";
+    if (point.selected) {
+      macroPoint.classList.add("is-selected");
+    }
+    macroPoint.style.left = `${Number(point.x) * 100}%`;
+    macroPoint.style.top = `${(1 - Number(point.y)) * 100}%`;
+    macroPoint.style.background = point.color;
+    macroPoint.setAttribute("aria-label", `Macro Chain ${point.chainIndex + 1}`);
+
+    macroPoint.addEventListener("pointerdown", (event) => {
+      onMacroPointPointerDown?.(event, point.chainIndex, macroPad);
+    });
+
+    macroPad.append(macroPoint);
+  });
+
+  macroContainer.append(macroPad);
+
+  const axisRow = document.createElement("div");
+  axisRow.className = "macro-axis-row";
+
+  const selectedChainEnabled = Boolean(macro?.selectedChainEnabled);
+  const makeAxisButton = (axis, text) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "macro-axis-handle";
+    button.textContent = text;
+    button.disabled = !selectedChainEnabled;
+    button.setAttribute("aria-label", axis === "x" ? "Bind Macro X Axis" : "Bind Macro Y Axis");
+    button.addEventListener("pointerdown", (event) => {
+      onMacroAxisPointerDown?.(event, axis);
+    });
+    return button;
+  };
+
+  axisRow.append(makeAxisButton("x", "←→"), makeAxisButton("y", "↑↓"));
+  macroContainer.append(axisRow);
+  controls.append(macroContainer);
 
   const scopeContainer = document.createElement("div");
   scopeContainer.className = "main-card__scope";

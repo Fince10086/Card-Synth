@@ -48,6 +48,7 @@ export function renderModuleCard(module, index, app) {
       if (!app.isModulationSource(replacement)) {
         app.removeOutgoingModulations(module.id);
       }
+      app.removeMacroBindingsForModule(module.id);
       app.getCurrentModules()[index] = replacement;
       app.selectedPresetId = "custom";
       app.renderAll();
@@ -63,6 +64,7 @@ export function renderModuleCard(module, index, app) {
     },
     onRemove: () => {
       app.removeModuleModulations(module.id);
+      app.removeMacroBindingsForModule(module.id);
       app.getCurrentModules().splice(index, 1);
       app.selectedPresetId = "custom";
       app.renderAll();
@@ -149,9 +151,25 @@ export function renderModuleCard(module, index, app) {
         step: 0.01,
         value: initialFrequency,
         path: `chains.${chainIndex}.modules.${index}.options.frequency`,
+        controlBindings: app.controlBindings,
         moduleId: module.id,
         paramPath: "options.frequency",
         formatter: formatHertz,
+        macroBinding: app.getMacroBindingForTarget(module.id, "options.frequency"),
+        onManualMacroInput: () => app.handleManualMacroInput(module.id, "options.frequency"),
+        onMacroRangeChange: (rangeStart, rangeEnd) => {
+          const binding = app.getMacroBindingForTarget(module.id, "options.frequency");
+          if (!binding) {
+            return;
+          }
+          app.updateMacroBindingRange({
+            moduleId: module.id,
+            paramPath: "options.frequency",
+            axis: binding.axis,
+            rangeStart,
+            rangeEnd,
+          });
+        },
         onInput: (value) => {
           setByPath(module, "options.frequency", value);
           app.selectedPresetId = "custom";
@@ -185,6 +203,7 @@ export function renderModuleCard(module, index, app) {
 export function renderModuleControl(module, control, onCommit, accent, bindingPath = null, app) {
   const path = control.path;
   const value = getByPath(module, path);
+  const macroBinding = app.getMacroBindingForTarget(module.id, path);
 
   if (control.kind === "select") {
     return createSelectControl({
@@ -221,10 +240,25 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
     step: control.step,
     value,
     path: bindingPath,
+    controlBindings: app.controlBindings,
     moduleId: module.id,
     paramPath: control.path,
+    macroBinding,
     modulation: app.getModulationByTarget(module.id, control.path),
     formatter: control.formatter || formatPlain,
+    onManualMacroInput: () => app.handleManualMacroInput(module.id, control.path),
+    onMacroRangeChange: (rangeStart, rangeEnd) => {
+      if (!macroBinding) {
+        return;
+      }
+      app.updateMacroBindingRange({
+        moduleId: module.id,
+        paramPath: control.path,
+        axis: macroBinding.axis,
+        rangeStart,
+        rangeEnd,
+      });
+    },
     onInput: (nextValue) => {
       setByPath(module, path, nextValue);
       app.selectedPresetId = "custom";

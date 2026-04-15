@@ -1,5 +1,6 @@
 import {
   createBasePreset,
+  createDefaultMacroChainState,
   BUILTIN_PRESET_TEMPLATES,
   normalizeCurrentPresetData,
   normalizePreset,
@@ -10,6 +11,7 @@ import {
 import { AudioEngine } from "../audio/audioEngine.js";
 import { InputManager } from "../input/inputManager.js";
 import { ModulationManager } from "../interactions/modulation/modulationManager.js";
+import { MacroManager } from "../interactions/macro/macroManager.js";
 import { ModuleDragManager } from "../interactions/drag/moduleDragManager.js";
 import {
   renderKeyboard,
@@ -49,6 +51,7 @@ export class ModularSynthApp {
 
     this.scopeMode = "scope";
 
+    this.macroManager = new MacroManager(this);
     this.modulationManager = new ModulationManager(this);
     this.dragManager = new ModuleDragManager(this);
     this.engine = new AudioEngine(this);
@@ -223,6 +226,9 @@ export class ModularSynthApp {
           const chain = this.getCurrentChain();
           chain.modules = imported.chain.modules;
           chain.modulations = imported.chain.modulations;
+
+          this.macroManager.ensureMacroState();
+          this.state.macro.chains[this.getSelectedChainIndex()] = imported.chain.macro || createDefaultMacroChainState();
           this.state.name = imported.chain.name || this.state.name;
         }
 
@@ -243,6 +249,7 @@ export class ModularSynthApp {
     });
 
     this.modulationManager.bindEvents();
+    this.macroManager.bindEvents();
   }
 
   setStatus(message, tone = "neutral") {
@@ -409,6 +416,7 @@ export class ModularSynthApp {
   renderAll(previousState = null) {
     this.populateAddModuleDropdown();
     this.controlBindings = new Map();
+    this.macroManager.applyAllMappings();
 
     const sections = [
       ["main-card content", () => this.updateMainCardContent()],
@@ -535,6 +543,7 @@ export class ModularSynthApp {
       state: this.state,
       selectedChainIndex: this.getSelectedChainIndex(),
       chains: this.state.chains,
+      macro: this.macroManager.getMainCardViewModel(),
       audioBooted: this.audioBooted,
       onPresetChange: (value) => this.applyBuiltinPreset(value),
       onChainIndexClick: (chainIndex, isSelected) => {
@@ -576,6 +585,16 @@ export class ModularSynthApp {
         this.state.global.velocityEnabled = value;
         this.selectedPresetId = "custom";
         this.engine.updateGlobal(this.state.global);
+      },
+      onMacroPointPointerDown: (event, chainIndex, padElement) => {
+        this.macroManager.startPointDrag({ event, chainIndex, padElement });
+      },
+      onMacroAxisPointerDown: (event, axis) => {
+        this.macroManager.startAxisBindingDrag({
+          event,
+          axis,
+          chainIndex: this.getSelectedChainIndex(),
+        });
       },
     });
     if (mainCard) {
@@ -645,6 +664,29 @@ export class ModularSynthApp {
     this.modulationManager.startModulationDrag(options);
   }
 
+  getMacroBindingForTarget(moduleId, paramPath, chainIndex = this.getSelectedChainIndex()) {
+    return this.macroManager.getBindingForTarget(moduleId, paramPath, chainIndex);
+  }
+
+  handleManualMacroInput(moduleId, paramPath, chainIndex = this.getSelectedChainIndex()) {
+    return this.macroManager.removeBindingsForTarget(moduleId, paramPath, chainIndex);
+  }
+
+  updateMacroBindingRange({ moduleId, paramPath, axis, rangeStart, rangeEnd }) {
+    return this.macroManager.updateBindingRange({
+      chainIndex: this.getSelectedChainIndex(),
+      axis,
+      moduleId,
+      paramPath,
+      rangeStart,
+      rangeEnd,
+    });
+  }
+
+  removeMacroBindingsForModule(moduleId) {
+    this.macroManager.removeBindingsForModule(moduleId);
+  }
+
   removeModulationById(connectionId) {
     this.modulationManager.removeModulationById(connectionId);
   }
@@ -674,6 +716,7 @@ export class ModularSynthApp {
     chain.modules = chainPreset.modules;
     chain.modulations = chainPreset.modulations;
     chain.enabled = true;
+    this.macroManager.resetChainMacro(this.getSelectedChainIndex());
 
     this.state.name = chainPreset.name;
     this.selectedPresetId = presetId;
