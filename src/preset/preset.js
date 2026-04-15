@@ -145,9 +145,9 @@ export function normalizeMacroChain(chainMacro = {}) {
   };
 }
 
-export function createDefaultMacroState(chainCount = CHAIN_COUNT) {
+export function createDefaultMacroState() {
   return {
-    chains: Array.from({ length: chainCount }, () => createDefaultMacroChainState()),
+    chains: Array.from({ length: CHAIN_COUNT }, () => createDefaultMacroChainState()),
   };
 }
 
@@ -170,15 +170,12 @@ export function normalizeMacroState(macro = null, chainFallback = []) {
 
 export function hasMacroSettingsInChain(chainMacro = {}) {
   const normalized = normalizeMacroChain(chainMacro);
-  const hasDefaultPoint =
-    Math.abs(normalized.point.x - MACRO_POINT_DEFAULT.x) <= MACRO_EPSILON
-    && Math.abs(normalized.point.y - MACRO_POINT_DEFAULT.y) <= MACRO_EPSILON;
-
-  if (!hasDefaultPoint) {
-    return true;
-  }
-
-  return normalized.mappings.x.length > 0 || normalized.mappings.y.length > 0;
+  return (
+    Math.abs(normalized.point.x - MACRO_POINT_DEFAULT.x) > MACRO_EPSILON
+    || Math.abs(normalized.point.y - MACRO_POINT_DEFAULT.y) > MACRO_EPSILON
+    || normalized.mappings.x.length > 0
+    || normalized.mappings.y.length > 0
+  );
 }
 
 export function hasAnyMacroSettings(macroState = {}) {

@@ -664,29 +664,6 @@ export class ModularSynthApp {
     this.modulationManager.startModulationDrag(options);
   }
 
-  getMacroBindingForTarget(moduleId, paramPath, chainIndex = this.getSelectedChainIndex()) {
-    return this.macroManager.getBindingForTarget(moduleId, paramPath, chainIndex);
-  }
-
-  handleManualMacroInput(moduleId, paramPath, chainIndex = this.getSelectedChainIndex()) {
-    return this.macroManager.removeBindingsForTarget(moduleId, paramPath, chainIndex);
-  }
-
-  updateMacroBindingRange({ moduleId, paramPath, axis, rangeStart, rangeEnd }) {
-    return this.macroManager.updateBindingRange({
-      chainIndex: this.getSelectedChainIndex(),
-      axis,
-      moduleId,
-      paramPath,
-      rangeStart,
-      rangeEnd,
-    });
-  }
-
-  removeMacroBindingsForModule(moduleId) {
-    this.macroManager.removeBindingsForModule(moduleId);
-  }
-
   removeModulationById(connectionId) {
     this.modulationManager.removeModulationById(connectionId);
   }

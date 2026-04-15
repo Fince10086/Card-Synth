@@ -17,6 +17,22 @@ import {
 } from "../controls/index.js";
 import { createModuleCard } from "../components/moduleCard.js";
 
+function getMacroSliderProps(app, moduleId, paramPath) {
+  const chainIndex = app.getSelectedChainIndex();
+  const readBinding = () => app.macroManager.getBindingForTarget(moduleId, paramPath, chainIndex);
+  return {
+    macroBinding: readBinding(),
+    onManualMacroInput: () => app.macroManager.removeBindingsForTarget(moduleId, paramPath, chainIndex),
+    onMacroRangeChange: (rangeStart, rangeEnd) => {
+      const binding = readBinding();
+      if (!binding) {
+        return;
+      }
+      app.macroManager.updateBindingRange({ chainIndex, axis: binding.axis, moduleId, paramPath, rangeStart, rangeEnd });
+    },
+  };
+}
+
 export function renderModuleCard(module, index, app) {
   const chainIndex = app.getSelectedChainIndex();
   const definition = getModuleDefinition(module);
@@ -48,7 +64,7 @@ export function renderModuleCard(module, index, app) {
       if (!app.isModulationSource(replacement)) {
         app.removeOutgoingModulations(module.id);
       }
-      app.removeMacroBindingsForModule(module.id);
+      app.macroManager.removeBindingsForModule(module.id);
       app.getCurrentModules()[index] = replacement;
       app.selectedPresetId = "custom";
       app.renderAll();
@@ -64,7 +80,7 @@ export function renderModuleCard(module, index, app) {
     },
     onRemove: () => {
       app.removeModuleModulations(module.id);
-      app.removeMacroBindingsForModule(module.id);
+      app.macroManager.removeBindingsForModule(module.id);
       app.getCurrentModules().splice(index, 1);
       app.selectedPresetId = "custom";
       app.renderAll();
@@ -155,21 +171,7 @@ export function renderModuleCard(module, index, app) {
         moduleId: module.id,
         paramPath: "options.frequency",
         formatter: formatHertz,
-        macroBinding: app.getMacroBindingForTarget(module.id, "options.frequency"),
-        onManualMacroInput: () => app.handleManualMacroInput(module.id, "options.frequency"),
-        onMacroRangeChange: (rangeStart, rangeEnd) => {
-          const binding = app.getMacroBindingForTarget(module.id, "options.frequency");
-          if (!binding) {
-            return;
-          }
-          app.updateMacroBindingRange({
-            moduleId: module.id,
-            paramPath: "options.frequency",
-            axis: binding.axis,
-            rangeStart,
-            rangeEnd,
-          });
-        },
+        ...getMacroSliderProps(app, module.id, "options.frequency"),
         onInput: (value) => {
           setByPath(module, "options.frequency", value);
           app.selectedPresetId = "custom";
@@ -203,7 +205,7 @@ export function renderModuleCard(module, index, app) {
 export function renderModuleControl(module, control, onCommit, accent, bindingPath = null, app) {
   const path = control.path;
   const value = getByPath(module, path);
-  const macroBinding = app.getMacroBindingForTarget(module.id, path);
+  const macroSliderProps = getMacroSliderProps(app, module.id, path);
 
   if (control.kind === "select") {
     return createSelectControl({
@@ -243,22 +245,9 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
     controlBindings: app.controlBindings,
     moduleId: module.id,
     paramPath: control.path,
-    macroBinding,
+    ...macroSliderProps,
     modulation: app.getModulationByTarget(module.id, control.path),
     formatter: control.formatter || formatPlain,
-    onManualMacroInput: () => app.handleManualMacroInput(module.id, control.path),
-    onMacroRangeChange: (rangeStart, rangeEnd) => {
-      if (!macroBinding) {
-        return;
-      }
-      app.updateMacroBindingRange({
-        moduleId: module.id,
-        paramPath: control.path,
-        axis: macroBinding.axis,
-        rangeStart,
-        rangeEnd,
-      });
-    },
     onInput: (nextValue) => {
       setByPath(module, path, nextValue);
       app.selectedPresetId = "custom";

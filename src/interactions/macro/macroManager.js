@@ -11,10 +11,6 @@ const TARGET_SELECTOR = ".control.control-slider[data-module-id][data-param-path
 const HOVER_CLASS = "macro-target-hover";
 const VALUE_EPSILON = 1e-6;
 
-function createTargetKey(moduleId, paramPath) {
-  return `${moduleId}::${paramPath}`;
-}
-
 function normalizeStep(min, max, step) {
   if (Number.isFinite(step) && step > 0) {
     return step;
@@ -187,28 +183,18 @@ export class MacroManager {
     item.rangeEnd = nextEnd;
 
     this.app.selectedPresetId = "custom";
-    this.applyMappingsForChain(chainIndex, {
-      syncControls: chainIndex === this.app.getSelectedChainIndex(),
-    });
+    this.applyMappingsForChain(chainIndex, chainIndex === this.app.getSelectedChainIndex());
 
     return true;
   }
 
-  applyAllMappings({ syncControlsForSelected = false } = {}) {
-    let changed = false;
-    const selected = this.app.getSelectedChainIndex();
-
+  applyAllMappings() {
     for (let chainIndex = 0; chainIndex < this.app.getChainCount(); chainIndex += 1) {
-      const chainChanged = this.applyMappingsForChain(chainIndex, {
-        syncControls: syncControlsForSelected && chainIndex === selected,
-      });
-      changed = changed || chainChanged;
+      this.applyMappingsForChain(chainIndex, false);
     }
-
-    return changed;
   }
 
-  applyMappingsForChain(chainIndex, { syncControls = false } = {}) {
+  applyMappingsForChain(chainIndex, syncControls = false) {
     const chain = this.app.getChain(chainIndex);
     const modules = Array.isArray(chain.modules) ? chain.modules : [];
     if (!modules.length) {
@@ -280,7 +266,7 @@ export class MacroManager {
       pointerId: event.pointerId,
       chainIndex,
       padElement,
-      pointElement: event.currentTarget?.closest?.(".macro-point") || event.target?.closest?.(".macro-point") || null,
+      pointElement: event.currentTarget || event.target?.closest?.(".macro-point") || null,
     };
 
     this.updatePointFromPointer(event);
@@ -378,9 +364,7 @@ export class MacroManager {
     chainMacro.point.y = nextY;
 
     this.app.selectedPresetId = "custom";
-    this.applyMappingsForChain(this.pointDrag.chainIndex, {
-      syncControls: this.pointDrag.chainIndex === this.app.getSelectedChainIndex(),
-    });
+    this.applyMappingsForChain(this.pointDrag.chainIndex, this.pointDrag.chainIndex === this.app.getSelectedChainIndex());
 
     const point = this.pointDrag.pointElement;
     if (point) {
@@ -406,9 +390,7 @@ export class MacroManager {
     }
 
     this.app.selectedPresetId = "custom";
-    this.applyMappingsForChain(this.bindingDrag.chainIndex, {
-      syncControls: this.bindingDrag.chainIndex === this.app.getSelectedChainIndex(),
-    });
+    this.applyMappingsForChain(this.bindingDrag.chainIndex, this.bindingDrag.chainIndex === this.app.getSelectedChainIndex());
     this.app.renderAll();
   }
 
@@ -430,9 +412,8 @@ export class MacroManager {
 
     const chainMacro = this.getChainMacro(chainIndex);
     const mappings = chainMacro.mappings[axis];
-    const key = createTargetKey(targetModuleId, targetParamPath);
     const existingIndex = mappings.findIndex(
-      (item) => createTargetKey(item.targetModuleId, item.targetParamPath) === key,
+      (item) => item.targetModuleId === targetModuleId && item.targetParamPath === targetParamPath,
     );
 
     const previous = existingIndex >= 0 ? mappings[existingIndex] : null;
@@ -458,15 +439,7 @@ export class MacroManager {
 
   findTargetControl(event) {
     const control = event.target?.closest?.(TARGET_SELECTOR);
-    if (!control) {
-      return null;
-    }
-
-    if (control.closest(".module-card[data-main-card='true']")) {
-      return null;
-    }
-
-    return control;
+    return control && !control.closest(".module-card[data-main-card='true']") ? control : null;
   }
 
   updateBindingHover(event) {
