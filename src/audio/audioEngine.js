@@ -349,6 +349,7 @@ export class AudioEngine {
     let moduleState = deepClone(module);
     const VOICE_COUNT = 8;
     const PLAYER_IDLE_DISPOSE_SECONDS = 6;
+    const VOICE_INDEX_RESERVE_SECONDS = 10;
     const VOICE_STATE = {
       IDLE: "idle",
       ACTIVE: "active",
@@ -515,6 +516,10 @@ export class AudioEngine {
     };
 
     const getVoiceReleaseDuration = (voice, voiceIndex) => {
+      if (runtime.preserveVoiceSlotsForSourceTargets && moduleState.modulationMode && moduleState.midiOn) {
+        return VOICE_INDEX_RESERVE_SECONDS;
+      }
+
       if (runtime.hasAmpEnv) {
         const ampEnvVoice = runtime.ampEnvRuntime?.voices?.[voiceIndex];
         const release = Number(ampEnvVoice?.release);
@@ -663,6 +668,7 @@ export class AudioEngine {
       hasAmpEnv: false,
       ampEnvRuntime: null,
       needsExtendedRelease: false,
+      preserveVoiceSlotsForSourceTargets: false,
 
       getModulationOutput: (voiceIndex) => {
         const voice = voices[voiceIndex];

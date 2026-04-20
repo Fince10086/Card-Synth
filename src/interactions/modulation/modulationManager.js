@@ -404,10 +404,26 @@ export class ModulationManager {
 
   connectAllModulations() {
     this.clearModulationRuntimes();
+    this.resetSourceVoiceAlignmentHints();
 
     const chainCount = this.app.getChainCount();
     for (let chainIndex = 0; chainIndex < chainCount; chainIndex += 1) {
       this.connectChainModulations(chainIndex);
+    }
+  }
+
+  resetSourceVoiceAlignmentHints() {
+    const chainCount = this.app.getChainCount();
+    for (let chainIndex = 0; chainIndex < chainCount; chainIndex += 1) {
+      const runtimeMap = this.app.engine.getChainRuntimeMap(chainIndex);
+      if (!runtimeMap) {
+        continue;
+      }
+      runtimeMap.forEach((runtime) => {
+        if (runtime?.category === "source") {
+          runtime.preserveVoiceSlotsForSourceTargets = false;
+        }
+      });
     }
   }
 
@@ -422,11 +438,22 @@ export class ModulationManager {
       return;
     }
 
+    const sourceTargetProfile = new Map();
+
     modulations.forEach((mod) => {
       const targets = this.getModulationTargetParams(mod, chainIndex);
       if (!targets.length) {
         return;
       }
+
+      const hasSourceVoiceTargets = targets.some(({ voiceIndex }) => Number.isFinite(voiceIndex));
+      const profile = sourceTargetProfile.get(mod.sourceModuleId) || { hasSourceTargets: false, hasNonSourceTargets: false };
+      if (hasSourceVoiceTargets) {
+        profile.hasSourceTargets = true;
+      } else {
+        profile.hasNonSourceTargets = true;
+      }
+      sourceTargetProfile.set(mod.sourceModuleId, profile);
 
       targets.forEach(({ param, voiceIndex }) => {
         const sourceVoiceIndex = Number.isFinite(voiceIndex)
@@ -469,6 +496,20 @@ export class ModulationManager {
           this.updateModulationRange(mod.id, currentSliderValue, radius, chainIndex);
         }
       }
+    });
+
+    sourceTargetProfile.forEach((profile, sourceModuleId) => {
+      const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, sourceModuleId);
+      if (!sourceRuntime || sourceRuntime.category !== "source") {
+        return;
+      }
+      const moduleState = sourceRuntime.moduleState || {};
+      sourceRuntime.preserveVoiceSlotsForSourceTargets = Boolean(
+        profile.hasSourceTargets
+        && !profile.hasNonSourceTargets
+        && moduleState.modulationMode
+        && moduleState.midiOn,
+      );
     });
   }
 
