@@ -482,9 +482,10 @@ export class ModulationManager {
           modulationId: mod.id,
           sourceVoiceIndex,
           targetParamPath: mod.targetParamPath,
-          scale,
+          sourceOutput,
           audioHalf,
           audioOffset,
+          scale,
         });
       });
 
@@ -515,9 +516,19 @@ export class ModulationManager {
 
   /**
    * 清除调制运行时
+   * 手动断开所有音频连接，然后 dispose 节点
    */
   clearModulationRuntimes() {
     this.modulationRuntimes.forEach((item) => {
+      // 手动断开 sourceOutput 的连接（重要：dispose 不会自动断开输入连接）
+      if (item.sourceOutput && item.audioHalf) {
+        try {
+          item.sourceOutput.disconnect(item.audioHalf);
+        } catch (e) {
+          // 连接可能已断开，忽略错误
+        }
+      }
+
       if (item.scale && typeof item.scale.dispose === "function") {
         item.scale.dispose();
       }

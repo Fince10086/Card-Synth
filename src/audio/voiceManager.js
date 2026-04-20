@@ -120,6 +120,7 @@ export function createSourceRuntime({
   module,
   getVelocityEnabled = () => true,
   onAllVoicesIdle = null,
+  onVoiceDisposed = null,
 }) {
   const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
   let moduleState = deepClone(module);
@@ -588,6 +589,10 @@ export function createSourceRuntime({
     voice.disposeTimeoutId = setTimeout(() => {
       if (voice.initialized) {
         refreshVoiceLifecycle(voice, Tone.now());
+        // 如果 voice 被 dispose 了，触发回调
+        if (!voice.initialized && onVoiceDisposed) {
+          onVoiceDisposed(voiceIndex);
+        }
       }
       voice.disposeTimeoutId = null;
     }, releaseDuration * 1000);

@@ -315,6 +315,10 @@ export class AudioEngine {
       module,
       getVelocityEnabled: () => Boolean(this.state?.global?.velocityEnabled),
       onAllVoicesIdle: () => this.rebuildSignalChains(),
+      onVoiceDisposed: () => {
+        // Voice dispose 后重建调制连接（因为 sourceOutput 节点已改变）
+        this.app?.modulationManager?.connectAllModulations?.();
+      },
     });
   }
 
