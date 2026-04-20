@@ -5,6 +5,7 @@ const MARGIN_RATIO = 0.1;
 const BASE_RADIUS = 16;
 const CONTROL_RANGE_MULTIPLIER = 2;
 const MIN_DISTANCE_RATIO = 0.08;
+const PINCH_HOLD_MS = 100;
 
 export class GestureManager {
   constructor(app) {
@@ -21,6 +22,10 @@ export class GestureManager {
       leftPinchStartY: 0,
       leftPinchStartGain: 0,
       lastPinchTime: 0,
+      leftPinchHoldStart: 0,
+      rightPinchHoldStart: 0,
+      leftPinchConfirmed: false,
+      rightPinchConfirmed: false,
     };
 
     this.onEsc = (e) => {
@@ -229,40 +234,54 @@ export class GestureManager {
     if (gestures.leftPinch && gestures.leftPinchPos) {
       const pos = this.cameraToCanvas(gestures.leftPinchPos.x, gestures.leftPinchPos.y);
 
-      if (this.gestureState.leftPinchChainIndex >= 0) {
+      if (this.gestureState.leftPinchChainIndex >= 0 && this.gestureState.leftPinchConfirmed) {
         const chainIndex = this.gestureState.leftPinchChainIndex;
         const dy = this.gestureState.leftPinchStartY - pos.y;
         const area = this.getControlArea();
         const delta = (dy / area.height) * 4;
         const newGain = clamp(this.gestureState.leftPinchStartGain + delta, 0, 2);
         this.setChainGainValue(chainIndex, newGain);
-      } else {
-        const chainIndex = this.findChainAtPosition(pos.x, pos.y);
-        if (chainIndex >= 0) {
-          this.gestureState.leftPinchChainIndex = chainIndex;
-          this.gestureState.leftPinchStartY = pos.y;
-          this.gestureState.leftPinchStartGain = this.getChainGainValue(chainIndex);
-        } else {
-          const available = this.findFirstAvailableChain();
-          if (available >= 0 && now - this.gestureState.lastPinchTime > 300) {
+      } else if (!this.gestureState.leftPinchConfirmed) {
+        if (this.gestureState.leftPinchHoldStart === 0) {
+          this.gestureState.leftPinchHoldStart = now;
+          const chainIndex = this.findChainAtPosition(pos.x, pos.y);
+          if (chainIndex >= 0) {
+            this.gestureState.leftPinchChainIndex = chainIndex;
+            this.gestureState.leftPinchStartY = pos.y;
+            this.gestureState.leftPinchStartGain = this.getChainGainValue(chainIndex);
+          } else {
+            const available = this.findFirstAvailableChain();
+            if (available >= 0 && now - this.gestureState.lastPinchTime > 300) {
+              this.gestureState.leftPinchChainIndex = -2;
+            }
+          }
+        } else if (now - this.gestureState.leftPinchHoldStart >= PINCH_HOLD_MS) {
+          this.gestureState.leftPinchConfirmed = true;
+          if (this.gestureState.leftPinchChainIndex === -2) {
             const macro = this.canvasToMacro(pos.x, pos.y);
-            this.app.setChainEnabled(available, true);
-            const chainMacro = this.app.macroManager.getChainMacro(available);
-            chainMacro.point.x = macro.x;
-            chainMacro.point.y = macro.y;
-            this.app.selectedPresetId = "custom";
-            this.gestureState.lastPinchTime = now;
+            const available = this.findFirstAvailableChain();
+            if (available >= 0) {
+              this.app.setChainEnabled(available, true);
+              const chainMacro = this.app.macroManager.getChainMacro(available);
+              chainMacro.point.x = macro.x;
+              chainMacro.point.y = macro.y;
+              this.app.selectedPresetId = "custom";
+              this.gestureState.lastPinchTime = now;
+              this.gestureState.leftPinchChainIndex = available;
+            }
           }
         }
       }
     } else {
       this.gestureState.leftPinchChainIndex = -1;
+      this.gestureState.leftPinchHoldStart = 0;
+      this.gestureState.leftPinchConfirmed = false;
     }
 
     if (gestures.rightPinch && gestures.rightPinchPos) {
       const pos = this.cameraToCanvas(gestures.rightPinchPos.x, gestures.rightPinchPos.y);
 
-      if (this.gestureState.rightPinchChainIndex >= 0) {
+      if (this.gestureState.rightPinchChainIndex >= 0 && this.gestureState.rightPinchConfirmed) {
         const chainIndex = this.gestureState.rightPinchChainIndex;
         const macro = this.canvasToMacro(pos.x, pos.y);
         const chainMacro = this.app.macroManager.getChainMacro(chainIndex);
@@ -273,14 +292,21 @@ export class GestureManager {
           chainIndex,
           chainIndex === this.app.getSelectedChainIndex()
         );
-      } else {
-        const chainIndex = this.findChainAtPosition(pos.x, pos.y);
-        if (chainIndex >= 0) {
-          this.gestureState.rightPinchChainIndex = chainIndex;
+      } else if (!this.gestureState.rightPinchConfirmed) {
+        if (this.gestureState.rightPinchHoldStart === 0) {
+          this.gestureState.rightPinchHoldStart = now;
+          const chainIndex = this.findChainAtPosition(pos.x, pos.y);
+          if (chainIndex >= 0) {
+            this.gestureState.rightPinchChainIndex = chainIndex;
+          }
+        } else if (now - this.gestureState.rightPinchHoldStart >= PINCH_HOLD_MS) {
+          this.gestureState.rightPinchConfirmed = true;
         }
       }
     } else {
       this.gestureState.rightPinchChainIndex = -1;
+      this.gestureState.rightPinchHoldStart = 0;
+      this.gestureState.rightPinchConfirmed = false;
     }
   }
 
@@ -310,7 +336,7 @@ export class GestureManager {
     const gain = this.getChainGainValue(chainIndex);
     const radiusScale = 0.5 + (gain / 2) * 1.0;
     const radius = BASE_RADIUS * radiusScale;
-    const rangeRadius = radius * CONTROL_RANGE_MULTIPLIER;
+    const rangeRadius = BASE_RADIUS * CONTROL_RANGE_MULTIPLIER;
 
     this.ctx.strokeStyle = "rgba(0,0,0,0.2)";
     this.ctx.lineWidth = 1;
