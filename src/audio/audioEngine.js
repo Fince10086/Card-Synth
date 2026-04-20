@@ -203,9 +203,6 @@ export class AudioEngine {
 
     const needsExtendedRelease = hasAmpEnvAnywhere && !isFirstModuleAmpEnv;
     runtime.needsExtendedRelease = needsExtendedRelease;
-    runtime.voices.forEach((voice) => {
-      voice.hiddenAmpEnv.release = needsExtendedRelease ? 10 : 0.005;
-    });
 
     runtime.hasAmpEnv = isFirstModuleAmpEnv;
 
@@ -222,6 +219,16 @@ export class AudioEngine {
       });
     } else {
       runtime.ampEnvRuntime = null;
+
+      if (needsExtendedRelease) {
+        for (let i = sourceIndex + 1; i < modules.length; i++) {
+          if (ampEnvIndices.has(i)) {
+            const ampEnvModule = modules[i];
+            runtime.chainedAmpEnvRuntime = runtimeMap.get(ampEnvModule.id);
+            break;
+          }
+        }
+      }
 
       let targetNode;
       if (targetIndex >= 0) {

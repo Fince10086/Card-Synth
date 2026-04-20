@@ -408,6 +408,7 @@ export function createSourceRuntime({
    * - 调制模式下的声音槽保留
    * - 外部振幅包络的释放时间
    * - 隐藏包络的释放时间
+   * - needsExtendedRelease 情况下，AmpEnv release + hiddenAmpEnv release
    *
    * @param {Object} voice - 声音对象
    * @param {number} voiceIndex - 声音索引
@@ -424,6 +425,11 @@ export function createSourceRuntime({
       if (Number.isFinite(release) && release >= 0) {
         return release;
       }
+    }
+
+    if (runtime.needsExtendedRelease) {
+      const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
+      return ampEnvRelease + 0.005;
     }
 
     const hiddenRelease = Number(voice.hiddenAmpEnv?.release);
@@ -496,6 +502,20 @@ export function createSourceRuntime({
   };
 
   /**
+   * 获取 AmpEnv 的 release 时间
+   * 优先使用直接连接的 AmpEnv，否则使用链中的 AmpEnv
+   *
+   * @param {number} voiceIndex - 声音索引
+   * @returns {number} release 时间（秒）
+   */
+  const getAmpEnvReleaseTime = (voiceIndex) => {
+    const ampEnvRuntime = runtime.ampEnvRuntime || runtime.chainedAmpEnvRuntime;
+    const ampEnvVoice = ampEnvRuntime?.voices?.[voiceIndex];
+    const release = Number(ampEnvVoice?.release);
+    return Number.isFinite(release) && release >= 0 ? release : 0.01;
+  };
+
+  /**
    * 释放声音
    * 执行实际的释放操作：
    * - 清除音符绑定
@@ -509,10 +529,18 @@ export function createSourceRuntime({
    */
   const releaseVoice = (voice, voiceIndex, now = Tone.now()) => {
     const hadAssignedNote = voice.note !== null;
+
+    const isLastNote = hadAssignedNote && voices.filter((v, i) => i !== voiceIndex && v.note !== null).length === 0;
+
     voice.note = null;
 
     if (runtime.hasAmpEnv) {
       triggerAmpEnvRelease(voiceIndex);
+      const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
+      voice.hiddenAmpEnv.triggerRelease(now + ampEnvRelease);
+    } else if (runtime.needsExtendedRelease && isLastNote) {
+      const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
+      voice.hiddenAmpEnv.triggerRelease(now + ampEnvRelease);
     } else {
       voice.hiddenAmpEnv.triggerRelease(now);
     }
@@ -613,18 +641,8 @@ export function createSourceRuntime({
 
   /**
    * 更新隐藏振幅包络的释放时间
-   * 当只剩一个活跃声音时使用较长的释放时间
-   * 这有助于避免最后一个音符突然停止
    */
   const updateHiddenAmpEnvRelease = () => {
-    if (!runtime.needsExtendedRelease) {
-      return;
-    }
-    const activeCount = getActiveVoiceCount();
-    const releaseTime = activeCount <= 1 ? 10 : 0.005;
-    voices.forEach((voice) => {
-      voice.hiddenAmpEnv.release = releaseTime;
-    });
   };
 
   /**
