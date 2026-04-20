@@ -9,15 +9,17 @@ import {
 
 /**
  * 创建音符声音追踪器
- * 用于跟踪多个声音（voices）当前正在播放哪些音符
- * 实现了声音分配和释放的核心逻辑
+ *
+ * 用于跟踪多个声音（voices）当前正在播放哪些音符，
+ * 实现了声音分配和释放的核心逻辑。
  *
  * @param {number} voiceCount - 声音数量（复音数）
  * @returns {Object} 包含分配、释放和状态查询方法的对象
  */
 export function createNoteVoiceTracker(voiceCount) {
   /**
-   * 初始化声音状态数组
+   * 声音状态数组
+   *
    * 每个声音包含：
    * - note: 当前播放的音符（null 表示空闲）
    * - startTime: 开始播放的时间戳
@@ -29,6 +31,7 @@ export function createNoteVoiceTracker(voiceCount) {
 
   /**
    * 查找可用的声音索引
+   *
    * 策略：
    * 1. 优先返回空闲的声音（note 为 null）
    * 2. 如果所有声音都在使用，则返回最早开始播放的声音（用于声音窃取）
@@ -83,7 +86,8 @@ export function createNoteVoiceTracker(voiceCount) {
 
     /**
      * 清除所有声音状态
-     * 通常用于全部停止或重置
+     *
+     * 通常用于全部停止或重置。
      */
     clearAll() {
       voiceStates.forEach((item) => {
@@ -105,6 +109,7 @@ export function createNoteVoiceTracker(voiceCount) {
 
 /**
  * 创建音源运行时
+ *
  * 这是核心的声音管理器，负责：
  * - 创建和管理多个声音（实现复音）
  * - 处理音符的触发和释放
@@ -114,6 +119,9 @@ export function createNoteVoiceTracker(voiceCount) {
  * @param {Object} options - 配置选项
  * @param {Object} options.module - 模块配置对象
  * @param {Function} options.getVelocityEnabled - 获取是否启用力度响应的函数
+ * @param {Function} options.onAllVoicesIdle - 所有声音空闲时的回调函数
+ * @param {Function} options.onVoiceDisposed - 声音被释放时的回调函数
+ * @param {Function} options.onVoiceInitialized - 声音初始化时的回调函数
  * @returns {Object} 运行时对象，包含声音管理和控制方法
  */
 export function createSourceRuntime({
@@ -126,15 +134,14 @@ export function createSourceRuntime({
   const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
   let moduleState = deepClone(module);
 
-  /**
-   * 常量定义
-   */
+  // 常量定义
   const VOICE_COUNT = 8;
   const VOICE_INDEX_RESERVE_SECONDS = 10;
-  const ALL_VOICES_IDLE_REBUILD_DELAY = 10; // 10秒后重建信号链
+  const ALL_VOICES_IDLE_REBUILD_DELAY = 10; // 单位：秒
 
   /**
    * 声音状态枚举
+   *
    * - IDLE: 空闲状态，可以分配新音符
    * - ACTIVE: 活跃状态，正在播放音符
    * - RELEASING: 释放中，正在执行释放阶段
@@ -150,8 +157,9 @@ export function createSourceRuntime({
 
   /**
    * 检查是否所有 voice 都处于空闲或正在释放状态
-   * 如果是且提供了回调，则设置延迟定时器
-   * 从 Release 开始算，而不是从 IDLE 开始算
+   *
+   * 如果是且提供了回调，则设置延迟定时器。
+   * 从 Release 开始算，而不是从 IDLE 开始算。
    */
   const checkAllVoicesIdle = () => {
     if (!onAllVoicesIdle) {
@@ -182,7 +190,8 @@ export function createSourceRuntime({
 
   /**
    * 获取频率偏移量
-   * 用于微调音高
+   *
+   * 用于微调音高。
    *
    * @returns {number} 频率偏移比例（0-2）
    */
@@ -203,7 +212,9 @@ export function createSourceRuntime({
   const getNoteFrequency = (note) => Tone.Frequency(note).toFrequency();
 
   /**
-   * 获取音符的基础频率（考虑八度偏移）
+   * 获取音符的基础频率
+   *
+   * 考虑八度偏移后的频率值。
    *
    * @param {string} note - 音符名称
    * @returns {number} 调整后的频率值
@@ -219,7 +230,8 @@ export function createSourceRuntime({
 
   /**
    * 计算音高比率
-   * 用于采样器的播放速率调整，实现不同音高的播放
+   *
+   * 用于采样器的播放速率调整，实现不同音高的播放。
    *
    * @param {string} note - 目标音符
    * @returns {number} 播放速率比率
@@ -231,7 +243,8 @@ export function createSourceRuntime({
 
   /**
    * 获取调制频率
-   * 用于调制模式下的频率控制
+   *
+   * 用于调制模式下的频率控制。
    *
    * @returns {number} 调制频率值
    */
@@ -250,7 +263,9 @@ export function createSourceRuntime({
   };
 
   /**
-   * 提取节点选项（排除特定参数）
+   * 提取节点选项
+   *
+   * 排除特定参数后的节点选项。
    *
    * @param {Object} options - 原始选项
    * @param {string[]} exclude - 要排除的字段列表
@@ -264,7 +279,8 @@ export function createSourceRuntime({
 
   /**
    * 获取音源输出增益
-   * 根据是否启用和调制模式计算最终增益值
+   *
+   * 根据是否启用和调制模式计算最终增益值。
    *
    * @returns {number} 增益值
    */
@@ -280,7 +296,10 @@ export function createSourceRuntime({
   };
 
   /**
-   * 创建占位声音对象（未初始化）
+   * 创建占位声音对象
+   *
+   * 创建未初始化状态的占位对象。
+   *
    * @returns {Object} 占位声音对象
    */
   const createVoicePlaceholder = () => ({
@@ -303,7 +322,8 @@ export function createSourceRuntime({
 
   /**
    * 创建音源节点
-   * 支持所有音源类型
+   *
+   * 支持所有音源类型（pitchedSource、noise、player、oscillator）。
    *
    * @param {Object} connectTarget - 连接目标节点
    * @returns {Object} 新创建的音源节点
@@ -335,7 +355,8 @@ export function createSourceRuntime({
 
   /**
    * 初始化指定索引的声音
-   * 创建完整的音频节点链
+   *
+   * 创建完整的音频节点链。
    *
    * @param {number} index - 声音索引
    * @returns {Object} 初始化后的声音对象
@@ -422,14 +443,13 @@ export function createSourceRuntime({
     return voice;
   };
 
-  /**
-   * 创建所有声音占位符
-   */
+  // 创建所有声音占位符
   const voices = Array.from({ length: VOICE_COUNT }, createVoicePlaceholder);
 
   /**
    * 为声音创建音源节点
-   * 支持所有音源类型
+   *
+   * 支持所有音源类型。
    *
    * @param {Object} voice - 声音对象
    * @returns {Object} 新创建的音源节点
@@ -492,7 +512,8 @@ export function createSourceRuntime({
 
   /**
    * 确保声音有可用的音源节点
-   * 如果 voice 未初始化，先初始化；如果节点不存在（被销毁），则重新创建
+   *
+   * 如果 voice 未初始化，先初始化；如果节点不存在（被销毁），则重新创建。
    *
    * @param {number} voiceIndex - 声音索引
    * @returns {Object} 音源节点
@@ -507,6 +528,7 @@ export function createSourceRuntime({
 
   /**
    * 获取声音的释放持续时间
+   *
    * 考虑多种因素：
    * - 调制模式下的声音槽保留
    * - 外部振幅包络的释放时间
@@ -537,6 +559,7 @@ export function createSourceRuntime({
 
   /**
    * 刷新单个声音的生命周期状态
+   *
    * 处理状态转换：
    * - RELEASING -> IDLE（释放完成）
    * - IDLE -> ACTIVE（有新音符）
@@ -584,8 +607,9 @@ export function createSourceRuntime({
 
   /**
    * 调度声音释放
-   * 设置释放结束时间，将状态转为 RELEASING
-   * 并在 release 结束时自动触发 dispose（时间驱动）
+   *
+   * 设置释放结束时间，将状态转为 RELEASING，
+   * 并在 release 结束时自动触发 dispose（时间驱动）。
    *
    * @param {Object} voice - 声音对象
    * @param {number} voiceIndex - 声音索引
@@ -618,7 +642,8 @@ export function createSourceRuntime({
 
   /**
    * 获取 AmpEnv 的 release 时间
-   * 优先使用直接连接的 AmpEnv，否则使用链中的 AmpEnv
+   *
+   * 优先使用直接连接的 AmpEnv，否则使用链中的 AmpEnv。
    *
    * @param {number} voiceIndex - 声音索引
    * @returns {number} release 时间（秒）
@@ -645,6 +670,7 @@ export function createSourceRuntime({
 
   /**
    * 释放声音
+   *
    * 执行实际的释放操作：
    * - 清除音符绑定
    * - 触发振幅包络释放
@@ -710,6 +736,7 @@ export function createSourceRuntime({
 
   /**
    * 查找可用的声音
+   *
    * 策略：
    * 1. 优先查找空闲且无音符绑定的声音
    * 2. 如果没有空闲声音，优先窃取处于 RELEASING 状态的声音（releaseEndTime 最早的）
@@ -824,16 +851,7 @@ export function createSourceRuntime({
     ampEnv.triggerVoiceRelease(voiceIndex);
   };
 
-  /**
-   * 获取活跃声音数量
-   *
-   * @returns {number} 活跃声音数量
-   */
-
-  /**
-   * 运行时对象
-   * 提供对外的 API 接口
-   */
+  // 运行时对象，提供对外的 API 接口
   const runtime = {
     type: module.type,
     category: "source",
@@ -847,7 +865,8 @@ export function createSourceRuntime({
 
     /**
      * 获取指定声音的调制输出节点
-     * 如果 voice 未初始化，会先初始化
+     *
+     * 如果 voice 未初始化，会先初始化。
      *
      * @param {number} voiceIndex - 声音索引
      * @returns {Object|null} 输出节点
@@ -862,6 +881,7 @@ export function createSourceRuntime({
 
     /**
      * 应用模块状态更新
+     *
      * 更新所有声音的参数，包括：
      * - 音量和声像
      * - 音源特定参数
@@ -910,7 +930,8 @@ export function createSourceRuntime({
 
     /**
      * 触发音符攻击（开始播放）
-     * 这是 MIDI 音符开始时的核心方法
+     *
+     * 这是 MIDI 音符开始时的核心方法。
      *
      * @param {string} note - 音符名称
      * @param {number} velocity - 力度值（0-1）
@@ -937,7 +958,7 @@ export function createSourceRuntime({
       const isInExtendedRelease = voice.state === VOICE_STATE.RELEASING
         && voice.extendedReleaseEndTime
         && now < voice.extendedReleaseEndTime;
-      
+
       if (voice.note && voice.note !== note) {
         releaseVoice(voice, index, now);
       }
@@ -1006,7 +1027,8 @@ export function createSourceRuntime({
 
     /**
      * 触发音符释放（停止播放）
-     * 这是 MIDI 音符结束时的核心方法
+     *
+     * 这是 MIDI 音符结束时的核心方法。
      *
      * @param {string} note - 音符名称
      */
@@ -1021,7 +1043,8 @@ export function createSourceRuntime({
 
     /**
      * 释放所有声音
-     * 通常用于停止所有播放或紧急停止
+     *
+     * 通常用于停止所有播放或紧急停止。
      */
     releaseAll: () => {
       const now = Tone.now();
@@ -1034,7 +1057,8 @@ export function createSourceRuntime({
 
     /**
      * 销毁运行时
-     * 清理所有音频节点和资源
+     *
+     * 清理所有音频节点和资源。
      */
     dispose: () => {
       // 清理重建信号链的定时器
@@ -1057,8 +1081,9 @@ export function createSourceRuntime({
 
 /**
  * 创建包络调制运行时
- * 用于创建包络调制效果，如滤波器包络
- * 每个声音有独立的包络发生器和输出增益
+ *
+ * 用于创建包络调制效果，如滤波器包络。
+ * 每个声音有独立的包络发生器和输出增益。
  *
  * @param {Object} module - 模块配置
  * @returns {Object} 包络调制运行时对象
@@ -1068,7 +1093,9 @@ export function createEnvelopeModulationRuntime(module) {
   const VOICE_COUNT = 8;
 
   /**
-   * 提取包络选项（排除 gain 参数）
+   * 提取包络选项
+   *
+   * 排除 gain 参数后的包络选项。
    *
    * @param {Object} options - 原始选项
    * @returns {Object} 包络选项
@@ -1086,15 +1113,10 @@ export function createEnvelopeModulationRuntime(module) {
    */
   const getDepthGain = (options = {}) => Number(options?.gain ?? 1);
 
-  /**
-   * 为每个声音创建独立的包络发生器
-   */
+  // 为每个声音创建独立的包络发生器
   const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.Envelope(getEnvelopeOptions(moduleState.options)));
 
-  /**
-   * 为每个声音创建输出增益节点
-   * 用于控制调制深度
-   */
+  // 为每个声音创建输出增益节点，用于控制调制深度
   const outputGains = Array.from({ length: VOICE_COUNT }, () => new Tone.Gain(getDepthGain(moduleState.options)));
 
   voices.forEach((env, index) => env.connect(outputGains[index]));
@@ -1178,7 +1200,8 @@ export function createEnvelopeModulationRuntime(module) {
 
 /**
  * 创建振幅包络运行时
- * 用于管理振幅包络（音量包络）
+ *
+ * 用于管理振幅包络（音量包络）。
  * 支持两种模式：
  * 1. 多声音模式：每个声音有独立的振幅包络
  * 2. 全局模式：所有声音共享一个振幅包络
@@ -1189,26 +1212,16 @@ export function createEnvelopeModulationRuntime(module) {
 export function createAmplitudeEnvelopeRuntime(module) {
   const VOICE_COUNT = 8;
 
-  /**
-   * 为每个声音创建独立的振幅包络
-   */
+  // 为每个声音创建独立的振幅包络
   const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.AmplitudeEnvelope(module.options));
 
-  /**
-   * 全局振幅包络节点
-   * 用于非多声音模式
-   */
+  // 全局振幅包络节点，用于非多声音模式
   const node = new Tone.AmplitudeEnvelope(module.options);
 
-  /**
-   * 声音引用计数
-   * 用于跟踪每个声音被多少音符使用
-   */
+  // 声音引用计数，用于跟踪每个声音被多少音符使用
   const voiceRefCount = new Array(VOICE_COUNT).fill(0);
 
-  /**
-   * 全局音符追踪器
-   */
+  // 全局音符追踪器
   const nodeNoteTracker = createNoteVoiceTracker(VOICE_COUNT);
 
   return {
@@ -1230,7 +1243,8 @@ export function createAmplitudeEnvelopeRuntime(module) {
 
     /**
      * 触发指定声音的攻击阶段
-     * 使用引用计数管理声音的生命周期
+     *
+     * 使用引用计数管理声音的生命周期。
      *
      * @param {number} voiceIndex - 声音索引
      * @param {number} velocity - 力度值
@@ -1245,7 +1259,8 @@ export function createAmplitudeEnvelopeRuntime(module) {
 
     /**
      * 触发指定声音的释放阶段
-     * 使用引用计数确保所有音符释放后才触发包络释放
+     *
+     * 使用引用计数确保所有音符释放后才触发包络释放。
      *
      * @param {number} voiceIndex - 声音索引
      */
@@ -1270,7 +1285,8 @@ export function createAmplitudeEnvelopeRuntime(module) {
 
     /**
      * 触发全局振幅包络释放
-     * 只有当所有音符都释放后才触发
+     *
+     * 只有当所有音符都释放后才触发。
      *
      * @param {string} note - 音符名称
      */
