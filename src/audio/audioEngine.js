@@ -122,6 +122,7 @@ export class AudioEngine {
   }
 
   rebuildSignalChains() {
+    console.log("[AudioEngine] Rebuilding signal chains...");
     if (!this.masterVolume) {
       return;
     }
@@ -313,6 +314,7 @@ export class AudioEngine {
     return createSourceRuntime({
       module,
       getVelocityEnabled: () => Boolean(this.state?.global?.velocityEnabled),
+      onAllVoicesIdle: () => this.rebuildSignalChains(),
     });
   }
 

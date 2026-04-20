@@ -119,6 +119,7 @@ export function createNoteVoiceTracker(voiceCount) {
 export function createSourceRuntime({
   module,
   getVelocityEnabled = () => true,
+  onAllVoicesIdle = null,
 }) {
   const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
   let moduleState = deepClone(module);
@@ -128,6 +129,7 @@ export function createSourceRuntime({
    */
   const VOICE_COUNT = 8;
   const VOICE_INDEX_RESERVE_SECONDS = 10;
+  const ALL_VOICES_IDLE_REBUILD_DELAY = 10; // 10秒后重建信号链
 
   /**
    * 声音状态枚举
@@ -139,6 +141,43 @@ export function createSourceRuntime({
     IDLE: "idle",
     ACTIVE: "active",
     RELEASING: "releasing",
+  };
+
+  // 用于延迟重建信号链的定时器
+  let allVoicesIdleTimeoutId = null;
+
+  /**
+   * 检查是否所有 voice 都处于空闲或正在释放状态
+   * 如果是且提供了回调，则设置延迟定时器
+   * 从 Release 开始算，而不是从 IDLE 开始算
+   */
+  const checkAllVoicesIdle = () => {
+    if (!onAllVoicesIdle) {
+      return;
+    }
+
+    // 清除之前的定时器
+    if (allVoicesIdleTimeoutId) {
+      clearTimeout(allVoicesIdleTimeoutId);
+      allVoicesIdleTimeoutId = null;
+    }
+
+    // 检查是否所有 voice 都 idle、正在释放中或未初始化
+    // 包括：IDLE、RELEASING（无论是否 extended release）
+    const allIdleOrReleasing = voices.every((v) =>
+      !v.initialized ||
+      (v.state === VOICE_STATE.IDLE && !v.note) ||
+      v.state === VOICE_STATE.RELEASING
+    );
+
+    if (allIdleOrReleasing) {
+      console.log(`[VoiceManager] All voices idle or releasing, scheduling rebuild in ${ALL_VOICES_IDLE_REBUILD_DELAY}s`);
+      allVoicesIdleTimeoutId = setTimeout(() => {
+        console.log(`[VoiceManager] Triggering onAllVoicesIdle callback`);
+        onAllVoicesIdle();
+        allVoicesIdleTimeoutId = null;
+      }, ALL_VOICES_IDLE_REBUILD_DELAY * 1000);
+    }
   };
 
   /**
@@ -546,6 +585,8 @@ export function createSourceRuntime({
         voice.initialized = false;
         console.log(`[VoiceManager] Voice disposed and marked as uninitialized`);
       }
+      // 检查是否所有 voice 都 idle
+      checkAllVoicesIdle();
     }
 
     if (voice.state === VOICE_STATE.IDLE && voice.note) {
@@ -640,6 +681,9 @@ export function createSourceRuntime({
     } else {
       refreshVoiceLifecycle(voice, now);
     }
+
+    // Release 开始时检查是否所有 voice 都释放中/空闲
+    checkAllVoicesIdle();
   };
 
   /**
@@ -859,6 +903,14 @@ export function createSourceRuntime({
       if (!moduleState.enabled) {
         return;
       }
+
+      // 如果有新的 note 触发，取消重建信号链的定时器
+      if (allVoicesIdleTimeoutId) {
+        clearTimeout(allVoicesIdleTimeoutId);
+        allVoicesIdleTimeoutId = null;
+        console.log(`[VoiceManager] Cancelled rebuild timer due to new note`);
+      }
+
       const result = findAvailableVoice();
       if (!result) {
         return;
@@ -960,6 +1012,11 @@ export function createSourceRuntime({
      */
     dispose: () => {
       console.log(`[VoiceManager] Disposing runtime for ${module.type}`);
+      // 清理重建信号链的定时器
+      if (allVoicesIdleTimeoutId) {
+        clearTimeout(allVoicesIdleTimeoutId);
+        allVoicesIdleTimeoutId = null;
+      }
       voices.forEach((voice) => {
         if (!voice.initialized) {
           return;
