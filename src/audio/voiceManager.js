@@ -251,22 +251,13 @@ export function createSourceRuntime({
    * 提取节点选项（排除特定参数）
    *
    * @param {Object} options - 原始选项
+   * @param {string[]} exclude - 要排除的字段列表
    * @returns {Object} 处理后的节点选项
    */
-  const getNodeOptions = (options = {}) => {
-    const { gain, frequencyOffset, ...nodeOptions } = options || {};
-    return nodeOptions;
-  };
-
-  /**
-   * 提取音高源节点的选项
-   *
-   * @param {Object} options - 原始选项
-   * @returns {Object} 处理后的节点选项
-   */
-  const getPitchedNodeOptions = (options = {}) => {
-    const { frequency, ...nodeOptions } = getNodeOptions(options);
-    return nodeOptions;
+  const getNodeOptions = (options = {}, exclude = []) => {
+    const result = { ...options };
+    exclude.forEach((key) => delete result[key]);
+    return result;
   };
 
   /**
@@ -309,6 +300,38 @@ export function createSourceRuntime({
   });
 
   /**
+   * 创建音源节点
+   * 支持所有音源类型
+   *
+   * @param {Object} connectTarget - 连接目标节点
+   * @returns {Object} 新创建的音源节点
+   */
+  const createSourceNode = (connectTarget) => {
+    let node;
+
+    if (definition.runtime === "pitchedSource") {
+      node = new Tone[module.type](getNodeOptions(moduleState.options, ["gain", "frequencyOffset", "frequency"]));
+      node.connect(connectTarget);
+      node.start();
+    } else if (definition.runtime === "noise") {
+      node = new Tone.Noise(getNodeOptions(moduleState.options, ["gain", "frequencyOffset"]));
+      node.connect(connectTarget);
+      node.start();
+    } else if (definition.runtime === "player") {
+      const nodeOptions = getNodeOptions(moduleState.options, ["gain", "frequencyOffset"]);
+      node = new Tone.Player(nodeOptions);
+      applyPlayerLikeOptions(node, nodeOptions);
+      node.connect(connectTarget);
+    } else {
+      node = new Tone.Oscillator(getNodeOptions(moduleState.options, ["gain", "frequencyOffset"]));
+      node.connect(connectTarget);
+      node.start();
+    }
+
+    return node;
+  };
+
+  /**
    * 初始化指定索引的声音
    * 创建完整的音频节点链
    *
@@ -340,26 +363,7 @@ export function createSourceRuntime({
       panNode.connect(hiddenAmpEnv);
     }
 
-    let node;
-
-    if (definition.runtime === "pitchedSource") {
-      node = new Tone[module.type](getPitchedNodeOptions(module.options));
-      node.connect(volumeNode);
-      node.start();
-    } else if (definition.runtime === "noise") {
-      node = new Tone.Noise(getNodeOptions(module.options));
-      node.connect(volumeNode);
-      node.start();
-    } else if (definition.runtime === "player") {
-      const nodeOptions = getNodeOptions(moduleState.options);
-      node = new Tone.Player(nodeOptions);
-      applyPlayerLikeOptions(node, nodeOptions);
-      node.connect(volumeNode);
-    } else {
-      node = new Tone.Oscillator(getNodeOptions(module.options));
-      node.connect(volumeNode);
-      node.start();
-    }
+    const node = createSourceNode(volumeNode);
 
     voice.node = node;
     voice.volumeNode = volumeNode;
@@ -415,33 +419,13 @@ export function createSourceRuntime({
 
   /**
    * 为声音创建音源节点
-   * 支持所有音源类型：pitchedSource、noise、player、默认振荡器
+   * 支持所有音源类型
    *
    * @param {Object} voice - 声音对象
    * @returns {Object} 新创建的音源节点
    */
   const createNodeForVoice = (voice) => {
-    let node;
-
-    if (definition.runtime === "pitchedSource") {
-      node = new Tone[module.type](getPitchedNodeOptions(moduleState.options));
-      node.connect(voice.volumeNode);
-      node.start();
-    } else if (definition.runtime === "noise") {
-      node = new Tone.Noise(getNodeOptions(moduleState.options));
-      node.connect(voice.volumeNode);
-      node.start();
-    } else if (definition.runtime === "player") {
-      const nodeOptions = getNodeOptions(moduleState.options);
-      node = new Tone.Player(nodeOptions);
-      applyPlayerLikeOptions(node, nodeOptions);
-      node.connect(voice.volumeNode);
-    } else {
-      node = new Tone.Oscillator(getNodeOptions(moduleState.options));
-      node.connect(voice.volumeNode);
-      node.start();
-    }
-
+    const node = createSourceNode(voice.volumeNode);
     voice.node = node;
 
     // 为 pitchedSource 重新连接频率控制信号链（如果已存在）
@@ -451,8 +435,6 @@ export function createSourceRuntime({
       }
       voice.frequencyMultiply.connect(node.frequency);
     }
-
-    console.log(`[VoiceManager] Created ${definition.runtime} node for voice`);
     return node;
   };
 
@@ -468,45 +450,30 @@ export function createSourceRuntime({
       voice.disposeTimeoutId = null;
     }
 
-    // 断开并释放音源节点
-    if (voice.node && typeof voice.node.dispose === "function") {
-      voice.node.dispose();
-      voice.node = null;
-    }
+    // 统一释放所有音频节点（按依赖顺序：先释放输入源）
+    const nodesToDispose = [
+      voice.frequencyMultiply,
+      voice.frequencyOffsetParam,
+      voice.frequencyBaseSignal,
+      voice.node,
+      voice.hiddenAmpEnv,
+      voice.panNode,
+      voice.volumeNode,
+    ];
+    nodesToDispose.forEach((node) => {
+      if (node && typeof node.dispose === "function") {
+        node.dispose();
+      }
+    });
 
-    // 断开并释放频率控制信号链
-    if (voice.frequencyMultiply) {
-      voice.frequencyMultiply.dispose();
-      voice.frequencyMultiply = null;
-    }
-    if (voice.frequencyOffsetParam) {
-      voice.frequencyOffsetParam.dispose();
-      voice.frequencyOffsetParam = null;
-    }
-    if (voice.frequencyBaseSignal) {
-      voice.frequencyBaseSignal.dispose();
-      voice.frequencyBaseSignal = null;
-    }
-
-    // 释放 hiddenAmpEnv（必须在 panNode/volumeNode 之前，因为它们是输入源）
-    if (voice.hiddenAmpEnv) {
-      voice.hiddenAmpEnv.dispose();
-      voice.hiddenAmpEnv = null;
-    }
-
-    // 释放声像节点
-    if (voice.panNode) {
-      voice.panNode.dispose();
-      voice.panNode = null;
-    }
-
-    // 释放音量节点
-    if (voice.volumeNode) {
-      voice.volumeNode.dispose();
-      voice.volumeNode = null;
-    }
-
+    // 重置所有字段
     voice.node = null;
+    voice.volumeNode = null;
+    voice.panNode = null;
+    voice.frequencyBaseSignal = null;
+    voice.frequencyOffsetParam = null;
+    voice.frequencyMultiply = null;
+    voice.hiddenAmpEnv = null;
   };
 
   /**
@@ -537,28 +504,16 @@ export function createSourceRuntime({
    * @returns {number} 释放持续时间（秒）
    */
   const getVoiceReleaseDuration = (voice, voiceIndex) => {
-    if (runtime.preserveVoiceSlotsForSourceTargets && moduleState.modulationMode && moduleState.midiOn) {
-      return VOICE_INDEX_RESERVE_SECONDS;
-    }
-
-    if (runtime.hasAmpEnv) {
-      const ampEnvVoice = runtime.ampEnvRuntime?.voices?.[voiceIndex];
-      const release = Number(ampEnvVoice?.release);
-      if (Number.isFinite(release) && release >= 0) {
-        return release;
-      }
-    }
-
+    // Extended release: AmpEnv release + hiddenAmpEnv release
     if (runtime.needsExtendedRelease) {
       const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
       return ampEnvRelease + 0.005;
     }
-
-    const hiddenRelease = Number(voice.hiddenAmpEnv?.release);
-    if (Number.isFinite(hiddenRelease) && hiddenRelease >= 0) {
-      return hiddenRelease;
+    // Direct AmpEnv: use its release time
+    if (runtime.hasAmpEnv) {
+      return getAmpEnvReleaseTime(voiceIndex);
     }
-
+    // Default: 10ms
     return 0.01;
   };
 
@@ -584,7 +539,6 @@ export function createSourceRuntime({
       if (voice.node) {
         disposeVoiceNode(voice);
         voice.initialized = false;
-        console.log(`[VoiceManager] Voice disposed and marked as uninitialized`);
       }
       // 检查是否所有 voice 都 idle
       checkAllVoicesIdle();
@@ -824,13 +778,6 @@ export function createSourceRuntime({
    *
    * @returns {number} 活跃声音数量
    */
-  const getActiveVoiceCount = () => voices.filter((v) => v.initialized && v.note !== null).length;
-
-  /**
-   * 更新隐藏振幅包络的释放时间
-   */
-  const updateHiddenAmpEnvRelease = () => {
-  };
 
   /**
    * 运行时对象
@@ -878,14 +825,14 @@ export function createSourceRuntime({
         if (!voice.initialized) {
           return;
         }
-        const nodeOptions = getNodeOptions(moduleState.options);
+        const nodeOptions = getNodeOptions(moduleState.options, ["gain", "frequencyOffset"]);
         rampParam(voice.volumeNode.gain, getSourceOutputGain());
         if (voice.panNode) {
           rampParam(voice.panNode.pan, moduleState.pan);
         }
 
         if (definition.runtime === "pitchedSource") {
-          const optsForSafeSet = getPitchedNodeOptions(nodeOptions);
+          const optsForSafeSet = getNodeOptions(nodeOptions, ["frequency"]);
           safeSet(voice.node, optsForSafeSet);
           if (voice.frequencyOffsetParam) {
             rampParam(voice.frequencyOffsetParam, getFrequencyOffset());
@@ -963,7 +910,6 @@ export function createSourceRuntime({
       const sourceNode = ensureVoiceNode(index);
       if (!sourceNode) {
         releaseVoice(voice, index, now);
-        updateHiddenAmpEnvRelease();
         return;
       }
 
@@ -978,7 +924,6 @@ export function createSourceRuntime({
       } else if (definition.runtime === "player") {
         if (!sourceNode.loaded) {
           releaseVoice(voice, index, now);
-          updateHiddenAmpEnvRelease();
           return;
         }
         if ("playbackRate" in sourceNode) {
@@ -989,7 +934,6 @@ export function createSourceRuntime({
         } catch {}
         sourceNode.start(now);
       }
-      updateHiddenAmpEnvRelease();
     },
 
     /**
@@ -1005,7 +949,6 @@ export function createSourceRuntime({
       }
       const { voice, index } = result;
       releaseVoice(voice, index);
-      updateHiddenAmpEnvRelease();
     },
 
     /**
@@ -1019,7 +962,6 @@ export function createSourceRuntime({
           releaseVoice(voice, index, now);
         }
       });
-      updateHiddenAmpEnvRelease();
     },
 
     /**
@@ -1027,40 +969,16 @@ export function createSourceRuntime({
      * 清理所有音频节点和资源
      */
     dispose: () => {
-      console.log(`[VoiceManager] Disposing runtime for ${module.type}`);
       // 清理重建信号链的定时器
       if (allVoicesIdleTimeoutId) {
         clearTimeout(allVoicesIdleTimeoutId);
         allVoicesIdleTimeoutId = null;
       }
       voices.forEach((voice) => {
-        // 清理每个 voice 的 dispose 定时器
-        if (voice.disposeTimeoutId) {
-          clearTimeout(voice.disposeTimeoutId);
-          voice.disposeTimeoutId = null;
+        if (voice.initialized) {
+          disposeVoiceNode(voice);
         }
-        if (!voice.initialized) {
-          return;
-        }
-        if (voice.node && typeof voice.node.dispose === "function") {
-          voice.node.dispose();
-        }
-        voice.volumeNode.dispose();
-        if (voice.panNode) {
-          voice.panNode.dispose();
-        }
-        if (voice.frequencyBaseSignal) {
-          voice.frequencyBaseSignal.dispose();
-        }
-        if (voice.frequencyOffsetParam) {
-          voice.frequencyOffsetParam.dispose();
-        }
-        if (voice.frequencyMultiply) {
-          voice.frequencyMultiply.dispose();
-        }
-        voice.hiddenAmpEnv.dispose();
       });
-      console.log(`[VoiceManager] Runtime disposed for ${module.type}`);
     },
   };
 
