@@ -82,6 +82,9 @@ export { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY };
 
 export function createSourceModule(type = "Oscillator") {
   const definition = SOURCE_LIBRARY[type] || SOURCE_LIBRARY.Oscillator;
+  const options = deepClone(definition.options);
+  const initialFrequencyOffset = Number(options?.frequencyOffset);
+  options.frequencyOffset = Number.isFinite(initialFrequencyOffset) ? initialFrequencyOffset : 1;
   return {
     id: createId("src"),
     type,
@@ -93,7 +96,7 @@ export function createSourceModule(type = "Oscillator") {
     midiOn: false,
     index: moduleCounter - 1,
     ...(definition.moduleDefaults ? deepClone(definition.moduleDefaults) : {}),
-    options: deepClone(definition.options),
+    options,
   };
 }
 
@@ -162,6 +165,13 @@ export function normalizeModule(module, defaultCategory, defaultCreator) {
 
 export function normalizeSourceModule(module) {
   const normalized = normalizeModule(module, "source", (type) => createSourceModule(type || "Oscillator"));
+
+  if (!isObject(normalized.options)) {
+    normalized.options = {};
+  }
+
+  const frequencyOffset = Number(normalized.options.frequencyOffset);
+  normalized.options.frequencyOffset = Number.isFinite(frequencyOffset) ? frequencyOffset : 1;
 
   if (normalized.type === "Oscillator" || normalized.type === "PulseOscillator") {
     const nextOptions = isObject(normalized.options) ? normalized.options : {};

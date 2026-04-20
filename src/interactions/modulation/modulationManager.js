@@ -437,14 +437,16 @@ export class ModulationManager {
           return;
         }
 
-        const audioToGain = new Tone.AudioToGain();
+        const audioHalf = new Tone.Multiply(0.5);
+        const audioOffset = new Tone.Add(0.5);
         const scale = new Tone.Scale();
 
         scale.min = 0;
         scale.max = 1;
 
-        sourceOutput.connect(audioToGain);
-        audioToGain.connect(scale);
+        sourceOutput.connect(audioHalf);
+        audioHalf.connect(audioOffset);
+        audioOffset.connect(scale);
         scale.connect(param);
 
         this.modulationRuntimes.push({
@@ -454,7 +456,8 @@ export class ModulationManager {
           sourceVoiceIndex,
           targetParamPath: mod.targetParamPath,
           scale,
-          audioToGain,
+          audioHalf,
+          audioOffset,
         });
       });
 
@@ -477,8 +480,11 @@ export class ModulationManager {
       if (item.scale && typeof item.scale.dispose === "function") {
         item.scale.dispose();
       }
-      if (item.audioToGain && typeof item.audioToGain.dispose === "function") {
-        item.audioToGain.dispose();
+      if (item.audioHalf && typeof item.audioHalf.dispose === "function") {
+        item.audioHalf.dispose();
+      }
+      if (item.audioOffset && typeof item.audioOffset.dispose === "function") {
+        item.audioOffset.dispose();
       }
     });
     this.modulationRuntimes = [];
@@ -574,6 +580,10 @@ export class ModulationManager {
 
     if (targetParamPath === "options.gain") {
       return voice.volumeNode?.gain || null;
+    }
+
+    if (targetParamPath === "options.frequencyOffset") {
+      return voice.frequencyOffsetParam || null;
     }
 
     const paramPath = targetParamPath.replace(/^options\./, "");

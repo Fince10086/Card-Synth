@@ -17,6 +17,16 @@ import {
 } from "../controls/index.js";
 import { createModuleCard } from "../components/moduleCard.js";
 
+const SOURCE_FREQUENCY_OFFSET_CONTROL = {
+  path: "options.frequencyOffset",
+  kind: "range",
+  label: "Frequency Offset",
+  min: 0,
+  max: 2,
+  step: 0.01,
+  formatter: formatMultiplier,
+};
+
 const MODULATION_DEPTH_CONTROL = {
   path: "options.gain",
   kind: "range",
@@ -28,11 +38,19 @@ const MODULATION_DEPTH_CONTROL = {
 };
 
 function getRenderableControls(module, controls) {
-  if (module.category !== "source" || !module.modulationMode) {
+  if (module.category !== "source") {
     return controls;
   }
 
-  return controls
+  const sourceControls = controls.some((control) => control.path === "options.frequencyOffset")
+    ? controls
+    : [...controls, SOURCE_FREQUENCY_OFFSET_CONTROL];
+
+  if (!module.modulationMode) {
+    return sourceControls;
+  }
+
+  return sourceControls
     .map((control) => (control.path === "volume" ? MODULATION_DEPTH_CONTROL : control))
     .filter((control) => control.path !== "pan" && (control.path !== "options.octave" || module.midiOn));
 }
@@ -76,6 +94,10 @@ export function renderModuleCard(module, index, app) {
         replacement.pan = module.pan;
         replacement.modulationMode = module.modulationMode;
         replacement.midiOn = module.midiOn;
+        const sourceFrequencyOffset = Number(module?.options?.frequencyOffset);
+        if (Number.isFinite(sourceFrequencyOffset)) {
+          replacement.options.frequencyOffset = sourceFrequencyOffset;
+        }
         const sourceFrequency = Number(module?.options?.frequency);
         if (Number.isFinite(sourceFrequency) && sourceFrequency > 0) {
           replacement.options.frequency = sourceFrequency;
@@ -138,6 +160,10 @@ export function renderModuleCard(module, index, app) {
     && !Number.isFinite(Number(module?.options?.gain))
   ) {
     setByPath(module, "options.gain", 1);
+  }
+
+  if (module.category === "source" && !Number.isFinite(Number(module?.options?.frequencyOffset))) {
+    setByPath(module, "options.frequencyOffset", 1);
   }
 
   if (module.category === "source") {

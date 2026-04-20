@@ -355,10 +355,26 @@ export class AudioEngine {
       RELEASING: "releasing",
     };
 
+    const getFrequencyOffset = () => {
+      const offset = Number(moduleState?.options?.frequencyOffset);
+      if (!Number.isFinite(offset)) {
+        return 1;
+      }
+      return Math.max(0, Math.min(2, offset));
+    };
+
     const getNoteFrequency = (note) => Tone.Frequency(note).toFrequency();
+    const getBaseFrequencyForNote = (note) => {
+      let frequency = getNoteFrequency(note);
+      const octave = Number(moduleState?.options?.octave) || 0;
+      if (octave !== 0) {
+        frequency *= Math.pow(2, octave);
+      }
+      return frequency;
+    };
     const getPitchRatio = (note) => {
       const root = Tone.Frequency(moduleState.rootNote || "C4").toFrequency();
-      return getNoteFrequency(note) / root;
+      return (getBaseFrequencyForNote(note) * getFrequencyOffset()) / root;
     };
     const getModulationFrequency = () => {
       const configuredFrequency = Number(moduleState?.options?.frequency);
@@ -375,7 +391,12 @@ export class AudioEngine {
     };
 
     const getNodeOptions = (options = {}) => {
-      const { gain, ...nodeOptions } = options || {};
+      const { gain, frequencyOffset, ...nodeOptions } = options || {};
+      return nodeOptions;
+    };
+
+    const getPitchedNodeOptions = (options = {}) => {
+      const { frequency, ...nodeOptions } = getNodeOptions(options);
       return nodeOptions;
     };
 
@@ -412,7 +433,7 @@ export class AudioEngine {
 
       let node;
       if (definition.runtime === "pitchedSource") {
-        node = new Tone[module.type](getNodeOptions(module.options));
+        node = new Tone[module.type](getPitchedNodeOptions(module.options));
         node.connect(volumeNode);
         node.start();
       } else if (definition.runtime === "noise") {
@@ -434,6 +455,9 @@ export class AudioEngine {
         node,
         volumeNode,
         panNode,
+        frequencyBaseSignal: null,
+        frequencyOffsetParam: null,
+        frequencyMultiply: null,
         hiddenAmpEnv,
         note: null,
         startTime: 0,
@@ -444,6 +468,23 @@ export class AudioEngine {
     };
 
     const voices = Array.from({ length: VOICE_COUNT }, createVoice);
+
+    if (definition.runtime === "pitchedSource") {
+      voices.forEach((voice) => {
+        if (!voice.node?.frequency) {
+          return;
+        }
+        voice.frequencyBaseSignal = new Tone.Signal(getModulationFrequency());
+        voice.frequencyOffsetParam = new Tone.Signal(getFrequencyOffset());
+        voice.frequencyMultiply = new Tone.Multiply(1);
+        voice.frequencyBaseSignal.connect(voice.frequencyMultiply);
+        voice.frequencyOffsetParam.connect(voice.frequencyMultiply.factor);
+        if ("value" in voice.node.frequency) {
+          voice.node.frequency.value = 0;
+        }
+        voice.frequencyMultiply.connect(voice.node.frequency);
+      });
+    }
 
     const createPlayerNodeForVoice = (voice) => {
       const nodeOptions = getNodeOptions(moduleState.options);
@@ -639,20 +680,17 @@ export class AudioEngine {
           }
 
           if (definition.runtime === "pitchedSource") {
-            const optsForSafeSet = (moduleState.modulationMode && moduleState.midiOn)
-              ? { ...nodeOptions, frequency: undefined }
-              : nodeOptions;
+            const optsForSafeSet = getPitchedNodeOptions(nodeOptions);
             safeSet(voice.node, optsForSafeSet);
+            if (voice.frequencyOffsetParam) {
+              rampParam(voice.frequencyOffsetParam, getFrequencyOffset());
+            }
             if (moduleState.modulationMode && voice.node.frequency) {
               if (moduleState.midiOn && voice.note) {
-                let nextFrequency = getNoteFrequency(voice.note);
-                const octave = Number(moduleState?.options?.octave) || 0;
-                if (octave !== 0) {
-                  nextFrequency *= Math.pow(2, octave);
-                }
-                voice.node.frequency.rampTo(nextFrequency, 0.02);
+                const nextFrequency = getBaseFrequencyForNote(voice.note);
+                voice.frequencyBaseSignal?.rampTo(nextFrequency, 0.02);
               } else if (!moduleState.midiOn) {
-                voice.node.frequency.rampTo(getModulationFrequency(), 0.02);
+                voice.frequencyBaseSignal?.rampTo(getModulationFrequency(), 0.02);
               }
             }
           } else if (definition.runtime === "noise") {
@@ -699,17 +737,9 @@ export class AudioEngine {
           if (voice.node.frequency) {
             const useMidiPitch = !moduleState.modulationMode || moduleState.midiOn;
             let nextFrequency = useMidiPitch
-              ? getNoteFrequency(note)
+              ? getBaseFrequencyForNote(note)
               : getModulationFrequency();
-
-            if (useMidiPitch) {
-              const octave = Number(moduleState?.options?.octave) || 0;
-              if (octave !== 0) {
-                nextFrequency *= Math.pow(2, octave);
-              }
-            }
-
-            voice.node.frequency.rampTo(nextFrequency, 0.02);
+            voice.frequencyBaseSignal?.rampTo(nextFrequency, 0.02);
           }
         } else if (definition.runtime === "noise") {
         } else if (definition.runtime === "player") {
@@ -758,6 +788,15 @@ export class AudioEngine {
           voice.volumeNode.dispose();
           if (voice.panNode) {
             voice.panNode.dispose();
+          }
+          if (voice.frequencyBaseSignal) {
+            voice.frequencyBaseSignal.dispose();
+          }
+          if (voice.frequencyOffsetParam) {
+            voice.frequencyOffsetParam.dispose();
+          }
+          if (voice.frequencyMultiply) {
+            voice.frequencyMultiply.dispose();
           }
           voice.hiddenAmpEnv.dispose();
         });
