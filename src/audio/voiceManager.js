@@ -127,7 +127,6 @@ export function createSourceRuntime({
    * 常量定义
    */
   const VOICE_COUNT = 8;
-  const VOICE_IDLE_DISPOSE_SECONDS = 4;
   const VOICE_INDEX_RESERVE_SECONDS = 10;
 
   /**
@@ -376,7 +375,6 @@ export function createSourceRuntime({
   /**
    * 创建所有声音占位符
    */
-  console.log(`[VoiceManager] Creating ${VOICE_COUNT} voice placeholders for ${module.type}`);
   const voices = Array.from({ length: VOICE_COUNT }, createVoicePlaceholder);
 
   /**
@@ -423,17 +421,51 @@ export function createSourceRuntime({
   };
 
   /**
-   * 销毁声音的音源节点
+   * 销毁声音的所有音频节点
    *
    * @param {Object} voice - 声音对象
    */
   const disposeVoiceNode = (voice) => {
-    if (!voice.node || typeof voice.node.dispose !== "function") {
+    console.log(`[VoiceManager] Disposing all nodes for voice`);
+
+    // 断开并释放音源节点
+    if (voice.node && typeof voice.node.dispose === "function") {
+      voice.node.dispose();
       voice.node = null;
-      return;
     }
-    console.log(`[VoiceManager] Disposing ${definition.runtime} node for voice`);
-    voice.node.dispose();
+
+    // 断开并释放频率控制信号链
+    if (voice.frequencyMultiply) {
+      voice.frequencyMultiply.dispose();
+      voice.frequencyMultiply = null;
+    }
+    if (voice.frequencyOffsetParam) {
+      voice.frequencyOffsetParam.dispose();
+      voice.frequencyOffsetParam = null;
+    }
+    if (voice.frequencyBaseSignal) {
+      voice.frequencyBaseSignal.dispose();
+      voice.frequencyBaseSignal = null;
+    }
+
+    // 释放 hiddenAmpEnv（必须在 panNode/volumeNode 之前，因为它们是输入源）
+    if (voice.hiddenAmpEnv) {
+      voice.hiddenAmpEnv.dispose();
+      voice.hiddenAmpEnv = null;
+    }
+
+    // 释放声像节点
+    if (voice.panNode) {
+      voice.panNode.dispose();
+      voice.panNode = null;
+    }
+
+    // 释放音量节点
+    if (voice.volumeNode) {
+      voice.volumeNode.dispose();
+      voice.volumeNode = null;
+    }
+
     voice.node = null;
   };
 
@@ -508,20 +540,17 @@ export function createSourceRuntime({
       if (!voice.note) {
         voice.startTime = 0;
       }
+      // 变为 IDLE 后立即 dispose 节点
+      if (voice.node) {
+        disposeVoiceNode(voice);
+        voice.initialized = false;
+        console.log(`[VoiceManager] Voice disposed and marked as uninitialized`);
+      }
     }
 
     if (voice.state === VOICE_STATE.IDLE && voice.note) {
       voice.state = VOICE_STATE.ACTIVE;
       voice.idleSince = 0;
-    }
-
-    if (
-      voice.state === VOICE_STATE.IDLE
-      && voice.node
-      && voice.idleSince > 0
-      && now - voice.idleSince >= VOICE_IDLE_DISPOSE_SECONDS
-    ) {
-      disposeVoiceNode(voice);
     }
   };
 
@@ -639,7 +668,6 @@ export function createSourceRuntime({
       if (activeVoices.length === 0 && releasingVoices.length === 1) {
         const voice = releasingVoices[0];
         const index = voices.indexOf(voice);
-        console.log(`[VoiceManager] findAvailableVoice: interrupting extended release voice ${index}`);
         return { voice, index };
       }
     }
