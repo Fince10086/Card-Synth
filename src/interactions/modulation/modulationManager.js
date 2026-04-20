@@ -467,7 +467,7 @@ export class ModulationManager {
       }
       sourceTargetProfile.set(mod.sourceModuleId, profile);
 
-      targets.forEach(({ param, voiceIndex }) => {
+      targets.forEach(({ param, voiceIndex }, targetIndex) => {
         const sourceVoiceIndex = Number.isFinite(voiceIndex)
           ? voiceIndex
           : Number(mod.sourceVoiceIndex ?? 0);
@@ -477,6 +477,7 @@ export class ModulationManager {
         }
 
         // 检查是否已存在相同的调制连接，防止重复连接导致调制值翻倍
+        // 使用 targetParam 作为唯一标识的一部分
         const existingRuntime = this.modulationRuntimes.find(
           (r) => r.chainIndex === chainIndex
             && r.modulationId === mod.id
@@ -498,7 +499,7 @@ export class ModulationManager {
         scale.connect(param);
 
         this.modulationRuntimes.push({
-          id: `${chainIndex}-${mod.id}-${sourceVoiceIndex}`,
+          id: `${chainIndex}-${mod.id}-${sourceVoiceIndex}-${targetIndex}`,
           chainIndex,
           modulationId: mod.id,
           sourceVoiceIndex,

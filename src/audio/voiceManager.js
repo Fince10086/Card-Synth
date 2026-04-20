@@ -396,7 +396,8 @@ export function createSourceRuntime({
 
     // 为 pitchedSource 设置频率控制信号链
     if (definition.runtime === "pitchedSource" && node?.frequency) {
-      voice.frequencyBaseSignal = new Tone.Signal(getModulationFrequency());
+      const initFreq = getModulationFrequency();
+      voice.frequencyBaseSignal = new Tone.Signal(initFreq);
       voice.frequencyOffsetParam = new Tone.Signal(getFrequencyOffset());
       voice.frequencyMultiply = new Tone.Multiply(1);
       voice.frequencyBaseSignal.connect(voice.frequencyMultiply);
@@ -876,6 +877,7 @@ export function createSourceRuntime({
       if (!voice || !voice.initialized) {
         return null;
       }
+      console.log(`[VoiceManager] getModulationOutput: voice=${voiceIndex}, note=${voice.note}, modFreq=${voice.frequencyBaseSignal?.value?.toFixed?.(2) || 'N/A'}`);
       return voice.panNode || voice.volumeNode;
     },
 
