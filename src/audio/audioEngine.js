@@ -212,7 +212,7 @@ export class AudioEngine {
       runtime.ampEnvRuntime = ampEnvRuntime;
 
       runtime.voices.forEach((voice, i) => {
-        if (ampEnvRuntime && ampEnvRuntime.voices && ampEnvRuntime.voices[i]) {
+        if (voice.initialized && ampEnvRuntime && ampEnvRuntime.voices && ampEnvRuntime.voices[i]) {
           const outputNode = voice.panNode || voice.hiddenAmpEnv;
           outputNode.connect(ampEnvRuntime.voices[i]);
         }
@@ -240,10 +240,13 @@ export class AudioEngine {
       }
 
       runtime.voices.forEach((voice) => {
-        if (targetNode) {
+        if (targetNode && voice.initialized && voice.hiddenAmpEnv) {
           voice.hiddenAmpEnv.connect(targetNode);
         }
       });
+
+      // 存储 targetNode 供懒加载的 voice 使用
+      runtime.targetNode = targetNode;
     }
   }
 

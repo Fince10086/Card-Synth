@@ -127,7 +127,7 @@ export function createSourceRuntime({
    * 常量定义
    */
   const VOICE_COUNT = 8;
-  const PLAYER_IDLE_DISPOSE_SECONDS = 6;
+  const VOICE_IDLE_DISPOSE_SECONDS = 4;
   const VOICE_INDEX_RESERVE_SECONDS = 10;
 
   /**
@@ -251,25 +251,44 @@ export function createSourceRuntime({
   };
 
   /**
-   * 创建单个声音
-   * 每个声音包含完整的音频节点链：
-   * - 音源节点（振荡器/噪声/采样器）
-   * - 音量节点
-   * - 声像节点（非调制模式）
-   * - 隐藏的振幅包络
-   *
-   * @returns {Object} 声音对象
+   * 创建占位声音对象（未初始化）
+   * @returns {Object} 占位声音对象
    */
-  const createVoice = () => {
+  const createVoicePlaceholder = () => ({
+    node: null,
+    volumeNode: null,
+    panNode: null,
+    frequencyBaseSignal: null,
+    frequencyOffsetParam: null,
+    frequencyMultiply: null,
+    hiddenAmpEnv: null,
+    initialized: false,
+    note: null,
+    startTime: 0,
+    state: VOICE_STATE.IDLE,
+    releaseEndTime: 0,
+    idleSince: 0,
+  });
+
+  /**
+   * 初始化指定索引的声音
+   * 创建完整的音频节点链
+   *
+   * @param {number} index - 声音索引
+   * @returns {Object} 初始化后的声音对象
+   */
+  const initVoice = (index) => {
+    const voice = voices[index];
+    if (voice.initialized) {
+      return voice;
+    }
+
+    console.log(`[VoiceManager] Initializing voice ${index}`);
+
     const volumeNode = new Tone.Gain(getSourceOutputGain());
     const isModulationMode = moduleState.modulationMode;
     let panNode = null;
 
-    /**
-     * 隐藏的振幅包络
-     * 用于在没有外部振幅包络时提供基本的音量控制
-     * 具有非常短的攻击和释放时间
-     */
     const hiddenAmpEnv = new Tone.AmplitudeEnvelope({
       attack: 0.005,
       decay: 0.01,
@@ -287,13 +306,6 @@ export function createSourceRuntime({
 
     let node;
 
-    /**
-     * 根据音源类型创建不同的节点
-     * - pitchedSource: 可调音高的音源（如振荡器）
-     * - noise: 噪声发生器
-     * - player: 采样播放器
-     * - 默认: 普通振荡器
-     */
     if (definition.runtime === "pitchedSource") {
       node = new Tone[module.type](getPitchedNodeOptions(module.options));
       node.connect(volumeNode);
@@ -313,62 +325,91 @@ export function createSourceRuntime({
       node.start();
     }
 
-    return {
-      node,
-      volumeNode,
-      panNode,
-      frequencyBaseSignal: null,
-      frequencyOffsetParam: null,
-      frequencyMultiply: null,
-      hiddenAmpEnv,
-      note: null,
-      startTime: 0,
-      state: VOICE_STATE.IDLE,
-      releaseEndTime: 0,
-      idleSince: 0,
-    };
-  };
+    voice.node = node;
+    voice.volumeNode = volumeNode;
+    voice.panNode = panNode;
+    voice.hiddenAmpEnv = hiddenAmpEnv;
 
-  /**
-   * 创建所有声音实例
-   */
-  const voices = Array.from({ length: VOICE_COUNT }, createVoice);
-
-  /**
-   * 为可调音高的音源设置频率控制信号链
-   * 使用信号节点实现平滑的频率变化
-   */
-  if (definition.runtime === "pitchedSource") {
-    voices.forEach((voice) => {
-      if (!voice.node?.frequency) {
-        return;
-      }
+    // 为 pitchedSource 设置频率控制信号链
+    if (definition.runtime === "pitchedSource" && node?.frequency) {
       voice.frequencyBaseSignal = new Tone.Signal(getModulationFrequency());
       voice.frequencyOffsetParam = new Tone.Signal(getFrequencyOffset());
       voice.frequencyMultiply = new Tone.Multiply(1);
       voice.frequencyBaseSignal.connect(voice.frequencyMultiply);
       voice.frequencyOffsetParam.connect(voice.frequencyMultiply.factor);
-      if ("value" in voice.node.frequency) {
-        voice.node.frequency.value = 0;
+      if ("value" in node.frequency) {
+        node.frequency.value = 0;
       }
-      voice.frequencyMultiply.connect(voice.node.frequency);
-    });
-  }
+      voice.frequencyMultiply.connect(node.frequency);
+    }
+
+    voice.initialized = true;
+
+    // 如果 ampEnvRuntime 已设置（由 audioEngine 设置），建立连接
+    if (runtime.hasAmpEnv && runtime.ampEnvRuntime?.voices?.[index]) {
+      const outputNode = voice.panNode || voice.hiddenAmpEnv;
+      outputNode.connect(runtime.ampEnvRuntime.voices[index]);
+    } else if (!runtime.hasAmpEnv && runtime.targetNode && voice.hiddenAmpEnv) {
+      // 没有 AmpEnv，直接连接到 targetNode
+      voice.hiddenAmpEnv.connect(runtime.targetNode);
+    }
+
+    console.log(`[VoiceManager] Voice ${index} initialized`);
+    return voice;
+  };
 
   /**
-   * 为声音创建采样器节点
-   * 采样器节点会在空闲时被销毁以节省资源
+   * 获取或初始化指定索引的声音
+   *
+   * @param {number} index - 声音索引
+   * @returns {Object} 声音对象
+   */
+  const getOrInitVoice = (index) => {
+    const voice = voices[index];
+    if (!voice.initialized) {
+      return initVoice(index);
+    }
+    return voice;
+  };
+
+  /**
+   * 创建所有声音占位符
+   */
+  console.log(`[VoiceManager] Creating ${VOICE_COUNT} voice placeholders for ${module.type}`);
+  const voices = Array.from({ length: VOICE_COUNT }, createVoicePlaceholder);
+
+  /**
+   * 为声音创建音源节点
+   * 支持所有音源类型：pitchedSource、noise、player、默认振荡器
    *
    * @param {Object} voice - 声音对象
-   * @returns {Object} 新创建的采样器节点
+   * @returns {Object} 新创建的音源节点
    */
-  const createPlayerNodeForVoice = (voice) => {
-    const nodeOptions = getNodeOptions(moduleState.options);
-    const playerNode = new Tone.Player(nodeOptions);
-    applyPlayerLikeOptions(playerNode, nodeOptions);
-    playerNode.connect(voice.volumeNode);
-    voice.node = playerNode;
-    return playerNode;
+  const createNodeForVoice = (voice) => {
+    let node;
+
+    if (definition.runtime === "pitchedSource") {
+      node = new Tone[module.type](getPitchedNodeOptions(moduleState.options));
+      node.connect(voice.volumeNode);
+      node.start();
+    } else if (definition.runtime === "noise") {
+      node = new Tone.Noise(getNodeOptions(moduleState.options));
+      node.connect(voice.volumeNode);
+      node.start();
+    } else if (definition.runtime === "player") {
+      const nodeOptions = getNodeOptions(moduleState.options);
+      node = new Tone.Player(nodeOptions);
+      applyPlayerLikeOptions(node, nodeOptions);
+      node.connect(voice.volumeNode);
+    } else {
+      node = new Tone.Oscillator(getNodeOptions(moduleState.options));
+      node.connect(voice.volumeNode);
+      node.start();
+    }
+
+    voice.node = node;
+    console.log(`[VoiceManager] Created ${definition.runtime} node for voice`);
+    return node;
   };
 
   /**
@@ -381,25 +422,24 @@ export function createSourceRuntime({
       voice.node = null;
       return;
     }
+    console.log(`[VoiceManager] Disposing ${definition.runtime} node for voice`);
     voice.node.dispose();
     voice.node = null;
   };
 
   /**
    * 确保声音有可用的音源节点
-   * 对于采样器类型，会在需要时重新创建节点
+   * 如果 voice 未初始化，先初始化；如果节点不存在（被销毁），则重新创建
    *
-   * @param {Object} voice - 声音对象
+   * @param {number} voiceIndex - 声音索引
    * @returns {Object} 音源节点
    */
-  const ensureVoiceNode = (voice) => {
-    if (definition.runtime !== "player") {
-      return voice.node;
-    }
+  const ensureVoiceNode = (voiceIndex) => {
+    const voice = getOrInitVoice(voiceIndex);
     if (voice.node) {
       return voice.node;
     }
-    return createPlayerNodeForVoice(voice);
+    return createNodeForVoice(voice);
   };
 
   /**
@@ -466,11 +506,10 @@ export function createSourceRuntime({
     }
 
     if (
-      definition.runtime === "player"
-      && voice.state === VOICE_STATE.IDLE
+      voice.state === VOICE_STATE.IDLE
       && voice.node
       && voice.idleSince > 0
-      && now - voice.idleSince >= PLAYER_IDLE_DISPOSE_SECONDS
+      && now - voice.idleSince >= VOICE_IDLE_DISPOSE_SECONDS
     ) {
       disposeVoiceNode(voice);
     }
@@ -483,7 +522,9 @@ export function createSourceRuntime({
    */
   const refreshAllVoiceLifecycles = (now = Tone.now()) => {
     voices.forEach((voice) => {
-      refreshVoiceLifecycle(voice, now);
+      if (voice.initialized) {
+        refreshVoiceLifecycle(voice, now);
+      }
     });
   };
 
@@ -530,7 +571,7 @@ export function createSourceRuntime({
   const releaseVoice = (voice, voiceIndex, now = Tone.now()) => {
     const hadAssignedNote = voice.note !== null;
 
-    const isLastNote = hadAssignedNote && voices.filter((v, i) => i !== voiceIndex && v.note !== null).length === 0;
+    const isLastNote = hadAssignedNote && voices.filter((v, i) => i !== voiceIndex && v.initialized && v.note !== null).length === 0;
 
     voice.note = null;
 
@@ -573,6 +614,14 @@ export function createSourceRuntime({
     const now = Tone.now();
     refreshAllVoiceLifecycles(now);
 
+    // 优先找未初始化的声音（完全空闲）
+    for (let i = 0; i < voices.length; i++) {
+      if (!voices[i].initialized) {
+        return { voice: getOrInitVoice(i), index: i };
+      }
+    }
+
+    // 找已初始化且空闲的声音
     for (let i = 0; i < voices.length; i++) {
       if (voices[i].state === VOICE_STATE.IDLE && !voices[i].note) {
         return { voice: voices[i], index: i };
@@ -618,7 +667,10 @@ export function createSourceRuntime({
   const findVoiceByNote = (note) => {
     refreshAllVoiceLifecycles();
     const index = voices.findIndex((v) => v.note === note);
-    return index >= 0 ? { voice: voices[index], index } : null;
+    if (index >= 0 && voices[index].initialized) {
+      return { voice: voices[index], index };
+    }
+    return null;
   };
 
   /**
@@ -653,7 +705,7 @@ export function createSourceRuntime({
    *
    * @returns {number} 活跃声音数量
    */
-  const getActiveVoiceCount = () => voices.filter((v) => v.note !== null).length;
+  const getActiveVoiceCount = () => voices.filter((v) => v.initialized && v.note !== null).length;
 
   /**
    * 更新隐藏振幅包络的释放时间
@@ -684,7 +736,10 @@ export function createSourceRuntime({
      */
     getModulationOutput: (voiceIndex) => {
       const voice = voices[voiceIndex];
-      return voice ? (voice.panNode || voice.volumeNode) : null;
+      if (!voice || !voice.initialized) {
+        return null;
+      }
+      return voice.panNode || voice.volumeNode;
     },
 
     /**
@@ -701,6 +756,9 @@ export function createSourceRuntime({
       runtime.moduleState = moduleState;
       refreshAllVoiceLifecycles();
       voices.forEach((voice) => {
+        if (!voice.initialized) {
+          return;
+        }
         const nodeOptions = getNodeOptions(moduleState.options);
         rampParam(voice.volumeNode.gain, getSourceOutputGain());
         if (voice.panNode) {
@@ -768,8 +826,15 @@ export function createSourceRuntime({
         voice.hiddenAmpEnv.triggerAttack(now, effectiveVelocity);
       }
 
+      const sourceNode = ensureVoiceNode(index);
+      if (!sourceNode) {
+        releaseVoice(voice, index, now);
+        updateHiddenAmpEnvRelease();
+        return;
+      }
+
       if (definition.runtime === "pitchedSource") {
-        if (voice.node.frequency) {
+        if (sourceNode.frequency) {
           const useMidiPitch = !moduleState.modulationMode || moduleState.midiOn;
           const nextFrequency = useMidiPitch
             ? getBaseFrequencyForNote(note)
@@ -777,19 +842,18 @@ export function createSourceRuntime({
           voice.frequencyBaseSignal?.rampTo(nextFrequency, 0.02);
         }
       } else if (definition.runtime === "player") {
-        const playerNode = ensureVoiceNode(voice);
-        if (!playerNode || !playerNode.loaded) {
+        if (!sourceNode.loaded) {
           releaseVoice(voice, index, now);
           updateHiddenAmpEnvRelease();
           return;
         }
-        if ("playbackRate" in playerNode) {
-          playerNode.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
+        if ("playbackRate" in sourceNode) {
+          sourceNode.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
         }
         try {
-          playerNode.stop(now);
+          sourceNode.stop(now);
         } catch {}
-        playerNode.start(now);
+        sourceNode.start(now);
       }
       updateHiddenAmpEnvRelease();
     },
@@ -817,7 +881,7 @@ export function createSourceRuntime({
     releaseAll: () => {
       const now = Tone.now();
       voices.forEach((voice, index) => {
-        if (voice.note || voice.state !== VOICE_STATE.IDLE) {
+        if (voice.initialized && (voice.note || voice.state !== VOICE_STATE.IDLE)) {
           releaseVoice(voice, index, now);
         }
       });
@@ -829,7 +893,11 @@ export function createSourceRuntime({
      * 清理所有音频节点和资源
      */
     dispose: () => {
+      console.log(`[VoiceManager] Disposing runtime for ${module.type}`);
       voices.forEach((voice) => {
+        if (!voice.initialized) {
+          return;
+        }
         if (voice.node && typeof voice.node.dispose === "function") {
           voice.node.dispose();
         }
@@ -848,6 +916,7 @@ export function createSourceRuntime({
         }
         voice.hiddenAmpEnv.dispose();
       });
+      console.log(`[VoiceManager] Runtime disposed for ${module.type}`);
     },
   };
 
