@@ -408,6 +408,15 @@ export function createSourceRuntime({
     }
 
     voice.node = node;
+
+    // 为 pitchedSource 重新连接频率控制信号链（如果已存在）
+    if (definition.runtime === "pitchedSource" && node?.frequency && voice.frequencyMultiply) {
+      if ("value" in node.frequency) {
+        node.frequency.value = 0;
+      }
+      voice.frequencyMultiply.connect(node.frequency);
+    }
+
     console.log(`[VoiceManager] Created ${definition.runtime} node for voice`);
     return node;
   };
