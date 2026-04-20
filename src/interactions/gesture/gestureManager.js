@@ -28,6 +28,9 @@ export class GestureManager {
       rightPinchConfirmed: false,
     };
 
+    this.smoothedLandmarks = [];
+    this.smoothAlpha = 0.4;
+
     this.onEsc = (e) => {
       if (e.key === "Escape") {
         this.deactivate();
@@ -207,7 +210,7 @@ export class GestureManager {
   }
 
   handleResults({ landmarks, gestures }) {
-    this.lastLandmarks = landmarks;
+    this.lastLandmarks = this.smoothLandmarks(landmarks);
     this.lastGestures = gestures;
     if (!this.renderPending) {
       this.renderPending = true;
@@ -357,6 +360,31 @@ export class GestureManager {
     this.ctx.textBaseline = "middle";
     const labels = ["I", "II", "III", "IV"];
     this.ctx.fillText(labels[chainIndex], pos.x, pos.y);
+  }
+
+  smoothLandmarks(landmarks) {
+    if (!landmarks || landmarks.length === 0) {
+      this.smoothedLandmarks = [];
+      return landmarks;
+    }
+    if (this.smoothedLandmarks.length !== landmarks.length) {
+      this.smoothedLandmarks = landmarks.map((hand) =>
+        hand.map((lm) => ({ x: lm.x, y: lm.y, z: lm.z }))
+      );
+      return landmarks;
+    }
+    const alpha = this.smoothAlpha;
+    for (let h = 0; h < landmarks.length; h++) {
+      for (let i = 0; i < landmarks[h].length; i++) {
+        this.smoothedLandmarks[h][i].x =
+          alpha * landmarks[h][i].x + (1 - alpha) * this.smoothedLandmarks[h][i].x;
+        this.smoothedLandmarks[h][i].y =
+          alpha * landmarks[h][i].y + (1 - alpha) * this.smoothedLandmarks[h][i].y;
+        this.smoothedLandmarks[h][i].z =
+          alpha * landmarks[h][i].z + (1 - alpha) * this.smoothedLandmarks[h][i].z;
+      }
+    }
+    return this.smoothedLandmarks;
   }
 
   drawHandLandmarks(landmarks) {

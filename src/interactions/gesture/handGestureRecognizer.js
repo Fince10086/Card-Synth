@@ -16,6 +16,8 @@ export class HandGestureRecognizer {
       rightPinch: 0,
       xGesture: 0,
     };
+    this.pinchPos = { left: null, right: null };
+    this.pinchSmoothAlpha = 0.5;
   }
 
   async initialize() {
@@ -125,8 +127,10 @@ export class HandGestureRecognizer {
       const pinch = this.detectPinch(leftHand.landmarks);
       if (pinch) {
         gestures.leftPinch = true;
-        gestures.leftPinchPos = pinch;
+        gestures.leftPinchPos = this.smoothPinch("left", pinch);
         this.cooldowns.leftPinch = now + COOLDOWN_MS;
+      } else {
+        this.pinchPos.left = null;
       }
     }
 
@@ -134,8 +138,10 @@ export class HandGestureRecognizer {
       const pinch = this.detectPinch(rightHand.landmarks);
       if (pinch) {
         gestures.rightPinch = true;
-        gestures.rightPinchPos = pinch;
+        gestures.rightPinchPos = this.smoothPinch("right", pinch);
         this.cooldowns.rightPinch = now + COOLDOWN_MS;
+      } else {
+        this.pinchPos.right = null;
       }
     }
 
@@ -199,6 +205,18 @@ export class HandGestureRecognizer {
     const d3 = cross(a1, a2, b1);
     const d4 = cross(a1, a2, b2);
     return d1 * d2 < 0 && d3 * d4 < 0;
+  }
+
+  smoothPinch(hand, pos) {
+    const prev = this.pinchPos[hand];
+    if (!prev) {
+      this.pinchPos[hand] = { x: pos.x, y: pos.y };
+      return pos;
+    }
+    const alpha = this.pinchSmoothAlpha;
+    prev.x = alpha * pos.x + (1 - alpha) * prev.x;
+    prev.y = alpha * pos.y + (1 - alpha) * prev.y;
+    return { x: prev.x, y: prev.y };
   }
 
   dispose() {
