@@ -816,12 +816,13 @@ export function createSourceRuntime({
 
     /**
      * 获取指定声音的调制输出节点
+     * 如果 voice 未初始化，会先初始化
      *
      * @param {number} voiceIndex - 声音索引
      * @returns {Object|null} 输出节点
      */
     getModulationOutput: (voiceIndex) => {
-      const voice = voices[voiceIndex];
+      const voice = getOrInitVoice(voiceIndex);
       if (!voice || !voice.initialized) {
         return null;
       }
