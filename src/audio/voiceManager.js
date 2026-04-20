@@ -171,9 +171,7 @@ export function createSourceRuntime({
     );
 
     if (allIdleOrReleasing) {
-      console.log(`[VoiceManager] All voices idle or releasing, scheduling rebuild in ${ALL_VOICES_IDLE_REBUILD_DELAY}s`);
       allVoicesIdleTimeoutId = setTimeout(() => {
-        console.log(`[VoiceManager] Triggering onAllVoicesIdle callback`);
         onAllVoicesIdle();
         allVoicesIdleTimeoutId = null;
       }, ALL_VOICES_IDLE_REBUILD_DELAY * 1000);
@@ -307,6 +305,7 @@ export function createSourceRuntime({
     releaseEndTime: 0,
     idleSince: 0,
     extendedReleaseEndTime: 0,
+    disposeTimeoutId: null,
   });
 
   /**
@@ -321,8 +320,6 @@ export function createSourceRuntime({
     if (voice.initialized) {
       return voice;
     }
-
-    console.log(`[VoiceManager] Initializing voice ${index}`);
 
     const volumeNode = new Tone.Gain(getSourceOutputGain());
     const isModulationMode = moduleState.modulationMode;
@@ -465,7 +462,11 @@ export function createSourceRuntime({
    * @param {Object} voice - 声音对象
    */
   const disposeVoiceNode = (voice) => {
-    console.log(`[VoiceManager] Disposing all nodes for voice`);
+    // 清理 dispose 定时器
+    if (voice.disposeTimeoutId) {
+      clearTimeout(voice.disposeTimeoutId);
+      voice.disposeTimeoutId = null;
+    }
 
     // 断开并释放音源节点
     if (voice.node && typeof voice.node.dispose === "function") {
@@ -611,6 +612,7 @@ export function createSourceRuntime({
   /**
    * 调度声音释放
    * 设置释放结束时间，将状态转为 RELEASING
+   * 并在 release 结束时自动触发 dispose（时间驱动）
    *
    * @param {Object} voice - 声音对象
    * @param {number} voiceIndex - 声音索引
@@ -618,8 +620,23 @@ export function createSourceRuntime({
    */
   const scheduleVoiceRelease = (voice, voiceIndex, now = Tone.now()) => {
     voice.state = VOICE_STATE.RELEASING;
-    voice.releaseEndTime = now + getVoiceReleaseDuration(voice, voiceIndex);
+    const releaseDuration = getVoiceReleaseDuration(voice, voiceIndex);
+    voice.releaseEndTime = now + releaseDuration;
     voice.idleSince = 0;
+
+    // 清除之前的 dispose 定时器（如果有）
+    if (voice.disposeTimeoutId) {
+      clearTimeout(voice.disposeTimeoutId);
+      voice.disposeTimeoutId = null;
+    }
+
+    // 设置定时器，在 release 结束时自动 dispose
+    voice.disposeTimeoutId = setTimeout(() => {
+      if (voice.initialized) {
+        refreshVoiceLifecycle(voice, Tone.now());
+      }
+      voice.disposeTimeoutId = null;
+    }, releaseDuration * 1000);
   };
 
   /**
@@ -908,7 +925,6 @@ export function createSourceRuntime({
       if (allVoicesIdleTimeoutId) {
         clearTimeout(allVoicesIdleTimeoutId);
         allVoicesIdleTimeoutId = null;
-        console.log(`[VoiceManager] Cancelled rebuild timer due to new note`);
       }
 
       const result = findAvailableVoice();
@@ -1018,6 +1034,11 @@ export function createSourceRuntime({
         allVoicesIdleTimeoutId = null;
       }
       voices.forEach((voice) => {
+        // 清理每个 voice 的 dispose 定时器
+        if (voice.disposeTimeoutId) {
+          clearTimeout(voice.disposeTimeoutId);
+          voice.disposeTimeoutId = null;
+        }
         if (!voice.initialized) {
           return;
         }
