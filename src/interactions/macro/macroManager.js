@@ -5,7 +5,7 @@ import {
   normalizeMacroState,
 } from "../../preset/preset.js";
 
-const AXES = ["x", "y"];
+const AXES = ["x", "y", "z"];
 const POINT_OPACITY = [1, 0.9, 0.8, 0.7];
 const TARGET_SELECTOR = ".control.control-slider[data-module-id][data-param-path]";
 const HOVER_CLASS = "macro-target-hover";
@@ -206,7 +206,7 @@ export class MacroManager {
     const dirtyModules = new Set();
 
     AXES.forEach((axis) => {
-      const axisValue = axis === "x" ? chainMacro.point.x : chainMacro.point.y;
+      const axisValue = axis === "x" ? chainMacro.point.x : axis === "y" ? chainMacro.point.y : chainMacro.point.z;
       chainMacro.mappings[axis].forEach((mapping) => {
         const module = moduleMap.get(mapping.targetModuleId);
         if (!module) {

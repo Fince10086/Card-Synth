@@ -69,10 +69,12 @@ export function createDefaultMacroChainState() {
     point: {
       x: MACRO_POINT_DEFAULT.x,
       y: MACRO_POINT_DEFAULT.y,
+      z: 0.5,
     },
     mappings: {
       x: [],
       y: [],
+      z: [],
     },
   };
 }
@@ -137,10 +139,12 @@ export function normalizeMacroChain(chainMacro = {}) {
     point: {
       x: clamp(Number(point.x ?? fallback.point.x), 0, 1),
       y: clamp(Number(point.y ?? fallback.point.y), 0, 1),
+      z: clamp(Number(point.z ?? fallback.point.z), 0, 1),
     },
     mappings: {
       x: normalizeMacroMappings(chainMacro?.mappings?.x),
       y: normalizeMacroMappings(chainMacro?.mappings?.y),
+      z: normalizeMacroMappings(chainMacro?.mappings?.z),
     },
   };
 }

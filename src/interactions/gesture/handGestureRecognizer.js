@@ -17,7 +17,7 @@ export class HandGestureRecognizer {
       xGesture: 0,
     };
     this.pinchPos = { left: null, right: null };
-    this.pinchSmoothAlpha = 0.5;
+    this.pinchSmoothAlpha = 0.2;
   }
 
   async initialize() {

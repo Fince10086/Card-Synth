@@ -48,6 +48,7 @@ export class GestureManager {
       await this.recognizer.initialize();
       await this.recognizer.startCamera();
       this.active = true;
+      this.ensureAllChainsHaveGain();
       this.createOverlay();
       this.recognizer.onResults = (results) => this.handleResults(results);
       this.recognizer.startDetection();
@@ -56,6 +57,26 @@ export class GestureManager {
       console.error("Gesture activation failed:", err);
       this.app.setStatus?.(`Gesture failed: ${err.message}`, "error");
     }
+  }
+
+  ensureAllChainsHaveGain() {
+    let added = false;
+    for (let i = 0; i < this.app.getChainCount(); i++) {
+      if (!this.app.isChainEnabled(i)) continue;
+      const chain = this.app.getChain(i);
+      const modules = chain.modules || [];
+      const hasGain = modules.some((m) => m.type === "Gain");
+      if (!hasGain) {
+        const gainModule = createComponentModule("Gain");
+        modules.push(gainModule);
+        added = true;
+      }
+      this.ensureGainMapped(i);
+    }
+    if (added) {
+      this.app.engine.fullSync(this.app.state);
+    }
+    this.app.selectedPresetId = "custom";
   }
 
   deactivate() {
@@ -190,7 +211,7 @@ export class GestureManager {
     return 1;
   }
 
-  setChainGainValue(chainIndex, value) {
+  ensureGainMapped(chainIndex) {
     const chain = this.app.getChain(chainIndex);
     const modules = chain.modules || [];
     let gainModule = null;
@@ -203,9 +224,37 @@ export class GestureManager {
     if (!gainModule) {
       gainModule = createComponentModule("Gain");
       modules.push(gainModule);
+      this.app.engine.fullSync(this.app.state);
     }
-    gainModule.options.gain = clamp(value, 0, 2);
-    this.app.engine.updateModule(gainModule.id, gainModule, chainIndex);
+
+    const chainMacro = this.app.macroManager.getChainMacro(chainIndex);
+    const zMappings = chainMacro.mappings.z;
+    const alreadyMapped = zMappings.some(
+      (m) => m.targetModuleId === gainModule.id && m.targetParamPath === "options.gain"
+    );
+    if (!alreadyMapped) {
+      zMappings.push({
+        targetModuleId: gainModule.id,
+        targetParamPath: "options.gain",
+        min: 0,
+        max: 2,
+        step: 0.01,
+        rangeStart: 0,
+        rangeEnd: 1,
+      });
+      this.app.selectedPresetId = "custom";
+    }
+    return gainModule;
+  }
+
+  setChainGainValue(chainIndex, value) {
+    const gainModule = this.ensureGainMapped(chainIndex);
+    const chainMacro = this.app.macroManager.getChainMacro(chainIndex);
+    chainMacro.point.z = clamp(value, 0, 1);
+    this.app.macroManager.applyMappingsForChain(
+      chainIndex,
+      chainIndex === this.app.getSelectedChainIndex()
+    );
     this.app.selectedPresetId = "custom";
   }
 
