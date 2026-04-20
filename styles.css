@@ -1166,3 +1166,67 @@ select {
   border: 1px solid #e0e2eb;
 }
 
+.macro-gesture-btn {
+  min-height: 28px;
+  border: 1px solid #e0e2eb;
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.macro-gesture-btn:hover {
+  background: #f5f5f7;
+}
+
+.gesture-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gesture-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.gesture-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  user-select: none;
+}
+
+.gesture-close-btn:hover {
+  opacity: 0.7;
+}
+
+.gesture-close-x {
+  position: absolute;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: bold;
+  pointer-events: none;
+}
+

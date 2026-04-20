@@ -21,6 +21,7 @@ export function renderMainCard({
   onVelocityEnabledChange,
   onMacroPointPointerDown,
   onMacroAxisPointerDown,
+  onGestureClick,
 }) {
   const card = createModuleCard({
     accent: "indigo",
@@ -208,6 +209,16 @@ export function renderMainCard({
 
   axisRow.append(makeAxisButton("x", "←→"), makeAxisButton("y", "↑↓"));
   macroContainer.append(axisRow);
+
+  const gestureBtn = document.createElement("button");
+  gestureBtn.type = "button";
+  gestureBtn.className = "macro-gesture-btn";
+  gestureBtn.textContent = "Gesture";
+  gestureBtn.addEventListener("click", () => {
+    onGestureClick?.();
+  });
+  macroContainer.append(gestureBtn);
+
   controls.append(macroContainer);
 
   const scopeContainer = document.createElement("div");

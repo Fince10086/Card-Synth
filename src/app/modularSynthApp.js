@@ -12,6 +12,7 @@ import { AudioEngine } from "../audio/audioEngine.js";
 import { InputManager } from "../input/inputManager.js";
 import { ModulationManager } from "../interactions/modulation/modulationManager.js";
 import { MacroManager } from "../interactions/macro/macroManager.js";
+import { GestureManager } from "../interactions/gesture/gestureManager.js";
 import { ModuleDragManager } from "../interactions/drag/moduleDragManager.js";
 import {
   renderKeyboard,
@@ -52,6 +53,7 @@ export class ModularSynthApp {
     this.scopeMode = "scope";
 
     this.macroManager = new MacroManager(this);
+    this.gestureManager = new GestureManager(this);
     this.modulationManager = new ModulationManager(this);
     this.dragManager = new ModuleDragManager(this);
     this.engine = new AudioEngine(this);
@@ -595,6 +597,9 @@ export class ModularSynthApp {
           axis,
           chainIndex: this.getSelectedChainIndex(),
         });
+      },
+      onGestureClick: () => {
+        this.gestureManager.activate();
       },
     });
     if (mainCard) {
