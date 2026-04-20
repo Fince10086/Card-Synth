@@ -1,7 +1,7 @@
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 
-const PINCH_THRESHOLD = 0.05;
-const COOLDOWN_MS = 100;
+const PINCH_THRESHOLD = 0.08;
+const COOLDOWN_MS = 10;
 
 export class HandGestureRecognizer {
   constructor() {

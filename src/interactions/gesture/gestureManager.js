@@ -28,6 +28,10 @@ export class GestureManager {
         this.deactivate();
       }
     };
+
+    this.lastLandmarks = [];
+    this.lastGestures = null;
+    this.renderPending = false;
   }
 
   async activate() {
@@ -120,9 +124,10 @@ export class GestureManager {
   }
 
   cameraToCanvas(cx, cy) {
-    const area = this.getControlArea();
-    const x = area.x + (1 - cx) * area.width;
-    const y = area.y + cy * area.height;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const x = (1 - cx) * w;
+    const y = cy * h;
     return { x, y };
   }
 
@@ -197,7 +202,15 @@ export class GestureManager {
   }
 
   handleResults({ landmarks, gestures }) {
-    this.draw(landmarks, gestures);
+    this.lastLandmarks = landmarks;
+    this.lastGestures = gestures;
+    if (!this.renderPending) {
+      this.renderPending = true;
+      requestAnimationFrame(() => {
+        this.renderPending = false;
+        this.draw(this.lastLandmarks, this.lastGestures);
+      });
+    }
 
     const now = performance.now();
 
@@ -228,7 +241,6 @@ export class GestureManager {
           const delta = (dy / area.height) * 4;
           const newGain = clamp(this.gestureState.leftPinchStartGain + delta, 0, 2);
           this.setChainGainValue(chainIndex, newGain);
-          this.app.renderAll();
         }
       } else {
         const available = this.findFirstAvailableChain();
@@ -239,7 +251,6 @@ export class GestureManager {
           chainMacro.point.x = macro.x;
           chainMacro.point.y = macro.y;
           this.app.selectedPresetId = "custom";
-          this.app.renderAll();
           this.gestureState.lastPinchTime = now;
         }
         this.gestureState.leftPinchChainIndex = -1;
@@ -265,7 +276,6 @@ export class GestureManager {
           chainIndex,
           chainIndex === this.app.getSelectedChainIndex()
         );
-        this.app.renderAll();
       } else {
         this.gestureState.rightPinchChainIndex = -1;
       }
