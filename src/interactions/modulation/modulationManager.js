@@ -572,6 +572,10 @@ export class ModulationManager {
       return voice.panNode?.pan || null;
     }
 
+    if (targetParamPath === "options.gain") {
+      return voice.modulationGain?.gain || null;
+    }
+
     const paramPath = targetParamPath.replace(/^options\./, "");
     const param = getByPath(voice.node, paramPath);
     if (!param || typeof param === "number") {

@@ -374,10 +374,16 @@ export class AudioEngine {
       return 1;
     };
 
+    const getNodeOptions = (options = {}) => {
+      const { gain, ...nodeOptions } = options || {};
+      return nodeOptions;
+    };
+
     const createVoice = () => {
       const volumeNode = new Tone.Gain(Tone.dbToGain(module.enabled ? module.volume : -48));
       const isModulationMode = moduleState.modulationMode;
       let panNode = null;
+      let modulationGain = null;
 
       const hiddenAmpEnv = new Tone.AmplitudeEnvelope({
         attack: 0.005,
@@ -387,7 +393,9 @@ export class AudioEngine {
       });
 
       if (isModulationMode) {
-        volumeNode.connect(hiddenAmpEnv);
+        modulationGain = new Tone.Gain(Number(moduleState?.options?.gain ?? 1));
+        volumeNode.connect(modulationGain);
+        modulationGain.connect(hiddenAmpEnv);
       } else {
         panNode = new Tone.Panner(module.pan);
         volumeNode.connect(panNode);
@@ -396,19 +404,20 @@ export class AudioEngine {
 
       let node;
       if (definition.runtime === "pitchedSource") {
-        node = new Tone[module.type](module.options);
+        node = new Tone[module.type](getNodeOptions(module.options));
         node.connect(volumeNode);
         node.start();
       } else if (definition.runtime === "noise") {
-        node = new Tone.Noise(module.options);
+        node = new Tone.Noise(getNodeOptions(module.options));
         node.connect(volumeNode);
         node.start();
       } else if (definition.runtime === "player") {
-        node = new Tone.Player(moduleState.options);
-        applyPlayerLikeOptions(node, moduleState.options);
+        const nodeOptions = getNodeOptions(moduleState.options);
+        node = new Tone.Player(nodeOptions);
+        applyPlayerLikeOptions(node, nodeOptions);
         node.connect(volumeNode);
       } else {
-        node = new Tone.Oscillator(module.options);
+        node = new Tone.Oscillator(getNodeOptions(module.options));
         node.connect(volumeNode);
         node.start();
       }
@@ -417,6 +426,7 @@ export class AudioEngine {
         node,
         volumeNode,
         panNode,
+        modulationGain,
         hiddenAmpEnv,
         note: null,
         startTime: 0,
@@ -429,8 +439,9 @@ export class AudioEngine {
     const voices = Array.from({ length: VOICE_COUNT }, createVoice);
 
     const createPlayerNodeForVoice = (voice) => {
-      const playerNode = new Tone.Player(moduleState.options);
-      applyPlayerLikeOptions(playerNode, moduleState.options);
+      const nodeOptions = getNodeOptions(moduleState.options);
+      const playerNode = new Tone.Player(nodeOptions);
+      applyPlayerLikeOptions(playerNode, nodeOptions);
       playerNode.connect(voice.volumeNode);
       voice.node = playerNode;
       return playerNode;
@@ -607,22 +618,26 @@ export class AudioEngine {
 
       getModulationOutput: (voiceIndex) => {
         const voice = voices[voiceIndex];
-        return voice ? (voice.panNode || voice.volumeNode) : null;
+        return voice ? (voice.modulationGain || voice.panNode || voice.volumeNode) : null;
       },
 
       apply: (nextModule) => {
         moduleState = deepClone(nextModule);
         refreshAllVoiceLifecycles();
         voices.forEach((voice) => {
+          const nodeOptions = getNodeOptions(moduleState.options);
           rampParam(voice.volumeNode.gain, Tone.dbToGain(moduleState.enabled ? moduleState.volume : -48));
           if (voice.panNode) {
             rampParam(voice.panNode.pan, moduleState.pan);
           }
+          if (voice.modulationGain) {
+            rampParam(voice.modulationGain.gain, Number(moduleState?.options?.gain ?? 1));
+          }
 
           if (definition.runtime === "pitchedSource") {
             const optsForSafeSet = (moduleState.modulationMode && moduleState.midiOn)
-              ? { ...moduleState.options, frequency: undefined }
-              : moduleState.options;
+              ? { ...nodeOptions, frequency: undefined }
+              : nodeOptions;
             safeSet(voice.node, optsForSafeSet);
             if (moduleState.modulationMode && voice.node.frequency) {
               if (moduleState.midiOn && voice.note) {
@@ -637,11 +652,11 @@ export class AudioEngine {
               }
             }
           } else if (definition.runtime === "noise") {
-            safeSet(voice.node, moduleState.options);
+            safeSet(voice.node, nodeOptions);
           } else if (definition.runtime === "player") {
             if (voice.node) {
-              safeSet(voice.node, moduleState.options);
-              applyPlayerLikeOptions(voice.node, moduleState.options);
+              safeSet(voice.node, nodeOptions);
+              applyPlayerLikeOptions(voice.node, nodeOptions);
             }
           }
         });
@@ -740,6 +755,9 @@ export class AudioEngine {
           if (voice.panNode) {
             voice.panNode.dispose();
           }
+          if (voice.modulationGain) {
+            voice.modulationGain.dispose();
+          }
           voice.hiddenAmpEnv.dispose();
         });
       },
@@ -753,18 +771,29 @@ export class AudioEngine {
   createEnvelopeModulationRuntime(module) {
     let moduleState = deepClone(module);
     const VOICE_COUNT = 8;
-    const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.Envelope(moduleState.options));
+    const getEnvelopeOptions = (options = {}) => {
+      const { gain, ...envelopeOptions } = options || {};
+      return envelopeOptions;
+    };
+    const getDepthGain = (options = {}) => Number(options?.gain ?? 1);
+    const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.Envelope(getEnvelopeOptions(moduleState.options)));
+    const outputGains = Array.from({ length: VOICE_COUNT }, () => new Tone.Gain(getDepthGain(moduleState.options)));
+    voices.forEach((env, index) => env.connect(outputGains[index]));
     const noteTracker = this.createNoteVoiceTracker(VOICE_COUNT);
 
     return {
       type: module.type,
       category: "modulation-envelope",
       voices,
+      outputGains,
       moduleState,
-      getModulationOutput: (voiceIndex) => voices[voiceIndex] || null,
+      getModulationOutput: (voiceIndex) => outputGains[voiceIndex] || null,
       apply: (nextModule) => {
         moduleState = deepClone(nextModule);
-        voices.forEach((env) => safeSet(env, moduleState.options));
+        const envelopeOptions = getEnvelopeOptions(moduleState.options);
+        const gainValue = getDepthGain(moduleState.options);
+        voices.forEach((env) => safeSet(env, envelopeOptions));
+        outputGains.forEach((gainNode) => rampParam(gainNode.gain, gainValue));
       },
       triggerAttack: (note, velocity) => {
         if (!moduleState.enabled) {
@@ -788,6 +817,7 @@ export class AudioEngine {
       },
       dispose: () => {
         voices.forEach((env) => env.dispose());
+        outputGains.forEach((gainNode) => gainNode.dispose());
       },
     };
   }

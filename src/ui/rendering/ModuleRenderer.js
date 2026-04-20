@@ -8,7 +8,7 @@ import {
   normalizeSourceModule,
   createModule,
 } from "../../utils/helpers.js";
-import { formatHertz, formatPlain } from "../../core/formatters.js";
+import { formatHertz, formatMultiplier } from "../../core/formatters.js";
 import {
   createSelectControl,
   createToggleControl,
@@ -16,6 +16,26 @@ import {
   createAudioImportControl,
 } from "../controls/index.js";
 import { createModuleCard } from "../components/moduleCard.js";
+
+const MODULATION_DEPTH_CONTROL = {
+  path: "options.gain",
+  kind: "range",
+  label: "Depth",
+  min: 0,
+  max: 100,
+  step: 0.01,
+  formatter: formatMultiplier,
+};
+
+function getRenderableControls(module, controls) {
+  if (module.category !== "source" || !module.modulationMode) {
+    return controls;
+  }
+
+  return controls
+    .map((control) => (control.path === "volume" ? MODULATION_DEPTH_CONTROL : control))
+    .filter((control) => control.path !== "pan" && (control.path !== "options.octave" || module.midiOn));
+}
 
 function getMacroSliderProps(app, moduleId, paramPath) {
   const chainIndex = app.getSelectedChainIndex();
@@ -113,6 +133,13 @@ export function renderModuleCard(module, index, app) {
   const controls = document.createElement("div");
   controls.className = "module-grid";
 
+  if (
+    ((module.category === "source" && module.modulationMode) || module.type === "Envelope")
+    && !Number.isFinite(Number(module?.options?.gain))
+  ) {
+    setByPath(module, "options.gain", 1);
+  }
+
   if (module.category === "source") {
     getSourceSampleSlots(module).forEach((slot) => {
       controls.append(
@@ -181,11 +208,7 @@ export function renderModuleCard(module, index, app) {
     );
   }
 
-  definition.controls.forEach((control) => {
-    if (module.category === "source" && module.modulationMode && (control.path === "pan" || (control.path === "options.octave" && !module.midiOn))) {
-      return;
-    }
-
+  getRenderableControls(module, definition.controls).forEach((control) => {
     controls.append(
       renderModuleControl(
         module,
