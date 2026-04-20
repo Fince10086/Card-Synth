@@ -76,7 +76,7 @@ export class GestureManager {
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "gesture-close-btn";
-    closeBtn.innerHTML = "<span>◥</span><span class=\"gesture-close-x\">✕</span>";
+    closeBtn.innerHTML = "<span>◥</span><span class=\"gesture-close-x\">×</span>";
     closeBtn.addEventListener("click", () => this.deactivate());
     this.overlay.appendChild(closeBtn);
 
