@@ -379,11 +379,21 @@ export class AudioEngine {
       return nodeOptions;
     };
 
+    const getSourceOutputGain = () => {
+      if (moduleState.modulationMode) {
+        if (!moduleState.enabled) {
+          return 0;
+        }
+        const depth = Number(moduleState?.options?.gain);
+        return Number.isFinite(depth) ? Math.max(0, depth) : 1;
+      }
+      return Tone.dbToGain(moduleState.enabled ? moduleState.volume : -48);
+    };
+
     const createVoice = () => {
-      const volumeNode = new Tone.Gain(Tone.dbToGain(module.enabled ? module.volume : -48));
+      const volumeNode = new Tone.Gain(getSourceOutputGain());
       const isModulationMode = moduleState.modulationMode;
       let panNode = null;
-      let modulationGain = null;
 
       const hiddenAmpEnv = new Tone.AmplitudeEnvelope({
         attack: 0.005,
@@ -393,9 +403,7 @@ export class AudioEngine {
       });
 
       if (isModulationMode) {
-        modulationGain = new Tone.Gain(Number(moduleState?.options?.gain ?? 1));
-        volumeNode.connect(modulationGain);
-        modulationGain.connect(hiddenAmpEnv);
+        volumeNode.connect(hiddenAmpEnv);
       } else {
         panNode = new Tone.Panner(module.pan);
         volumeNode.connect(panNode);
@@ -426,7 +434,6 @@ export class AudioEngine {
         node,
         volumeNode,
         panNode,
-        modulationGain,
         hiddenAmpEnv,
         note: null,
         startTime: 0,
@@ -618,7 +625,7 @@ export class AudioEngine {
 
       getModulationOutput: (voiceIndex) => {
         const voice = voices[voiceIndex];
-        return voice ? (voice.modulationGain || voice.panNode || voice.volumeNode) : null;
+        return voice ? (voice.panNode || voice.volumeNode) : null;
       },
 
       apply: (nextModule) => {
@@ -626,12 +633,9 @@ export class AudioEngine {
         refreshAllVoiceLifecycles();
         voices.forEach((voice) => {
           const nodeOptions = getNodeOptions(moduleState.options);
-          rampParam(voice.volumeNode.gain, Tone.dbToGain(moduleState.enabled ? moduleState.volume : -48));
+          rampParam(voice.volumeNode.gain, getSourceOutputGain());
           if (voice.panNode) {
             rampParam(voice.panNode.pan, moduleState.pan);
-          }
-          if (voice.modulationGain) {
-            rampParam(voice.modulationGain.gain, Number(moduleState?.options?.gain ?? 1));
           }
 
           if (definition.runtime === "pitchedSource") {
@@ -754,9 +758,6 @@ export class AudioEngine {
           voice.volumeNode.dispose();
           if (voice.panNode) {
             voice.panNode.dispose();
-          }
-          if (voice.modulationGain) {
-            voice.modulationGain.dispose();
           }
           voice.hiddenAmpEnv.dispose();
         });
