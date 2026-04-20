@@ -608,6 +608,19 @@ export function createSourceRuntime({
   };
 
   /**
+   * 获取 AmpEnv 的 attack 时间
+   *
+   * @param {number} voiceIndex - 声音索引
+   * @returns {number} attack 时间（秒）
+   */
+  const getAmpEnvAttackTime = (voiceIndex) => {
+    const ampEnvRuntime = runtime.ampEnvRuntime || runtime.chainedAmpEnvRuntime;
+    const ampEnvVoice = ampEnvRuntime?.voices?.[voiceIndex];
+    const attack = Number(ampEnvVoice?.attack);
+    return Number.isFinite(attack) && attack >= 0 ? attack : 0.01;
+  };
+
+  /**
    * 释放声音
    * 执行实际的释放操作：
    * - 清除音符绑定
@@ -905,11 +918,19 @@ export function createSourceRuntime({
 
       const effectiveVelocity = (!getVelocityEnabled() || moduleState.modulationMode) ? 1 : velocity;
 
+      // 检查是否为第一个音（没有其他活跃音符）
+      const isFirstAttack = voices.filter((v, i) => i !== index && v.initialized && v.note !== null).length === 0;
+
       if (runtime.hasAmpEnv) {
         triggerAmpEnvAttack(index, effectiveVelocity);
       } else if (isInExtendedRelease) {
         voice.hiddenAmpEnv.triggerAttack(now, effectiveVelocity);
         voice.extendedReleaseEndTime = 0;
+      } else if (runtime.needsExtendedRelease && !isFirstAttack) {
+        // 非第一个音：同步 hiddenAmpEnv.attack 与 AmpEnv
+        const ampEnvAttack = getAmpEnvAttackTime(index);
+        voice.hiddenAmpEnv.attack = ampEnvAttack;
+        voice.hiddenAmpEnv.triggerAttack(now, effectiveVelocity);
       } else {
         voice.hiddenAmpEnv.triggerAttack(now, effectiveVelocity);
       }
