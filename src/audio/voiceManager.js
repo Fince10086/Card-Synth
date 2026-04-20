@@ -7,15 +7,38 @@ import {
   SOURCE_LIBRARY,
 } from "../utils/helpers.js";
 
+/**
+ * 创建音符声音追踪器
+ * 用于跟踪多个声音（voices）当前正在播放哪些音符
+ * 实现了声音分配和释放的核心逻辑
+ *
+ * @param {number} voiceCount - 声音数量（复音数）
+ * @returns {Object} 包含分配、释放和状态查询方法的对象
+ */
 export function createNoteVoiceTracker(voiceCount) {
+  /**
+   * 初始化声音状态数组
+   * 每个声音包含：
+   * - note: 当前播放的音符（null 表示空闲）
+   * - startTime: 开始播放的时间戳
+   */
   const voiceStates = Array.from({ length: voiceCount }, () => ({
     note: null,
     startTime: 0,
   }));
 
+  /**
+   * 查找可用的声音索引
+   * 策略：
+   * 1. 优先返回空闲的声音（note 为 null）
+   * 2. 如果所有声音都在使用，则返回最早开始播放的声音（用于声音窃取）
+   *
+   * @returns {number} 可用声音的索引
+   */
   const findAvailableVoice = () => {
     let oldest = null;
     let oldestIndex = -1;
+
     for (let i = 0; i < voiceStates.length; i++) {
       if (!voiceStates[i].note) {
         return i;
@@ -29,12 +52,26 @@ export function createNoteVoiceTracker(voiceCount) {
   };
 
   return {
+    /**
+     * 为指定音符分配一个声音
+     *
+     * @param {string} note - 音符名称（如 "C4"）
+     * @param {number} time - 分配时间戳
+     * @returns {number} 分配的声音索引
+     */
     allocate(note, time) {
       const index = findAvailableVoice();
       voiceStates[index].note = note;
       voiceStates[index].startTime = time;
       return index;
     },
+
+    /**
+     * 根据音符释放对应的声音
+     *
+     * @param {string} note - 要释放的音符
+     * @returns {number} 释放的声音索引，如果未找到返回 -1
+     */
     releaseByNote(note) {
       const index = voiceStates.findIndex((item) => item.note === note);
       if (index < 0) {
@@ -43,33 +80,74 @@ export function createNoteVoiceTracker(voiceCount) {
       voiceStates[index].note = null;
       return index;
     },
+
+    /**
+     * 清除所有声音状态
+     * 通常用于全部停止或重置
+     */
     clearAll() {
       voiceStates.forEach((item) => {
         item.note = null;
         item.startTime = 0;
       });
     },
+
+    /**
+     * 检查是否有活跃的音符正在播放
+     *
+     * @returns {boolean} 是否有活跃音符
+     */
     hasActiveNotes() {
       return voiceStates.some((item) => item.note !== null);
     },
   };
 }
 
+/**
+ * 创建音源运行时
+ * 这是核心的声音管理器，负责：
+ * - 创建和管理多个声音（实现复音）
+ * - 处理音符的触发和释放
+ * - 管理声音的生命周期状态
+ * - 支持多种音源类型（振荡器、噪声、采样器等）
+ *
+ * @param {Object} options - 配置选项
+ * @param {Object} options.module - 模块配置对象
+ * @param {Function} options.getVelocityEnabled - 获取是否启用力度响应的函数
+ * @returns {Object} 运行时对象，包含声音管理和控制方法
+ */
 export function createSourceRuntime({
   module,
   getVelocityEnabled = () => true,
 }) {
   const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
   let moduleState = deepClone(module);
+
+  /**
+   * 常量定义
+   */
   const VOICE_COUNT = 8;
   const PLAYER_IDLE_DISPOSE_SECONDS = 6;
   const VOICE_INDEX_RESERVE_SECONDS = 10;
+
+  /**
+   * 声音状态枚举
+   * - IDLE: 空闲状态，可以分配新音符
+   * - ACTIVE: 活跃状态，正在播放音符
+   * - RELEASING: 释放中，正在执行释放阶段
+   */
   const VOICE_STATE = {
     IDLE: "idle",
     ACTIVE: "active",
     RELEASING: "releasing",
   };
 
+  /**
+   * 获取频率偏移量
+   * 用于微调音高
+   *
+   * @returns {number} 频率偏移比例（0-2）
+   */
   const getFrequencyOffset = () => {
     const offset = Number(moduleState?.options?.frequencyOffset);
     if (!Number.isFinite(offset)) {
@@ -78,7 +156,20 @@ export function createSourceRuntime({
     return Math.max(0, Math.min(2, offset));
   };
 
+  /**
+   * 将音符名称转换为频率值
+   *
+   * @param {string} note - 音符名称
+   * @returns {number} 频率值（Hz）
+   */
   const getNoteFrequency = (note) => Tone.Frequency(note).toFrequency();
+
+  /**
+   * 获取音符的基础频率（考虑八度偏移）
+   *
+   * @param {string} note - 音符名称
+   * @returns {number} 调整后的频率值
+   */
   const getBaseFrequencyForNote = (note) => {
     let frequency = getNoteFrequency(note);
     const octave = Number(moduleState?.options?.octave) || 0;
@@ -87,10 +178,25 @@ export function createSourceRuntime({
     }
     return frequency;
   };
+
+  /**
+   * 计算音高比率
+   * 用于采样器的播放速率调整，实现不同音高的播放
+   *
+   * @param {string} note - 目标音符
+   * @returns {number} 播放速率比率
+   */
   const getPitchRatio = (note) => {
     const root = Tone.Frequency(moduleState.rootNote || "C4").toFrequency();
     return (getBaseFrequencyForNote(note) * getFrequencyOffset()) / root;
   };
+
+  /**
+   * 获取调制频率
+   * 用于调制模式下的频率控制
+   *
+   * @returns {number} 调制频率值
+   */
   const getModulationFrequency = () => {
     const configuredFrequency = Number(moduleState?.options?.frequency);
     if (Number.isFinite(configuredFrequency) && configuredFrequency > 0) {
@@ -105,16 +211,34 @@ export function createSourceRuntime({
     return 1;
   };
 
+  /**
+   * 提取节点选项（排除特定参数）
+   *
+   * @param {Object} options - 原始选项
+   * @returns {Object} 处理后的节点选项
+   */
   const getNodeOptions = (options = {}) => {
     const { gain, frequencyOffset, ...nodeOptions } = options || {};
     return nodeOptions;
   };
 
+  /**
+   * 提取音高源节点的选项
+   *
+   * @param {Object} options - 原始选项
+   * @returns {Object} 处理后的节点选项
+   */
   const getPitchedNodeOptions = (options = {}) => {
     const { frequency, ...nodeOptions } = getNodeOptions(options);
     return nodeOptions;
   };
 
+  /**
+   * 获取音源输出增益
+   * 根据是否启用和调制模式计算最终增益值
+   *
+   * @returns {number} 增益值
+   */
   const getSourceOutputGain = () => {
     if (moduleState.modulationMode) {
       if (!moduleState.enabled) {
@@ -126,11 +250,26 @@ export function createSourceRuntime({
     return Tone.dbToGain(moduleState.enabled ? moduleState.volume : -48);
   };
 
+  /**
+   * 创建单个声音
+   * 每个声音包含完整的音频节点链：
+   * - 音源节点（振荡器/噪声/采样器）
+   * - 音量节点
+   * - 声像节点（非调制模式）
+   * - 隐藏的振幅包络
+   *
+   * @returns {Object} 声音对象
+   */
   const createVoice = () => {
     const volumeNode = new Tone.Gain(getSourceOutputGain());
     const isModulationMode = moduleState.modulationMode;
     let panNode = null;
 
+    /**
+     * 隐藏的振幅包络
+     * 用于在没有外部振幅包络时提供基本的音量控制
+     * 具有非常短的攻击和释放时间
+     */
     const hiddenAmpEnv = new Tone.AmplitudeEnvelope({
       attack: 0.005,
       decay: 0.01,
@@ -147,6 +286,14 @@ export function createSourceRuntime({
     }
 
     let node;
+
+    /**
+     * 根据音源类型创建不同的节点
+     * - pitchedSource: 可调音高的音源（如振荡器）
+     * - noise: 噪声发生器
+     * - player: 采样播放器
+     * - 默认: 普通振荡器
+     */
     if (definition.runtime === "pitchedSource") {
       node = new Tone[module.type](getPitchedNodeOptions(module.options));
       node.connect(volumeNode);
@@ -182,8 +329,15 @@ export function createSourceRuntime({
     };
   };
 
+  /**
+   * 创建所有声音实例
+   */
   const voices = Array.from({ length: VOICE_COUNT }, createVoice);
 
+  /**
+   * 为可调音高的音源设置频率控制信号链
+   * 使用信号节点实现平滑的频率变化
+   */
   if (definition.runtime === "pitchedSource") {
     voices.forEach((voice) => {
       if (!voice.node?.frequency) {
@@ -201,6 +355,13 @@ export function createSourceRuntime({
     });
   }
 
+  /**
+   * 为声音创建采样器节点
+   * 采样器节点会在空闲时被销毁以节省资源
+   *
+   * @param {Object} voice - 声音对象
+   * @returns {Object} 新创建的采样器节点
+   */
   const createPlayerNodeForVoice = (voice) => {
     const nodeOptions = getNodeOptions(moduleState.options);
     const playerNode = new Tone.Player(nodeOptions);
@@ -210,6 +371,11 @@ export function createSourceRuntime({
     return playerNode;
   };
 
+  /**
+   * 销毁声音的音源节点
+   *
+   * @param {Object} voice - 声音对象
+   */
   const disposeVoiceNode = (voice) => {
     if (!voice.node || typeof voice.node.dispose !== "function") {
       voice.node = null;
@@ -219,6 +385,13 @@ export function createSourceRuntime({
     voice.node = null;
   };
 
+  /**
+   * 确保声音有可用的音源节点
+   * 对于采样器类型，会在需要时重新创建节点
+   *
+   * @param {Object} voice - 声音对象
+   * @returns {Object} 音源节点
+   */
   const ensureVoiceNode = (voice) => {
     if (definition.runtime !== "player") {
       return voice.node;
@@ -229,6 +402,17 @@ export function createSourceRuntime({
     return createPlayerNodeForVoice(voice);
   };
 
+  /**
+   * 获取声音的释放持续时间
+   * 考虑多种因素：
+   * - 调制模式下的声音槽保留
+   * - 外部振幅包络的释放时间
+   * - 隐藏包络的释放时间
+   *
+   * @param {Object} voice - 声音对象
+   * @param {number} voiceIndex - 声音索引
+   * @returns {number} 释放持续时间（秒）
+   */
   const getVoiceReleaseDuration = (voice, voiceIndex) => {
     if (runtime.preserveVoiceSlotsForSourceTargets && moduleState.modulationMode && moduleState.midiOn) {
       return VOICE_INDEX_RESERVE_SECONDS;
@@ -250,6 +434,16 @@ export function createSourceRuntime({
     return 0.01;
   };
 
+  /**
+   * 刷新单个声音的生命周期状态
+   * 处理状态转换：
+   * - RELEASING -> IDLE（释放完成）
+   * - IDLE -> ACTIVE（有新音符）
+   * - 清理长时间空闲的采样器节点
+   *
+   * @param {Object} voice - 声音对象
+   * @param {number} now - 当前时间
+   */
   const refreshVoiceLifecycle = (voice, now = Tone.now()) => {
     if (voice.state === VOICE_STATE.RELEASING && now >= voice.releaseEndTime) {
       voice.state = VOICE_STATE.IDLE;
@@ -276,18 +470,43 @@ export function createSourceRuntime({
     }
   };
 
+  /**
+   * 刷新所有声音的生命周期状态
+   *
+   * @param {number} now - 当前时间
+   */
   const refreshAllVoiceLifecycles = (now = Tone.now()) => {
     voices.forEach((voice) => {
       refreshVoiceLifecycle(voice, now);
     });
   };
 
+  /**
+   * 调度声音释放
+   * 设置释放结束时间，将状态转为 RELEASING
+   *
+   * @param {Object} voice - 声音对象
+   * @param {number} voiceIndex - 声音索引
+   * @param {number} now - 当前时间
+   */
   const scheduleVoiceRelease = (voice, voiceIndex, now = Tone.now()) => {
     voice.state = VOICE_STATE.RELEASING;
     voice.releaseEndTime = now + getVoiceReleaseDuration(voice, voiceIndex);
     voice.idleSince = 0;
   };
 
+  /**
+   * 释放声音
+   * 执行实际的释放操作：
+   * - 清除音符绑定
+   * - 触发振幅包络释放
+   * - 停止采样器播放
+   * - 调度状态转换
+   *
+   * @param {Object} voice - 声音对象
+   * @param {number} voiceIndex - 声音索引
+   * @param {number} now - 当前时间
+   */
   const releaseVoice = (voice, voiceIndex, now = Tone.now()) => {
     const hadAssignedNote = voice.note !== null;
     voice.note = null;
@@ -313,6 +532,14 @@ export function createSourceRuntime({
     }
   };
 
+  /**
+   * 查找可用的声音
+   * 策略：
+   * 1. 优先查找空闲且无音符绑定的声音
+   * 2. 如果没有空闲声音，窃取最早开始的声音
+   *
+   * @returns {Object|null} 包含声音对象和索引的对象，或 null
+   */
   const findAvailableVoice = () => {
     const now = Tone.now();
     refreshAllVoiceLifecycles(now);
@@ -338,12 +565,24 @@ export function createSourceRuntime({
     return oldestStealable ? { voice: oldestStealable, index: oldestStealableIndex } : null;
   };
 
+  /**
+   * 根据音符查找对应的声音
+   *
+   * @param {string} note - 音符名称
+   * @returns {Object|null} 包含声音对象和索引的对象，或 null
+   */
   const findVoiceByNote = (note) => {
     refreshAllVoiceLifecycles();
     const index = voices.findIndex((v) => v.note === note);
     return index >= 0 ? { voice: voices[index], index } : null;
   };
 
+  /**
+   * 触发振幅包络的攻击阶段
+   *
+   * @param {number} voiceIndex - 声音索引
+   * @param {number} velocity - 力度值
+   */
   const triggerAmpEnvAttack = (voiceIndex, velocity) => {
     const ampEnv = runtime.ampEnvRuntime;
     if (!ampEnv || typeof ampEnv.triggerVoiceAttack !== "function") {
@@ -352,6 +591,11 @@ export function createSourceRuntime({
     ampEnv.triggerVoiceAttack(voiceIndex, velocity);
   };
 
+  /**
+   * 触发振幅包络的释放阶段
+   *
+   * @param {number} voiceIndex - 声音索引
+   */
   const triggerAmpEnvRelease = (voiceIndex) => {
     const ampEnv = runtime.ampEnvRuntime;
     if (!ampEnv || typeof ampEnv.triggerVoiceRelease !== "function") {
@@ -360,8 +604,18 @@ export function createSourceRuntime({
     ampEnv.triggerVoiceRelease(voiceIndex);
   };
 
+  /**
+   * 获取活跃声音数量
+   *
+   * @returns {number} 活跃声音数量
+   */
   const getActiveVoiceCount = () => voices.filter((v) => v.note !== null).length;
 
+  /**
+   * 更新隐藏振幅包络的释放时间
+   * 当只剩一个活跃声音时使用较长的释放时间
+   * 这有助于避免最后一个音符突然停止
+   */
   const updateHiddenAmpEnvRelease = () => {
     if (!runtime.needsExtendedRelease) {
       return;
@@ -373,6 +627,10 @@ export function createSourceRuntime({
     });
   };
 
+  /**
+   * 运行时对象
+   * 提供对外的 API 接口
+   */
   const runtime = {
     type: module.type,
     category: "source",
@@ -384,11 +642,26 @@ export function createSourceRuntime({
     needsExtendedRelease: false,
     preserveVoiceSlotsForSourceTargets: false,
 
+    /**
+     * 获取指定声音的调制输出节点
+     *
+     * @param {number} voiceIndex - 声音索引
+     * @returns {Object|null} 输出节点
+     */
     getModulationOutput: (voiceIndex) => {
       const voice = voices[voiceIndex];
       return voice ? (voice.panNode || voice.volumeNode) : null;
     },
 
+    /**
+     * 应用模块状态更新
+     * 更新所有声音的参数，包括：
+     * - 音量和声像
+     * - 音源特定参数
+     * - 频率相关参数
+     *
+     * @param {Object} nextModule - 新的模块状态
+     */
     apply: (nextModule) => {
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
@@ -425,6 +698,13 @@ export function createSourceRuntime({
       });
     },
 
+    /**
+     * 触发音符攻击（开始播放）
+     * 这是 MIDI 音符开始时的核心方法
+     *
+     * @param {string} note - 音符名称
+     * @param {number} velocity - 力度值（0-1）
+     */
     triggerAttack: (note, velocity) => {
       if (!moduleState.enabled) {
         return;
@@ -480,6 +760,12 @@ export function createSourceRuntime({
       updateHiddenAmpEnvRelease();
     },
 
+    /**
+     * 触发音符释放（停止播放）
+     * 这是 MIDI 音符结束时的核心方法
+     *
+     * @param {string} note - 音符名称
+     */
     triggerRelease: (note) => {
       const result = findVoiceByNote(note);
       if (!result) {
@@ -490,6 +776,10 @@ export function createSourceRuntime({
       updateHiddenAmpEnvRelease();
     },
 
+    /**
+     * 释放所有声音
+     * 通常用于停止所有播放或紧急停止
+     */
     releaseAll: () => {
       const now = Tone.now();
       voices.forEach((voice, index) => {
@@ -500,6 +790,10 @@ export function createSourceRuntime({
       updateHiddenAmpEnvRelease();
     },
 
+    /**
+     * 销毁运行时
+     * 清理所有音频节点和资源
+     */
     dispose: () => {
       voices.forEach((voice) => {
         if (voice.node && typeof voice.node.dispose === "function") {
@@ -528,17 +822,50 @@ export function createSourceRuntime({
   return runtime;
 }
 
+/**
+ * 创建包络调制运行时
+ * 用于创建包络调制效果，如滤波器包络
+ * 每个声音有独立的包络发生器和输出增益
+ *
+ * @param {Object} module - 模块配置
+ * @returns {Object} 包络调制运行时对象
+ */
 export function createEnvelopeModulationRuntime(module) {
   let moduleState = deepClone(module);
   const VOICE_COUNT = 8;
+
+  /**
+   * 提取包络选项（排除 gain 参数）
+   *
+   * @param {Object} options - 原始选项
+   * @returns {Object} 包络选项
+   */
   const getEnvelopeOptions = (options = {}) => {
     const { gain, ...envelopeOptions } = options || {};
     return envelopeOptions;
   };
+
+  /**
+   * 获取调制深度增益值
+   *
+   * @param {Object} options - 选项对象
+   * @returns {number} 增益值
+   */
   const getDepthGain = (options = {}) => Number(options?.gain ?? 1);
+
+  /**
+   * 为每个声音创建独立的包络发生器
+   */
   const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.Envelope(getEnvelopeOptions(moduleState.options)));
+
+  /**
+   * 为每个声音创建输出增益节点
+   * 用于控制调制深度
+   */
   const outputGains = Array.from({ length: VOICE_COUNT }, () => new Tone.Gain(getDepthGain(moduleState.options)));
+
   voices.forEach((env, index) => env.connect(outputGains[index]));
+
   const noteTracker = createNoteVoiceTracker(VOICE_COUNT);
 
   return {
@@ -547,7 +874,20 @@ export function createEnvelopeModulationRuntime(module) {
     voices,
     outputGains,
     moduleState,
+
+    /**
+     * 获取指定声音的调制输出节点
+     *
+     * @param {number} voiceIndex - 声音索引
+     * @returns {Object|null} 输出增益节点
+     */
     getModulationOutput: (voiceIndex) => outputGains[voiceIndex] || null,
+
+    /**
+     * 应用模块状态更新
+     *
+     * @param {Object} nextModule - 新的模块状态
+     */
     apply: (nextModule) => {
       moduleState = deepClone(nextModule);
       const envelopeOptions = getEnvelopeOptions(moduleState.options);
@@ -555,6 +895,13 @@ export function createEnvelopeModulationRuntime(module) {
       voices.forEach((env) => safeSet(env, envelopeOptions));
       outputGains.forEach((gainNode) => rampParam(gainNode.gain, gainValue));
     },
+
+    /**
+     * 触发音符攻击
+     *
+     * @param {string} note - 音符名称
+     * @param {number} velocity - 力度值
+     */
     triggerAttack: (note, velocity) => {
       if (!moduleState.enabled) {
         return;
@@ -562,6 +909,12 @@ export function createEnvelopeModulationRuntime(module) {
       const index = noteTracker.allocate(note, Tone.now());
       voices[index].triggerAttack(Tone.now(), velocity);
     },
+
+    /**
+     * 触发音符释放
+     *
+     * @param {string} note - 音符名称
+     */
     triggerRelease: (note) => {
       const index = noteTracker.releaseByNote(note);
       if (index < 0) {
@@ -569,12 +922,20 @@ export function createEnvelopeModulationRuntime(module) {
       }
       voices[index].triggerRelease(Tone.now());
     },
+
+    /**
+     * 释放所有声音
+     */
     releaseAll: () => {
       noteTracker.clearAll();
       voices.forEach((env) => {
         env.triggerRelease(Tone.now());
       });
     },
+
+    /**
+     * 销毁运行时
+     */
     dispose: () => {
       voices.forEach((env) => env.dispose());
       outputGains.forEach((gainNode) => gainNode.dispose());
@@ -582,11 +943,39 @@ export function createEnvelopeModulationRuntime(module) {
   };
 }
 
+/**
+ * 创建振幅包络运行时
+ * 用于管理振幅包络（音量包络）
+ * 支持两种模式：
+ * 1. 多声音模式：每个声音有独立的振幅包络
+ * 2. 全局模式：所有声音共享一个振幅包络
+ *
+ * @param {Object} module - 模块配置
+ * @returns {Object} 振幅包络运行时对象
+ */
 export function createAmplitudeEnvelopeRuntime(module) {
   const VOICE_COUNT = 8;
+
+  /**
+   * 为每个声音创建独立的振幅包络
+   */
   const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.AmplitudeEnvelope(module.options));
+
+  /**
+   * 全局振幅包络节点
+   * 用于非多声音模式
+   */
   const node = new Tone.AmplitudeEnvelope(module.options);
+
+  /**
+   * 声音引用计数
+   * 用于跟踪每个声音被多少音符使用
+   */
   const voiceRefCount = new Array(VOICE_COUNT).fill(0);
+
+  /**
+   * 全局音符追踪器
+   */
   const nodeNoteTracker = createNoteVoiceTracker(VOICE_COUNT);
 
   return {
@@ -595,10 +984,24 @@ export function createAmplitudeEnvelopeRuntime(module) {
     voices,
     voiceRefCount,
     node,
+
+    /**
+     * 应用模块状态更新
+     *
+     * @param {Object} nextModule - 新的模块状态
+     */
     apply: (nextModule) => {
       voices.forEach((env) => safeSet(env, nextModule.options));
       safeSet(node, nextModule.options);
     },
+
+    /**
+     * 触发指定声音的攻击阶段
+     * 使用引用计数管理声音的生命周期
+     *
+     * @param {number} voiceIndex - 声音索引
+     * @param {number} velocity - 力度值
+     */
     triggerVoiceAttack: (voiceIndex, velocity) => {
       if (voiceIndex < 0 || voiceIndex >= VOICE_COUNT) return;
       voiceRefCount[voiceIndex] += 1;
@@ -606,6 +1009,13 @@ export function createAmplitudeEnvelopeRuntime(module) {
         voices[voiceIndex].triggerAttack(Tone.now(), velocity);
       }
     },
+
+    /**
+     * 触发指定声音的释放阶段
+     * 使用引用计数确保所有音符释放后才触发包络释放
+     *
+     * @param {number} voiceIndex - 声音索引
+     */
     triggerVoiceRelease: (voiceIndex) => {
       if (voiceIndex < 0 || voiceIndex >= VOICE_COUNT) return;
       voiceRefCount[voiceIndex] = Math.max(0, voiceRefCount[voiceIndex] - 1);
@@ -613,16 +1023,34 @@ export function createAmplitudeEnvelopeRuntime(module) {
         voices[voiceIndex].triggerRelease(Tone.now());
       }
     },
+
+    /**
+     * 触发全局振幅包络攻击
+     *
+     * @param {string} note - 音符名称
+     * @param {number} velocity - 力度值
+     */
     triggerAttack: (note, velocity) => {
       nodeNoteTracker.allocate(note, Tone.now());
       node.triggerAttack(Tone.now(), 1);
     },
+
+    /**
+     * 触发全局振幅包络释放
+     * 只有当所有音符都释放后才触发
+     *
+     * @param {string} note - 音符名称
+     */
     triggerRelease: (note) => {
       const releasedIndex = nodeNoteTracker.releaseByNote(note);
       if (releasedIndex >= 0 && !nodeNoteTracker.hasActiveNotes()) {
         node.triggerRelease(Tone.now());
       }
     },
+
+    /**
+     * 释放所有声音
+     */
     releaseAll: () => {
       nodeNoteTracker.clearAll();
       node.triggerRelease(Tone.now());
@@ -631,6 +1059,10 @@ export function createAmplitudeEnvelopeRuntime(module) {
         env.triggerRelease(Tone.now());
       });
     },
+
+    /**
+     * 销毁运行时
+     */
     dispose: () => {
       voices.forEach((env) => env.dispose());
       node.dispose();
