@@ -319,6 +319,10 @@ export class AudioEngine {
         // Voice dispose 后重建调制连接（因为 sourceOutput 节点已改变）
         this.app?.modulationManager?.connectAllModulations?.();
       },
+      onVoiceInitialized: () => {
+        // Voice 初始化后重建调制连接（新 voice 需要建立调制连接）
+        this.app?.modulationManager?.connectAllModulations?.();
+      },
     });
   }
 

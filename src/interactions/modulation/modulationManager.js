@@ -39,6 +39,9 @@ export class ModulationManager {
     
     // 调制运行时，存储音频连接和缩放器
     this.modulationRuntimes = [];
+
+    // 防止递归连接调制的标志
+    this.isConnectingModulations = false;
   }
 
   /**
@@ -403,6 +406,13 @@ export class ModulationManager {
   }
 
   connectAllModulations() {
+    // 防止递归调用：如果正在连接调制，直接返回
+    if (this.isConnectingModulations) {
+      console.log("[ModulationManager] connectAllModulations already in progress, skipping...");
+      return;
+    }
+    this.isConnectingModulations = true;
+
     this.clearModulationRuntimes();
     this.resetSourceVoiceAlignmentHints();
 
@@ -410,6 +420,8 @@ export class ModulationManager {
     for (let chainIndex = 0; chainIndex < chainCount; chainIndex += 1) {
       this.connectChainModulations(chainIndex);
     }
+
+    this.isConnectingModulations = false;
   }
 
   resetSourceVoiceAlignmentHints() {
@@ -464,12 +476,21 @@ export class ModulationManager {
           return;
         }
 
+        // 检查是否已存在相同的调制连接，防止重复连接导致调制值翻倍
+        const existingRuntime = this.modulationRuntimes.find(
+          (r) => r.chainIndex === chainIndex
+            && r.modulationId === mod.id
+            && r.sourceVoiceIndex === sourceVoiceIndex
+            && r.targetParam === param
+        );
+        if (existingRuntime) {
+          console.log(`[ModulationManager] Skipping duplicate modulation connection: ${mod.id} -> ${mod.targetParamPath} (voice ${sourceVoiceIndex})`);
+          return;
+        }
+
         const audioHalf = new Tone.Multiply(0.5);
         const audioOffset = new Tone.Add(0.5);
         const scale = new Tone.Scale();
-
-        scale.min = 0;
-        scale.max = 1;
 
         sourceOutput.connect(audioHalf);
         audioHalf.connect(audioOffset);
@@ -482,6 +503,7 @@ export class ModulationManager {
           modulationId: mod.id,
           sourceVoiceIndex,
           targetParamPath: mod.targetParamPath,
+          targetParam: param,  // 存储目标参数引用，用于重复检测
           sourceOutput,
           audioHalf,
           audioOffset,
@@ -489,14 +511,17 @@ export class ModulationManager {
         });
       });
 
+      // 立即应用当前滑块值作为调制范围中心
       const targetModule = this.getModules(chainIndex).find((m) => m.id === mod.targetModuleId);
+      let centerValue = 0.5; // 默认中心值
       if (targetModule) {
         const currentSliderValue = getByPath(targetModule, mod.targetParamPath);
         if (typeof currentSliderValue === "number" && Number.isFinite(currentSliderValue)) {
-          const radius = mod.radius ?? 0.15;
-          this.updateModulationRange(mod.id, currentSliderValue, radius, chainIndex);
+          centerValue = currentSliderValue;
         }
       }
+      const radius = mod.radius ?? 0.15;
+      this.updateModulationRange(mod.id, centerValue, radius, chainIndex)
     });
 
     sourceTargetProfile.forEach((profile, sourceModuleId) => {
@@ -520,10 +545,19 @@ export class ModulationManager {
    */
   clearModulationRuntimes() {
     this.modulationRuntimes.forEach((item) => {
-      // 手动断开 sourceOutput 的连接（重要：dispose 不会自动断开输入连接）
+      // 手动断开 sourceOutput 到 audioHalf 的连接
       if (item.sourceOutput && item.audioHalf) {
         try {
           item.sourceOutput.disconnect(item.audioHalf);
+        } catch (e) {
+          // 连接可能已断开，忽略错误
+        }
+      }
+
+      // 手动断开 scale 到目标参数的连接，防止残留连接导致调制值叠加
+      if (item.scale && item.targetParam) {
+        try {
+          item.scale.disconnect(item.targetParam);
         } catch (e) {
           // 连接可能已断开，忽略错误
         }
