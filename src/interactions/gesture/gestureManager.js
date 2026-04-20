@@ -37,6 +37,14 @@ export class GestureManager {
       }
     };
 
+    this.onVisibilityChange = () => {
+      if (document.hidden) {
+        this.pauseDetection();
+      } else {
+        this.resumeDetection();
+      }
+    };
+
     this.lastLandmarks = [];
     this.lastGestures = null;
     this.renderPending = false;
@@ -53,6 +61,10 @@ export class GestureManager {
       this.recognizer.onResults = (results) => this.handleResults(results);
       this.recognizer.startDetection();
       document.addEventListener("keydown", this.onEsc);
+      document.addEventListener("visibilitychange", this.onVisibilityChange);
+      if (document.hidden) {
+        this.pauseDetection();
+      }
     } catch (err) {
       console.error("Gesture activation failed:", err);
       this.app.setStatus?.(`Gesture failed: ${err.message}`, "error");
@@ -79,12 +91,25 @@ export class GestureManager {
     this.app.selectedPresetId = "custom";
   }
 
+  pauseDetection() {
+    if (!this.active) return;
+    this.recognizer.stopCamera();
+  }
+
+  resumeDetection() {
+    if (!this.active) return;
+    this.recognizer.startCamera().then(() => {
+      this.recognizer.startDetection();
+    });
+  }
+
   deactivate() {
     if (!this.active) return;
     this.active = false;
     this.recognizer.stopCamera();
     this.recognizer.onResults = null;
     document.removeEventListener("keydown", this.onEsc);
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
     this.destroyOverlay();
     this.app.renderAll();
   }
