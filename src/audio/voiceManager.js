@@ -564,7 +564,8 @@ export function createSourceRuntime({
    * 查找可用的声音
    * 策略：
    * 1. 优先查找空闲且无音符绑定的声音
-   * 2. 如果没有空闲声音，窃取最早开始的声音
+   * 2. 如果没有空闲声音，优先窃取处于 RELEASING 状态的声音（releaseEndTime 最早的）
+   * 3. 如果没有 RELEASING 状态的声音，再窃取最早开始的声音（ACTIVE 状态）
    *
    * @returns {Object|null} 包含声音对象和索引的对象，或 null
    */
@@ -576,6 +577,21 @@ export function createSourceRuntime({
       if (voices[i].state === VOICE_STATE.IDLE && !voices[i].note) {
         return { voice: voices[i], index: i };
       }
+    }
+
+    let oldestReleasing = null;
+    let oldestReleasingIndex = -1;
+    for (let i = 0; i < voices.length; i++) {
+      if (voices[i].state === VOICE_STATE.RELEASING) {
+        if (!oldestReleasing || voices[i].releaseEndTime < oldestReleasing.releaseEndTime) {
+          oldestReleasing = voices[i];
+          oldestReleasingIndex = i;
+        }
+      }
+    }
+
+    if (oldestReleasing) {
+      return { voice: oldestReleasing, index: oldestReleasingIndex };
     }
 
     let oldestStealable = null;
