@@ -228,32 +228,32 @@ export class GestureManager {
 
     if (gestures.leftPinch && gestures.leftPinchPos) {
       const pos = this.cameraToCanvas(gestures.leftPinchPos.x, gestures.leftPinchPos.y);
-      const chainIndex = this.findChainAtPosition(pos.x, pos.y);
 
-      if (chainIndex >= 0) {
-        if (this.gestureState.leftPinchChainIndex !== chainIndex) {
+      if (this.gestureState.leftPinchChainIndex >= 0) {
+        const chainIndex = this.gestureState.leftPinchChainIndex;
+        const dy = this.gestureState.leftPinchStartY - pos.y;
+        const area = this.getControlArea();
+        const delta = (dy / area.height) * 4;
+        const newGain = clamp(this.gestureState.leftPinchStartGain + delta, 0, 2);
+        this.setChainGainValue(chainIndex, newGain);
+      } else {
+        const chainIndex = this.findChainAtPosition(pos.x, pos.y);
+        if (chainIndex >= 0) {
           this.gestureState.leftPinchChainIndex = chainIndex;
           this.gestureState.leftPinchStartY = pos.y;
           this.gestureState.leftPinchStartGain = this.getChainGainValue(chainIndex);
         } else {
-          const dy = this.gestureState.leftPinchStartY - pos.y;
-          const area = this.getControlArea();
-          const delta = (dy / area.height) * 4;
-          const newGain = clamp(this.gestureState.leftPinchStartGain + delta, 0, 2);
-          this.setChainGainValue(chainIndex, newGain);
+          const available = this.findFirstAvailableChain();
+          if (available >= 0 && now - this.gestureState.lastPinchTime > 300) {
+            const macro = this.canvasToMacro(pos.x, pos.y);
+            this.app.setChainEnabled(available, true);
+            const chainMacro = this.app.macroManager.getChainMacro(available);
+            chainMacro.point.x = macro.x;
+            chainMacro.point.y = macro.y;
+            this.app.selectedPresetId = "custom";
+            this.gestureState.lastPinchTime = now;
+          }
         }
-      } else {
-        const available = this.findFirstAvailableChain();
-        if (available >= 0 && now - this.gestureState.lastPinchTime > 300) {
-          const macro = this.canvasToMacro(pos.x, pos.y);
-          this.app.setChainEnabled(available, true);
-          const chainMacro = this.app.macroManager.getChainMacro(available);
-          chainMacro.point.x = macro.x;
-          chainMacro.point.y = macro.y;
-          this.app.selectedPresetId = "custom";
-          this.gestureState.lastPinchTime = now;
-        }
-        this.gestureState.leftPinchChainIndex = -1;
       }
     } else {
       this.gestureState.leftPinchChainIndex = -1;
@@ -261,12 +261,9 @@ export class GestureManager {
 
     if (gestures.rightPinch && gestures.rightPinchPos) {
       const pos = this.cameraToCanvas(gestures.rightPinchPos.x, gestures.rightPinchPos.y);
-      const chainIndex = this.findChainAtPosition(pos.x, pos.y);
 
-      if (chainIndex >= 0) {
-        if (this.gestureState.rightPinchChainIndex !== chainIndex) {
-          this.gestureState.rightPinchChainIndex = chainIndex;
-        }
+      if (this.gestureState.rightPinchChainIndex >= 0) {
+        const chainIndex = this.gestureState.rightPinchChainIndex;
         const macro = this.canvasToMacro(pos.x, pos.y);
         const chainMacro = this.app.macroManager.getChainMacro(chainIndex);
         chainMacro.point.x = macro.x;
@@ -277,7 +274,10 @@ export class GestureManager {
           chainIndex === this.app.getSelectedChainIndex()
         );
       } else {
-        this.gestureState.rightPinchChainIndex = -1;
+        const chainIndex = this.findChainAtPosition(pos.x, pos.y);
+        if (chainIndex >= 0) {
+          this.gestureState.rightPinchChainIndex = chainIndex;
+        }
       }
     } else {
       this.gestureState.rightPinchChainIndex = -1;
