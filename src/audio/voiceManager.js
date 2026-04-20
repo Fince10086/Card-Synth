@@ -268,6 +268,7 @@ export function createSourceRuntime({
     state: VOICE_STATE.IDLE,
     releaseEndTime: 0,
     idleSince: 0,
+    extendedReleaseEndTime: 0,
   });
 
   /**
@@ -591,8 +592,10 @@ export function createSourceRuntime({
     } else if (runtime.needsExtendedRelease && isLastNote) {
       const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
       voice.hiddenAmpEnv.triggerRelease(now + ampEnvRelease);
+      voice.extendedReleaseEndTime = now + ampEnvRelease;
     } else {
       voice.hiddenAmpEnv.triggerRelease(now);
+      voice.extendedReleaseEndTime = 0;
     }
 
     if (definition.runtime === "player") {
@@ -623,17 +626,35 @@ export function createSourceRuntime({
     const now = Tone.now();
     refreshAllVoiceLifecycles(now);
 
-    // 优先找未初始化的声音（完全空闲）
-    for (let i = 0; i < voices.length; i++) {
-      if (!voices[i].initialized) {
-        return { voice: getOrInitVoice(i), index: i };
+    // 检查是否有且只有一个 voice 处于 extended release 状态（可打断）
+    if (runtime.needsExtendedRelease) {
+      const activeVoices = voices.filter((v) => v.initialized && v.note !== null);
+      const releasingVoices = voices.filter((v) =>
+        v.initialized &&
+        v.state === VOICE_STATE.RELEASING &&
+        v.extendedReleaseEndTime &&
+        now < v.extendedReleaseEndTime
+      );
+      // 只有当前没有活跃音符，且只有一个 voice 在 extended release 时，打断它
+      if (activeVoices.length === 0 && releasingVoices.length === 1) {
+        const voice = releasingVoices[0];
+        const index = voices.indexOf(voice);
+        console.log(`[VoiceManager] findAvailableVoice: interrupting extended release voice ${index}`);
+        return { voice, index };
       }
     }
 
-    // 找已初始化且空闲的声音
+    // 优先找已初始化且空闲的声音（复用资源）
     for (let i = 0; i < voices.length; i++) {
-      if (voices[i].state === VOICE_STATE.IDLE && !voices[i].note) {
+      if (voices[i].initialized && voices[i].state === VOICE_STATE.IDLE && !voices[i].note) {
         return { voice: voices[i], index: i };
+      }
+    }
+
+    // 找未初始化的声音（需要创建新节点）
+    for (let i = 0; i < voices.length; i++) {
+      if (!voices[i].initialized) {
+        return { voice: getOrInitVoice(i), index: i };
       }
     }
 
@@ -817,6 +838,11 @@ export function createSourceRuntime({
       const { voice, index } = result;
       const now = Tone.now();
 
+      // 检查是否需要打断 extended release 的延迟
+      const isInExtendedRelease = voice.state === VOICE_STATE.RELEASING
+        && voice.extendedReleaseEndTime
+        && now < voice.extendedReleaseEndTime;
+      
       if (voice.note && voice.note !== note) {
         releaseVoice(voice, index, now);
       }
@@ -831,6 +857,9 @@ export function createSourceRuntime({
 
       if (runtime.hasAmpEnv) {
         triggerAmpEnvAttack(index, effectiveVelocity);
+      } else if (isInExtendedRelease) {
+        voice.hiddenAmpEnv.triggerAttack(now, effectiveVelocity);
+        voice.extendedReleaseEndTime = 0;
       } else {
         voice.hiddenAmpEnv.triggerAttack(now, effectiveVelocity);
       }
