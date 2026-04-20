@@ -631,9 +631,16 @@ export function createSourceRuntime({
       const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
       voice.hiddenAmpEnv.triggerRelease(now + ampEnvRelease);
     } else if (runtime.needsExtendedRelease && isLastNote) {
+      // 最后一个音：延迟释放 hiddenAmpEnv
       const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
       voice.hiddenAmpEnv.triggerRelease(now + ampEnvRelease);
       voice.extendedReleaseEndTime = now + ampEnvRelease;
+    } else if (runtime.needsExtendedRelease && !isLastNote) {
+      // 非最后一个音：同步 hiddenAmpEnv.release 与 AmpEnv
+      const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
+      voice.hiddenAmpEnv.release = ampEnvRelease;
+      voice.hiddenAmpEnv.triggerRelease(now);
+      voice.extendedReleaseEndTime = 0;
     } else {
       voice.hiddenAmpEnv.triggerRelease(now);
       voice.extendedReleaseEndTime = 0;
