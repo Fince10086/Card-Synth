@@ -225,15 +225,6 @@ export function renderMainCard({
   scopeContainer.append(scopeCanvas);
   controls.append(scopeContainer);
 
-  const keyboardHint = document.createElement("div");
-  keyboardHint.className = "keyboard-hint";
-  ["A-K 演奏", "Z/X 八度", "C/V 力度"].forEach((text) => {
-    const span = document.createElement("span");
-    span.textContent = text;
-    keyboardHint.append(span);
-  });
-  controls.append(keyboardHint);
-
   const keyboard = document.createElement("div");
   keyboard.id = "virtualKeyboard";
   keyboard.className = "virtual-keyboard virtual-keyboard--compact";

@@ -998,21 +998,6 @@ select {
 
 /* 键盘提示 */
 
-.keyboard-hint {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 4px;
-  flex-shrink: 0;
-}
-
-.keyboard-hint span {
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: #f0f2f6;
-  color: #7c8298;
-  font-size: 0.62rem;
-}
-
 /* 紧凑型虚拟键盘样式 */
 .virtual-keyboard--compact {
   --white-key-width: 28px;
