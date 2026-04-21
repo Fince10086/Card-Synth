@@ -1,6 +1,7 @@
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 
-const PINCH_THRESHOLD = 0.08;
+const PINCH_ENTER_THRESHOLD = 0.08;
+const PINCH_EXIT_THRESHOLD = 0.12;
 const COOLDOWN_MS = 10;
 
 export class HandGestureRecognizer {
@@ -18,6 +19,7 @@ export class HandGestureRecognizer {
     };
     this.pinchPos = { left: null, right: null };
     this.pinchSmoothAlpha = 0.2;
+    this.pinchState = { left: false, right: false };
   }
 
   async initialize() {
@@ -127,25 +129,37 @@ export class HandGestureRecognizer {
     };
 
     if (leftHand && now > this.cooldowns.leftPinch) {
-      const pinch = this.detectPinch(leftHand.landmarks);
-      if (pinch) {
+      const pinchDist = this.getPinchDistance(leftHand.landmarks);
+      const wasPinching = this.pinchState.left;
+      const isPinching = this.updatePinchState("left", pinchDist);
+      if (isPinching) {
         gestures.leftPinch = true;
-        gestures.leftPinchPos = this.smoothPinch("left", pinch);
+        const pinchPos = this.getPinchCenter(leftHand.landmarks);
+        gestures.leftPinchPos = this.smoothPinch("left", pinchPos);
         this.cooldowns.leftPinch = now + COOLDOWN_MS;
-      } else {
+      } else if (!isPinching && wasPinching) {
         this.pinchPos.left = null;
       }
+    } else {
+      this.pinchState.left = false;
+      this.pinchPos.left = null;
     }
 
     if (rightHand && now > this.cooldowns.rightPinch) {
-      const pinch = this.detectPinch(rightHand.landmarks);
-      if (pinch) {
+      const pinchDist = this.getPinchDistance(rightHand.landmarks);
+      const wasPinching = this.pinchState.right;
+      const isPinching = this.updatePinchState("right", pinchDist);
+      if (isPinching) {
         gestures.rightPinch = true;
-        gestures.rightPinchPos = this.smoothPinch("right", pinch);
+        const pinchPos = this.getPinchCenter(rightHand.landmarks);
+        gestures.rightPinchPos = this.smoothPinch("right", pinchPos);
         this.cooldowns.rightPinch = now + COOLDOWN_MS;
-      } else {
+      } else if (!isPinching && wasPinching) {
         this.pinchPos.right = null;
       }
+    } else {
+      this.pinchState.right = false;
+      this.pinchPos.right = null;
     }
 
     if (hands.length >= 2 && now > this.cooldowns.xGesture) {
@@ -160,19 +174,37 @@ export class HandGestureRecognizer {
     return gestures;
   }
 
-  detectPinch(landmarks) {
+  getPinchDistance(landmarks) {
     const thumbTip = landmarks[4];
     const indexTip = landmarks[8];
     const dx = thumbTip.x - indexTip.x;
     const dy = thumbTip.y - indexTip.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < PINCH_THRESHOLD) {
-      return {
-        x: (thumbTip.x + indexTip.x) / 2,
-        y: (thumbTip.y + indexTip.y) / 2,
-      };
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  getPinchCenter(landmarks) {
+    const thumbTip = landmarks[4];
+    const indexTip = landmarks[8];
+    return {
+      x: (thumbTip.x + indexTip.x) / 2,
+      y: (thumbTip.y + indexTip.y) / 2,
+    };
+  }
+
+  updatePinchState(hand, distance) {
+    const isPinching = this.pinchState[hand];
+    if (!isPinching && distance < PINCH_ENTER_THRESHOLD) {
+      this.pinchState[hand] = true;
+      return true;
     }
-    return null;
+    if (isPinching && distance < PINCH_EXIT_THRESHOLD) {
+      return true;
+    }
+    if (isPinching && distance >= PINCH_EXIT_THRESHOLD) {
+      this.pinchState[hand] = false;
+      return false;
+    }
+    return false;
   }
 
   detectXGesture(hands) {
