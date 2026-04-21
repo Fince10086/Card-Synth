@@ -358,7 +358,6 @@ export function createSliderControl({
           } else {
             modulation.radius = valueAtMarker - centerValue;
           }
-          console.log(`[SliderControl] ${isMinMarker ? 'min' : 'max'} marker: center=${centerValue.toFixed(2)}, valueAtMarker=${valueAtMarker.toFixed(2)}, radius=${modulation.radius.toFixed(2)}`);
           paintRange();
 
           modulationManager?.updateModulationRange(modulation.id, centerValue, modulation.radius);

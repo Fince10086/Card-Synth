@@ -162,43 +162,34 @@ export class InputManager {
   }
 
   async onKeyDown(event) {
-    const targetTag = event.target?.tagName;
-    if (targetTag === "INPUT" || targetTag === "SELECT" || event.repeat) {
+    if (event.repeat) {
       return;
     }
 
     const key = event.key.toLowerCase();
     const global = this.getGlobalState();
 
-    if (key === "z") {
-      const newOctave = clamp(global.octave - 1, 1, 7);
+    // 八度控制
+    if (key === "z" || key === "x") {
+      const delta = key === "z" ? -1 : 1;
+      const newOctave = clamp(global.octave + delta, 1, 7);
       this.onOctaveChange(newOctave);
       this.onSetCustomPreset();
       this.updateTransportInfo();
       return;
     }
-    if (key === "x") {
-      const newOctave = clamp(global.octave + 1, 1, 7);
-      this.onOctaveChange(newOctave);
-      this.onSetCustomPreset();
-      this.updateTransportInfo();
-      return;
-    }
-    if (key === "c") {
-      const newVelocity = clamp(Number((global.velocity - 0.05).toFixed(2)), 0.1, 1);
-      this.onVelocityChange(newVelocity);
-      this.onSetCustomPreset();
-      this.updateTransportInfo();
-      return;
-    }
-    if (key === "v") {
-      const newVelocity = clamp(Number((global.velocity + 0.05).toFixed(2)), 0.1, 1);
+
+    // 力度控制
+    if (key === "c" || key === "v") {
+      const delta = key === "c" ? -0.05 : 0.05;
+      const newVelocity = clamp(Number((global.velocity + delta).toFixed(2)), 0.1, 1);
       this.onVelocityChange(newVelocity);
       this.onSetCustomPreset();
       this.updateTransportInfo();
       return;
     }
 
+    // 音符触发
     const entry = KEYBOARD_LAYOUT.find((item) => item.key === key);
     if (!entry) {
       return;
