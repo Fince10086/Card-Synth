@@ -6,6 +6,7 @@ const BASE_RADIUS = 16;
 const CONTROL_RANGE_MULTIPLIER = 2;
 const MIN_DISTANCE_RATIO = 0.08;
 const PINCH_HOLD_MS = 100;
+const FPS_SAMPLE_WINDOW_MS = 500;
 
 export class GestureManager {
   constructor(app) {
@@ -48,6 +49,20 @@ export class GestureManager {
     this.lastLandmarks = [];
     this.lastGestures = null;
     this.renderPending = false;
+
+    const now = performance.now();
+    this.fpsStats = {
+      render: {
+        frames: 0,
+        lastSampleAt: now,
+        value: 0,
+      },
+      detect: {
+        frames: 0,
+        lastSampleAt: now,
+        value: 0,
+      },
+    };
   }
 
   async activate() {
@@ -284,6 +299,7 @@ export class GestureManager {
   }
 
   handleResults({ landmarks, gestures }) {
+    this.tickFps("detect");
     this.lastLandmarks = this.smoothLandmarks(landmarks);
     this.lastGestures = gestures;
     if (!this.renderPending) {
@@ -406,6 +422,52 @@ export class GestureManager {
     landmarks.forEach((hand) => {
       this.drawHandLandmarks(hand);
     });
+
+    this.drawFpsBadge();
+  }
+
+  tickFps(kind) {
+    const stats = this.fpsStats[kind];
+    if (!stats) return;
+
+    stats.frames += 1;
+    const now = performance.now();
+    const elapsed = now - stats.lastSampleAt;
+    if (elapsed < FPS_SAMPLE_WINDOW_MS) {
+      return;
+    }
+
+    stats.value = (stats.frames * 1000) / elapsed;
+    stats.frames = 0;
+    stats.lastSampleAt = now;
+  }
+
+  drawFpsBadge() {
+    if (!this.ctx) return;
+
+    const renderFps = Math.round(this.fpsStats.render.value);
+    const detectFps = Math.round(this.fpsStats.detect.value);
+
+    this.ctx.save();
+    this.ctx.font = '600 12px "IBM Plex Sans", sans-serif';
+    this.ctx.textAlign = "left";
+    this.ctx.textBaseline = "middle";
+
+    const text = `FPS R:${renderFps} D:${detectFps}`;
+    const padX = 10;
+    const padY = 7;
+    const x = 14;
+    const y = 14;
+    const textWidth = this.ctx.measureText(text).width;
+    const width = textWidth + padX * 2;
+    const height = 26;
+
+    this.ctx.fillStyle = "rgba(0, 0, 0, 0.68)";
+    this.ctx.fillRect(x, y, width, height);
+
+    this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    this.ctx.fillText(text, x + padX, y + height / 2 + 0.5);
+    this.ctx.restore();
   }
 
   drawControlPoint(chainIndex) {
