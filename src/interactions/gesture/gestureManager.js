@@ -275,7 +275,7 @@ export class GestureManager {
   setChainGainValue(chainIndex, value) {
     const gainModule = this.ensureGainMapped(chainIndex);
     const chainMacro = this.app.macroManager.getChainMacro(chainIndex);
-    chainMacro.point.z = clamp(value, 0, 1);
+    chainMacro.point.z = clamp(value / 2, 0, 1);
     this.app.macroManager.applyMappingsForChain(
       chainIndex,
       chainIndex === this.app.getSelectedChainIndex()
