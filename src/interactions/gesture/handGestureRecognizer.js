@@ -35,8 +35,8 @@ export class HandGestureRecognizer {
       runningMode: "VIDEO",
       numHands: 2,
       minHandDetectionConfidence: 0.8,
-      minHandPresenceConfidence: 0.8,
-      minTrackingConfidence: 0.8,
+      minHandPresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5,
     });
   }
 
@@ -46,8 +46,8 @@ export class HandGestureRecognizer {
     }
     this.stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        width: { ideal: 1280, max: 1280 },
-        height: { ideal: 720, max: 1280 },
+        width: { ideal: 960, max: 960 },
+        height: { ideal: 540, max: 960 },
         frameRate: { ideal: 30, max: 30 },
         facingMode: "user",
       },
