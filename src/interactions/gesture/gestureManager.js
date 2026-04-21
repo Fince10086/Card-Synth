@@ -415,25 +415,22 @@ export class GestureManager {
     const radius = BASE_RADIUS * radiusScale;
     const rangeRadius = BASE_RADIUS * CONTROL_RANGE_MULTIPLIER;
 
-    this.ctx.strokeStyle = "rgba(0,0,0,0.2)";
-    this.ctx.lineWidth = 1;
+    this.ctx.fillStyle = "rgba(0,0,0,0.1)";
     this.ctx.beginPath();
     this.ctx.arc(pos.x, pos.y, rangeRadius, 0, Math.PI * 2);
-    this.ctx.stroke();
-
-    this.ctx.strokeStyle = "#000000";
-    this.ctx.lineWidth = 2;
-    this.ctx.fillStyle = "transparent";
-    this.ctx.beginPath();
-    this.ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
-    this.ctx.stroke();
+    this.ctx.fill();
 
     this.ctx.fillStyle = "#000000";
-    this.ctx.font = `bold ${Math.round(radius)}px sans-serif`;
+    this.ctx.beginPath();
+    this.ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    this.ctx.fillStyle = "#ffffff";
+    this.ctx.font = `bold ${Math.round(radius)}px "IBM Plex Sans", sans-serif`;
     this.ctx.textAlign = "center";
     this.ctx.textBaseline = "middle";
     const labels = ["I", "II", "III", "IV"];
-    this.ctx.fillText(labels[chainIndex], pos.x, pos.y);
+    this.ctx.fillText(labels[chainIndex], pos.x, pos.y + 1);
   }
 
   smoothLandmarks(landmarks) {
