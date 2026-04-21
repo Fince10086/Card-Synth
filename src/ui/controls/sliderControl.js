@@ -317,12 +317,14 @@ export function createSliderControl({
       const minValue = centerValue - radius;
       const maxValue = centerValue + radius;
 
-      // 仅在最后转换为百分比用于 CSS 显示
+      // 转换为百分比用于 CSS 显示
       const minPct = ((minValue - min) / (max - min)) * 100;
       const maxPct = ((maxValue - min) / (max - min)) * 100;
 
+      // 范围显示使用排序后的值，确保正确渲染
       shell.style.setProperty("--range-start", `${Math.min(minPct, maxPct)}%`);
       shell.style.setProperty("--range-end", `${Math.max(minPct, maxPct)}%`);
+      // 标记位置保持实际值，允许 max 在 min 左边（radius 为负）
       markerMin.style.left = `${minPct}%`;
       markerMax.style.left = `${maxPct}%`;
       markerMinValue.textContent = minValue.toFixed(2);
@@ -336,6 +338,7 @@ export function createSliderControl({
     const bindMarkerDrag = (marker) => {
       marker.addEventListener("pointerdown", (event) => {
         event.preventDefault();
+        const isMinMarker = marker.classList.contains("mod-range-marker--min");
         const updateFromPointer = (clientX) => {
           const rect = shell.getBoundingClientRect();
           if (!rect.width) {
@@ -347,8 +350,15 @@ export function createSliderControl({
           const valueAtMarker = min + (max - min) * markerPercent;
           const centerValue = Number(input.value);
 
-          // 直接计算绝对值 radius
-          modulation.radius = Math.abs(valueAtMarker - centerValue);
+          // 根据标记类型计算有符号的 radius
+          // min 标记：radius = centerValue - valueAtMarker（向右拉为正，向左拉为负）
+          // max 标记：radius = valueAtMarker - centerValue（向右拉为正，向左拉为负）
+          if (isMinMarker) {
+            modulation.radius = centerValue - valueAtMarker;
+          } else {
+            modulation.radius = valueAtMarker - centerValue;
+          }
+          console.log(`[SliderControl] ${isMinMarker ? 'min' : 'max'} marker: center=${centerValue.toFixed(2)}, valueAtMarker=${valueAtMarker.toFixed(2)}, radius=${modulation.radius.toFixed(2)}`);
           paintRange();
 
           modulationManager?.updateModulationRange(modulation.id, centerValue, modulation.radius);
