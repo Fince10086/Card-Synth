@@ -7,6 +7,7 @@ const CONTROL_RANGE_MULTIPLIER = 2;
 const MIN_DISTANCE_RATIO = 0.08;
 const PINCH_HOLD_MS = 100;
 const FPS_SAMPLE_WINDOW_MS = 500;
+const DEFAULT_DETECT_FRAME_MS = 1000 / 30;
 
 export class GestureManager {
   constructor(app) {
@@ -49,6 +50,15 @@ export class GestureManager {
     this.lastLandmarks = [];
     this.lastGestures = null;
     this.renderPending = false;
+    this.renderFrame = 0;
+    this.prevLandmarks = [];
+    this.currentLandmarks = [];
+    this.interpolatedLandmarks = [];
+    this.frameBlend = {
+      startAt: 0,
+      duration: DEFAULT_DETECT_FRAME_MS,
+    };
+    this.lastDetectAt = 0;
 
     const now = performance.now();
     this.fpsStats = {
@@ -150,13 +160,17 @@ export class GestureManager {
     window.addEventListener("resize", this.onResize);
 
     this.resizeCanvas();
-    this.draw();
+    this.startRenderLoop();
   }
 
   destroyOverlay() {
     if (this.onResize) {
       window.removeEventListener("resize", this.onResize);
       this.onResize = null;
+    }
+    if (this.renderFrame) {
+      cancelAnimationFrame(this.renderFrame);
+      this.renderFrame = 0;
     }
     if (this.overlay) {
       this.overlay.remove();
@@ -300,15 +314,10 @@ export class GestureManager {
 
   handleResults({ landmarks, gestures }) {
     this.tickFps("detect");
-    this.lastLandmarks = this.smoothLandmarks(landmarks);
+    const smoothedLandmarks = this.smoothLandmarks(landmarks);
+    this.lastLandmarks = smoothedLandmarks;
+    this.pushDetectionFrame(smoothedLandmarks);
     this.lastGestures = gestures;
-    if (!this.renderPending) {
-      this.renderPending = true;
-      requestAnimationFrame(() => {
-        this.renderPending = false;
-        this.draw(this.lastLandmarks, this.lastGestures);
-      });
-    }
 
     const now = performance.now();
 
@@ -401,6 +410,81 @@ export class GestureManager {
       this.gestureState.rightPinchHoldStart = 0;
       this.gestureState.rightPinchConfirmed = false;
     }
+  }
+
+  startRenderLoop() {
+    if (this.renderFrame) {
+      cancelAnimationFrame(this.renderFrame);
+      this.renderFrame = 0;
+    }
+
+    const frame = (now) => {
+      if (!this.active || !this.canvas) {
+        this.renderFrame = 0;
+        return;
+      }
+      this.tickFps("render");
+      this.draw(this.getInterpolatedLandmarks(now), this.lastGestures);
+      this.renderFrame = requestAnimationFrame(frame);
+    };
+
+    this.renderFrame = requestAnimationFrame(frame);
+  }
+
+  pushDetectionFrame(landmarks) {
+    const now = performance.now();
+    if (this.lastDetectAt > 0) {
+      this.frameBlend.duration = Math.max(8, now - this.lastDetectAt);
+    }
+    this.frameBlend.startAt = now;
+    this.lastDetectAt = now;
+
+    const next = this.cloneLandmarks(landmarks);
+    if (!this.currentLandmarks.length || this.currentLandmarks.length !== next.length) {
+      this.prevLandmarks = this.cloneLandmarks(next);
+    } else {
+      this.prevLandmarks = this.cloneLandmarks(this.currentLandmarks);
+    }
+    this.currentLandmarks = next;
+  }
+
+  getInterpolatedLandmarks(now) {
+    if (!this.currentLandmarks.length) {
+      return [];
+    }
+    if (!this.prevLandmarks.length || this.prevLandmarks.length !== this.currentLandmarks.length) {
+      return this.currentLandmarks;
+    }
+    const duration = Math.max(1, this.frameBlend.duration);
+    const t = clamp((now - this.frameBlend.startAt) / duration, 0, 1);
+    return this.interpolateLandmarks(this.prevLandmarks, this.currentLandmarks, t);
+  }
+
+  interpolateLandmarks(from, to, t) {
+    if (this.interpolatedLandmarks.length !== to.length) {
+      this.interpolatedLandmarks = this.cloneLandmarks(to);
+    }
+
+    for (let h = 0; h < to.length; h++) {
+      if (!this.interpolatedLandmarks[h] || this.interpolatedLandmarks[h].length !== to[h].length) {
+        this.interpolatedLandmarks[h] = to[h].map((lm) => ({ x: lm.x, y: lm.y, z: lm.z }));
+      }
+      for (let i = 0; i < to[h].length; i++) {
+        const fromLm = from[h]?.[i] || to[h][i];
+        const toLm = to[h][i];
+        this.interpolatedLandmarks[h][i].x = fromLm.x + (toLm.x - fromLm.x) * t;
+        this.interpolatedLandmarks[h][i].y = fromLm.y + (toLm.y - fromLm.y) * t;
+        this.interpolatedLandmarks[h][i].z = fromLm.z + (toLm.z - fromLm.z) * t;
+      }
+    }
+
+    return this.interpolatedLandmarks;
+  }
+
+  cloneLandmarks(landmarks) {
+    return (landmarks || []).map((hand) =>
+      hand.map((lm) => ({ x: lm.x, y: lm.y, z: lm.z }))
+    );
   }
 
   draw(landmarks = [], gestures = null) {
