@@ -659,9 +659,12 @@ export class GestureManager {
               const chainMacro = this.app.macroManager.getChainMacro(available);
               chainMacro.point.x = macro.x;
               chainMacro.point.y = macro.y;
+              chainMacro.point.z = 0.5;
               this.app.selectedPresetId = "custom";
               this.gestureState.lastPinchTime = now;
               this.gestureState.leftPinchChainIndex = available;
+              this.gestureState.leftPinchStartY = pos.y;
+              this.gestureState.leftPinchStartGain = 1;
               // Visual smoothing handled by updateControlPointVisuals in render loop
             }
           }
