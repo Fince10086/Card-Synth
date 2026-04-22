@@ -48,6 +48,18 @@ export function layoutModuleMasonry({ container, modules, addCard, mainCard }) {
 
     const cardHeight = card.offsetHeight;
     const isAddCard = card === addCard;
+
+    // 没有任何模块时（仅剩 addCard），add-module-card 显示在第二列（Main 卡片右侧）
+    if (isAddCard && cards.length === 1 && columnCount > 1) {
+      currentColumn = 1;
+      const left = currentColumn * (columnWidth + gap);
+      const top = columnHeights[currentColumn];
+      card.style.left = `${left}px`;
+      card.style.top = `${top}px`;
+      columnHeights[currentColumn] += cardHeight + gap;
+      return;
+    }
+
     const isLastColumn = currentColumn === columnCount - 1;
 
     const judgeHeight = isAddCard ? lastModuleHeight : cardHeight;
