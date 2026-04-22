@@ -39,7 +39,7 @@ export function createSliderControl({
   if (moduleId && paramPath && macroBinding) {
     macroTarget.dataset.moduleId = moduleId;
     macroTarget.dataset.paramPath = paramPath;
-    macroTarget.textContent = macroBinding.axis === "x" ? "←→" : "↑↓";
+    macroTarget.textContent = macroBinding.axis === "x" ? "←→" : macroBinding.axis === "z" ? "Z" : "↑↓";
     macroTarget.classList.add("is-connected");
   }
 
