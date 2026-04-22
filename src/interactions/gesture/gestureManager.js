@@ -213,6 +213,7 @@ export class GestureManager {
     }
     if (added) {
       this.app.engine.fullSync(this.app.state);
+      this.app.renderAll();
     }
     this.app.selectedPresetId = "custom";
   }
@@ -523,6 +524,7 @@ export class GestureManager {
       gainModule = createComponentModule("Gain");
       modules.push(gainModule);
       this.app.engine.fullSync(this.app.state);
+      this.app.renderAll();
     }
 
     const chainMacro = this.app.macroManager.getChainMacro(chainIndex);
