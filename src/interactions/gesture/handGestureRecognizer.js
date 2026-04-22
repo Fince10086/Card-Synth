@@ -1,43 +1,116 @@
-import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
+import visionBundleUrl from "@mediapipe/tasks-vision?url";
 
-const PINCH_ENTER_THRESHOLD = 0.08;
-const PINCH_EXIT_THRESHOLD = 0.12;
-const COOLDOWN_MS = 10;
+const WASM_PATH = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm";
+const VISION_LIBRARY_URL = visionBundleUrl;
+const MODEL_ASSET_PATH =
+  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
 export class HandGestureRecognizer {
   constructor() {
-    this.handLandmarker = null;
+    this.worker = null;
+    this.workerReady = false;
+    this.initializingPromise = null;
+    this.resolveInit = null;
+    this.rejectInit = null;
+
     this.video = null;
     this.stream = null;
     this.running = false;
+    this.detectRaf = 0;
     this.lastVideoTime = -1;
     this.onResults = null;
-    this.cooldowns = {
-      leftPinch: 0,
-      rightPinch: 0,
-      xGesture: 0,
+    this.inferencePending = false;
+
+    this.handleWorkerMessage = (event) => {
+      const message = event.data || {};
+
+      if (message.type === "ready") {
+        this.workerReady = true;
+        this.initializingPromise = null;
+        if (this.resolveInit) {
+          this.resolveInit();
+          this.resolveInit = null;
+          this.rejectInit = null;
+        }
+        return;
+      }
+
+      if (message.type === "result") {
+        this.inferencePending = false;
+        if (this.onResults) {
+          this.onResults(message.payload || { landmarks: [], handedness: [], gestures: null });
+        }
+        return;
+      }
+
+      if (message.type === "error") {
+        this.inferencePending = false;
+        const workerError = new Error(message.payload?.message || "Worker inference failed.");
+        if (this.rejectInit) {
+          this.rejectInit(workerError);
+          this.resolveInit = null;
+          this.rejectInit = null;
+          this.initializingPromise = null;
+          return;
+        }
+        console.error("Gesture worker error:", workerError);
+      }
     };
-    this.pinchPos = { left: null, right: null };
-    this.pinchSmoothAlpha = 0.2;
-    this.pinchState = { left: false, right: false };
+
+    this.handleWorkerError = (event) => {
+      this.inferencePending = false;
+      this.workerReady = false;
+      const workerError =
+        event?.error instanceof Error
+          ? event.error
+          : new Error(event?.message || "Unknown worker error.");
+
+      if (this.rejectInit) {
+        this.rejectInit(workerError);
+        this.resolveInit = null;
+        this.rejectInit = null;
+        this.initializingPromise = null;
+        return;
+      }
+
+      console.error("Gesture worker crashed:", workerError);
+    };
   }
 
   async initialize() {
-    const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-    );
-    this.handLandmarker = await HandLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath:
-          "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-        delegate: "GPU",
-      },
-      runningMode: "VIDEO",
-      numHands: 2,
-      minHandDetectionConfidence: 0.8,
-      minHandPresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5,
+    if (this.workerReady && this.worker) {
+      return;
+    }
+
+    if (this.initializingPromise) {
+      return this.initializingPromise;
+    }
+
+    if (typeof Worker === "undefined") {
+      throw new Error("Current browser does not support Web Worker.");
+    }
+
+    if (!this.worker) {
+      this.worker = new Worker(new URL("./handLandmarker.worker.js", import.meta.url));
+      this.worker.addEventListener("message", this.handleWorkerMessage);
+      this.worker.addEventListener("error", this.handleWorkerError);
+    }
+
+    this.initializingPromise = new Promise((resolve, reject) => {
+      this.resolveInit = resolve;
+      this.rejectInit = reject;
+      this.worker.postMessage({
+        type: "init",
+        payload: {
+          libraryUrl: VISION_LIBRARY_URL,
+          wasmPath: WASM_PATH,
+          modelAssetPath: MODEL_ASSET_PATH,
+          delegate: "CPU",
+        },
+      });
     });
+
+    return this.initializingPromise;
   }
 
   async startCamera() {
@@ -67,6 +140,14 @@ export class HandGestureRecognizer {
 
   stopCamera() {
     this.running = false;
+    this.inferencePending = false;
+    this.lastVideoTime = -1;
+
+    if (this.detectRaf) {
+      cancelAnimationFrame(this.detectRaf);
+      this.detectRaf = 0;
+    }
+
     if (this.stream) {
       this.stream.getTracks().forEach((track) => track.stop());
       this.stream = null;
@@ -79,186 +160,74 @@ export class HandGestureRecognizer {
   }
 
   startDetection() {
+    if (!this.workerReady || !this.worker) {
+      return;
+    }
+
     this.running = true;
-    const detect = () => {
-      if (!this.running || !this.video || !this.handLandmarker) {
+
+    const detect = async () => {
+      if (!this.running || !this.video || !this.workerReady || !this.worker) {
+        this.detectRaf = 0;
         return;
       }
-      if (this.video.currentTime !== this.lastVideoTime) {
+
+      if (
+        this.video.currentTime !== this.lastVideoTime &&
+        !this.inferencePending &&
+        this.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      ) {
         this.lastVideoTime = this.video.currentTime;
-        const results = this.handLandmarker.detectForVideo(
-          this.video,
-          performance.now()
-        );
-        const gestures = this.parseGestures(results);
-        if (this.onResults) {
-          this.onResults({
-            landmarks: results.landmarks || [],
-            handedness: results.handedness || [],
-            gestures,
-          });
+
+        try {
+          this.inferencePending = true;
+          const frame = await createImageBitmap(this.video);
+
+          if (!this.running || !this.worker) {
+            frame.close();
+            this.inferencePending = false;
+          } else {
+            this.worker.postMessage(
+              {
+                type: "detect",
+                payload: {
+                  frame,
+                  timestamp: performance.now(),
+                },
+              },
+              [frame]
+            );
+          }
+        } catch (error) {
+          this.inferencePending = false;
+          console.error("Failed to transfer video frame to gesture worker:", error);
         }
       }
-      requestAnimationFrame(detect);
+
+      this.detectRaf = requestAnimationFrame(detect);
     };
-    requestAnimationFrame(detect);
-  }
-
-  parseGestures(results) {
-    const now = performance.now();
-    const landmarks = results.landmarks || [];
-    const handedness = results.handedness || [];
-
-    const hands = landmarks.map((lm, i) => ({
-      landmarks: lm,
-      handedness: handedness[i]?.[0]?.categoryName || "Unknown",
-      score: handedness[i]?.[0]?.score || 0,
-    }));
-
-    const leftHand = hands.find((h) => h.handedness === "Right");
-    const rightHand = hands.find((h) => h.handedness === "Left");
-
-    const gestures = {
-      leftPinch: false,
-      rightPinch: false,
-      xGesture: false,
-      leftPinchPos: null,
-      rightPinchPos: null,
-      xCenter: null,
-      hands,
-    };
-
-    if (leftHand && now > this.cooldowns.leftPinch) {
-      const pinchDist = this.getPinchDistance(leftHand.landmarks);
-      const wasPinching = this.pinchState.left;
-      const isPinching = this.updatePinchState("left", pinchDist);
-      if (isPinching) {
-        gestures.leftPinch = true;
-        const pinchPos = this.getPinchCenter(leftHand.landmarks);
-        gestures.leftPinchPos = this.smoothPinch("left", pinchPos);
-        this.cooldowns.leftPinch = now + COOLDOWN_MS;
-      } else if (!isPinching && wasPinching) {
-        this.pinchPos.left = null;
-      }
-    } else {
-      this.pinchState.left = false;
-      this.pinchPos.left = null;
-    }
-
-    if (rightHand && now > this.cooldowns.rightPinch) {
-      const pinchDist = this.getPinchDistance(rightHand.landmarks);
-      const wasPinching = this.pinchState.right;
-      const isPinching = this.updatePinchState("right", pinchDist);
-      if (isPinching) {
-        gestures.rightPinch = true;
-        const pinchPos = this.getPinchCenter(rightHand.landmarks);
-        gestures.rightPinchPos = this.smoothPinch("right", pinchPos);
-        this.cooldowns.rightPinch = now + COOLDOWN_MS;
-      } else if (!isPinching && wasPinching) {
-        this.pinchPos.right = null;
-      }
-    } else {
-      this.pinchState.right = false;
-      this.pinchPos.right = null;
-    }
-
-    if (hands.length >= 2 && now > this.cooldowns.xGesture) {
-      const x = this.detectXGesture(hands);
-      if (x) {
-        gestures.xGesture = true;
-        gestures.xCenter = x;
-        this.cooldowns.xGesture = now + COOLDOWN_MS;
-      }
-    }
-
-    return gestures;
-  }
-
-  getPinchDistance(landmarks) {
-    const thumbTip = landmarks[4];
-    const indexTip = landmarks[8];
-    const dx = thumbTip.x - indexTip.x;
-    const dy = thumbTip.y - indexTip.y;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  getPinchCenter(landmarks) {
-    const thumbTip = landmarks[4];
-    const indexTip = landmarks[8];
-    return {
-      x: (thumbTip.x + indexTip.x) / 2,
-      y: (thumbTip.y + indexTip.y) / 2,
-    };
-  }
-
-  updatePinchState(hand, distance) {
-    const isPinching = this.pinchState[hand];
-    if (!isPinching && distance < PINCH_ENTER_THRESHOLD) {
-      this.pinchState[hand] = true;
-      return true;
-    }
-    if (isPinching && distance < PINCH_EXIT_THRESHOLD) {
-      return true;
-    }
-    if (isPinching && distance >= PINCH_EXIT_THRESHOLD) {
-      this.pinchState[hand] = false;
-      return false;
-    }
-    return false;
-  }
-
-  detectXGesture(hands) {
-    if (hands.length < 2) return null;
-    const idxTips = hands.map((h) => h.landmarks[8]);
-    const idxPips = hands.map((h) => h.landmarks[6]);
-
-    for (let i = 0; i < idxTips.length; i++) {
-      for (let j = i + 1; j < idxTips.length; j++) {
-        if (
-          this.segmentsIntersect(
-            idxTips[i],
-            idxPips[i],
-            idxTips[j],
-            idxPips[j]
-          )
-        ) {
-          return {
-            x: (idxTips[i].x + idxTips[j].x) / 2,
-            y: (idxTips[i].y + idxTips[j].y) / 2,
-          };
-        }
-      }
-    }
-    return null;
-  }
-
-  segmentsIntersect(a1, a2, b1, b2) {
-    const cross = (p, q, r) =>
-      (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
-    const d1 = cross(b1, b2, a1);
-    const d2 = cross(b1, b2, a2);
-    const d3 = cross(a1, a2, b1);
-    const d4 = cross(a1, a2, b2);
-    return d1 * d2 < 0 && d3 * d4 < 0;
-  }
-
-  smoothPinch(hand, pos) {
-    const prev = this.pinchPos[hand];
-    if (!prev) {
-      this.pinchPos[hand] = { x: pos.x, y: pos.y };
-      return pos;
-    }
-    const alpha = this.pinchSmoothAlpha;
-    prev.x = alpha * pos.x + (1 - alpha) * prev.x;
-    prev.y = alpha * pos.y + (1 - alpha) * prev.y;
-    return { x: prev.x, y: prev.y };
+    this.detectRaf = requestAnimationFrame(detect);
   }
 
   dispose() {
     this.stopCamera();
-    if (this.handLandmarker) {
-      this.handLandmarker.close();
-      this.handLandmarker = null;
+    if (this.worker) {
+      this.worker.removeEventListener("message", this.handleWorkerMessage);
+      this.worker.removeEventListener("error", this.handleWorkerError);
+
+      try {
+        this.worker.postMessage({ type: "dispose" });
+      } catch (error) {
+        console.warn("Failed to dispose gesture worker cleanly:", error);
+      }
+
+      this.worker.terminate();
+      this.worker = null;
     }
+
+    this.workerReady = false;
+    this.initializingPromise = null;
+    this.resolveInit = null;
+    this.rejectInit = null;
   }
 }
