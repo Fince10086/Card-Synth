@@ -5,11 +5,10 @@ import {
   rampParam,
   SOURCE_LIBRARY,
 } from "../utils/helpers.js";
-import {
-  createSourceRuntime,
-  createEnvelopeModulationRuntime,
-  createAmplitudeEnvelopeRuntime,
-} from "./voiceManager.js";
+import { createSourceRuntime } from "./runtimes/sourceRuntime.js";
+import { createEnvelopeModulationRuntime } from "./runtimes/envelopeModulationRuntime.js";
+import { createEffectRuntime } from "./runtimes/effectRuntime.js";
+import { connectSignalChain } from "./chain/signalChain.js";
 
 export class AudioEngine {
   constructor(app) {
@@ -145,159 +144,18 @@ export class AudioEngine {
         runtimeMap.set(module.id, runtime);
       });
 
-      this.connectSignalChain(modules, runtimeMap);
+      connectSignalChain({
+        modules,
+        runtimeMap,
+        masterVolume: this.masterVolume,
+        isSourceModule: (m) => this.isSourceModule(m),
+        isAmpEnvModule: (m) => this.isAmpEnvModule(m),
+      });
+
       this.chainRuntimes.set(chainIndex, runtimeMap);
     });
 
     this.refreshCurrentRuntimeAlias();
-  }
-
-  connectSignalChain(modules, runtimeMap) {
-    const ampEnvIndices = new Set();
-    modules.forEach((module, index) => {
-      if (this.isAmpEnvModule(module) && module.enabled) {
-        ampEnvIndices.add(index);
-      }
-    });
-
-    modules.forEach((module, index) => {
-      const runtime = runtimeMap.get(module.id);
-      if (!runtime || !module.enabled) {
-        return;
-      }
-
-      if (this.isSourceModule(module)) {
-        this.connectSourceModule(modules, index, runtime, ampEnvIndices, runtimeMap);
-      } else {
-        this.connectNonSourceModule(modules, index, runtime, runtimeMap);
-      }
-    });
-  }
-
-  connectSourceModule(modules, sourceIndex, runtime, ampEnvIndices, runtimeMap) {
-    const sourceModule = modules[sourceIndex];
-    if (sourceModule?.type === "Envelope") {
-      return;
-    }
-
-    if (sourceModule?.modulationMode) {
-      return;
-    }
-
-    let targetIndex = -1;
-    for (let i = sourceIndex + 1; i < modules.length; i++) {
-      if (!this.isSourceModule(modules[i]) && modules[i].enabled) {
-        targetIndex = i;
-        break;
-      }
-    }
-
-    const isFirstModuleAmpEnv = targetIndex >= 0 && ampEnvIndices.has(targetIndex);
-
-    let hasAmpEnvAnywhere = false;
-    for (let i = sourceIndex + 1; i < modules.length; i++) {
-      if (ampEnvIndices.has(i)) {
-        hasAmpEnvAnywhere = true;
-        break;
-      }
-    }
-
-    const needsExtendedRelease = hasAmpEnvAnywhere && !isFirstModuleAmpEnv;
-    runtime.needsExtendedRelease = needsExtendedRelease;
-
-    runtime.hasAmpEnv = isFirstModuleAmpEnv;
-
-    if (isFirstModuleAmpEnv) {
-      const ampEnvModule = modules[targetIndex];
-      const ampEnvRuntime = runtimeMap.get(ampEnvModule.id);
-      runtime.ampEnvRuntime = ampEnvRuntime;
-
-      runtime.voices.forEach((voice, i) => {
-        if (voice.initialized && ampEnvRuntime && ampEnvRuntime.voices && ampEnvRuntime.voices[i]) {
-          const outputNode = voice.panNode || voice.hiddenAmpEnv;
-          outputNode.connect(ampEnvRuntime.voices[i]);
-        }
-      });
-    } else {
-      runtime.ampEnvRuntime = null;
-
-      if (needsExtendedRelease) {
-        for (let i = sourceIndex + 1; i < modules.length; i++) {
-          if (ampEnvIndices.has(i)) {
-            const ampEnvModule = modules[i];
-            runtime.chainedAmpEnvRuntime = runtimeMap.get(ampEnvModule.id);
-            break;
-          }
-        }
-      }
-
-      let targetNode;
-      if (targetIndex >= 0) {
-        const targetModule = modules[targetIndex];
-        const targetRuntime = runtimeMap.get(targetModule.id);
-        targetNode = targetRuntime && targetRuntime.node;
-      } else {
-        targetNode = this.masterVolume;
-      }
-
-      runtime.voices.forEach((voice) => {
-        if (targetNode && voice.initialized && voice.hiddenAmpEnv) {
-          voice.hiddenAmpEnv.connect(targetNode);
-        }
-      });
-
-      // 存储 targetNode 供懒加载的 voice 使用
-      runtime.targetNode = targetNode;
-    }
-  }
-
-  connectNonSourceModule(modules, moduleIndex, runtime, runtimeMap) {
-    if (runtime.type === "AmplitudeEnvelope") {
-      let targetIndex = -1;
-      for (let i = moduleIndex + 1; i < modules.length; i++) {
-        if (!this.isSourceModule(modules[i]) && modules[i].enabled) {
-          targetIndex = i;
-          break;
-        }
-      }
-
-      let targetNode;
-      if (targetIndex >= 0) {
-        const targetModule = modules[targetIndex];
-        const targetRuntime = runtimeMap.get(targetModule.id);
-        targetNode = targetRuntime && targetRuntime.node;
-      } else {
-        targetNode = this.masterVolume;
-      }
-
-      if (targetNode) {
-        if (runtime.node) {
-          runtime.node.connect(targetNode);
-        }
-        if (runtime.voices) {
-          runtime.voices.forEach((env) => env.connect(targetNode));
-        }
-      }
-      return;
-    }
-
-    let targetIndex = -1;
-    for (let i = moduleIndex + 1; i < modules.length; i++) {
-      if (!this.isSourceModule(modules[i]) && modules[i].enabled) {
-        targetIndex = i;
-        break;
-      }
-    }
-
-    if (targetIndex >= 0) {
-      const targetModule = modules[targetIndex];
-      const targetRuntime = runtimeMap.get(targetModule.id);
-      if (targetRuntime && targetRuntime.node) {
-        runtime.node.connect(targetRuntime.node);
-      }
-    } else {
-      runtime.node.connect(this.masterVolume);
-    }
   }
 
   createModuleRuntime(module) {
@@ -307,7 +165,7 @@ export class AudioEngine {
     if (this.isSourceModule(module)) {
       return this.createSourceRuntime(module);
     }
-    return this.createEffectRuntime(module);
+    return createEffectRuntime(module);
   }
 
   createSourceRuntime(module) {
@@ -328,45 +186,6 @@ export class AudioEngine {
 
   createEnvelopeModulationRuntime(module) {
     return createEnvelopeModulationRuntime(module);
-  }
-
-  createEffectRuntime(module) {
-    if (module.type === "AmplitudeEnvelope") {
-      return createAmplitudeEnvelopeRuntime(module);
-    }
-
-    const RuntimeCtor = Tone[module.type];
-    if (!RuntimeCtor) {
-      return {
-        type: module.type,
-        category: module.category || "component",
-        node: null,
-        dispose: () => {},
-      };
-    }
-
-    const node = new RuntimeCtor(module.options);
-
-    if (typeof node.start === "function") {
-      node.start();
-    }
-    if (typeof node.generate === "function") {
-      node.generate();
-    }
-
-    return {
-      type: module.type,
-      category: module.category || "component",
-      node,
-      apply: (nextModule) => {
-        safeSet(node, nextModule.options);
-      },
-      dispose: () => {
-        if (node && typeof node.dispose === "function") {
-          node.dispose();
-        }
-      },
-    };
   }
 
   forEachRuntime(callback) {

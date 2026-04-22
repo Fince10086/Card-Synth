@@ -8,7 +8,7 @@ import {
   exportCurrentPresetToFile,
   exportAllPresetToFile,
 } from "../preset/preset.js";
-import { AudioEngine } from "../audio/audioEngine.js";
+import { AudioEngine } from "../audio/audio.js";
 import { InputManager } from "../input/inputManager.js";
 import { ModulationManager } from "../interactions/modulation/modulationManager.js";
 import { MacroManager } from "../interactions/macro/macroManager.js";
