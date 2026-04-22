@@ -209,8 +209,11 @@ export class GestureManager {
   cameraToCanvas(cx, cy) {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const x = (1 - cx) * w;
-    const y = cy * h;
+    const scale = 1.1;
+    const offsetX = (w * (scale - 1)) / 2;
+    const offsetY = (h * (scale - 1)) / 2;
+    const x = (1 - cx) * w * scale - offsetX;
+    const y = cy * h * scale - offsetY;
     return { x, y };
   }
 
