@@ -34,6 +34,15 @@ export function createSliderControl({
   controlLabel.className = "control-label";
   const strong = document.createElement("strong");
   strong.textContent = label;
+  const macroTarget = document.createElement("span");
+  macroTarget.className = "macro-target";
+  if (moduleId && paramPath && macroBinding) {
+    macroTarget.dataset.moduleId = moduleId;
+    macroTarget.dataset.paramPath = paramPath;
+    macroTarget.textContent = macroBinding.axis === "x" ? "←→" : "↑↓";
+    macroTarget.classList.add("is-connected");
+  }
+
   const modulationTarget = document.createElement("span");
   modulationTarget.className = "modulation-target";
   if (moduleId && paramPath) {
@@ -65,7 +74,7 @@ export function createSliderControl({
 
   const valueGroup = document.createElement("span");
   valueGroup.className = "value-group";
-  valueGroup.append(modulationTarget, readout);
+  valueGroup.append(macroTarget, modulationTarget, readout);
 
   controlLabel.append(strong, valueGroup);
 

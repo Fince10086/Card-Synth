@@ -97,6 +97,7 @@ export class ModularSynthApp {
       this.resizeScopeCanvas();
       this.layoutModuleMasonry();
       this.modulationManager.renderModulationOverlay();
+    this.macroManager.renderMacroOverlay();
     });
   }
 
@@ -451,6 +452,7 @@ export class ModularSynthApp {
 
     this.layoutModuleMasonry();
     this.modulationManager.renderModulationOverlay();
+    this.macroManager.renderMacroOverlay();
 
     if (previousState) {
       this.animateControlTransition(previousState, this.state);

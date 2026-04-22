@@ -41,7 +41,16 @@ export class MacroManager {
       pointerId: 0,
       chainIndex: -1,
       axis: "x",
+      startX: 0,
+      startY: 0,
+      x: 0,
+      y: 0,
     };
+
+    // SVG element for rendering macro binding cables
+    this.macroSvg = null;
+    // requestAnimationFrame id
+    this.macroFrame = 0;
   }
 
   bindEvents() {
@@ -285,9 +294,14 @@ export class MacroManager {
       pointerId: event.pointerId,
       chainIndex,
       axis,
+      startX: event.clientX,
+      startY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
     };
 
     this.updateBindingHover(event);
+    this.renderMacroOverlay();
   }
 
   handlePointerMove(event) {
@@ -298,6 +312,9 @@ export class MacroManager {
 
     if (this.bindingDrag.active && event.pointerId === this.bindingDrag.pointerId) {
       this.updateBindingHover(event);
+      this.bindingDrag.x = event.clientX;
+      this.bindingDrag.y = event.clientY;
+      this.renderMacroOverlay();
     }
   }
 
@@ -330,7 +347,12 @@ export class MacroManager {
       pointerId: 0,
       chainIndex: -1,
       axis: "x",
+      startX: 0,
+      startY: 0,
+      x: 0,
+      y: 0,
     };
+    this.renderMacroOverlay();
   }
 
   cancelAllDrags() {
@@ -455,5 +477,93 @@ export class MacroManager {
     document.querySelectorAll(`.${HOVER_CLASS}`).forEach((node) => {
       node.classList.remove(HOVER_CLASS);
     });
+  }
+
+  /**
+   * Get the position of an element relative to the signal-flow-shell
+   * @param {HTMLElement} element
+   * @returns {{x:number, y:number}|null}
+   */
+  getPointInSignalFlowShell(element) {
+    const shell = this.app.elements.signalFlowShell;
+    if (!shell || !element) {
+      return null;
+    }
+    const shellRect = shell.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.left - shellRect.left + rect.width / 2,
+      y: rect.top - shellRect.top + rect.height / 2,
+    };
+  }
+
+  /**
+   * Render macro binding drag cable overlay
+   * Only shows the ghost cable while dragging; no persistent cables.
+   */
+  renderMacroOverlay() {
+    const shell = this.app.elements.signalFlowShell;
+    if (!shell) return;
+
+    // Create SVG if not exists
+    if (!this.macroSvg) {
+      this.macroSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      this.macroSvg.classList.add("macro-cables");
+      shell.appendChild(this.macroSvg);
+    }
+
+    const svg = this.macroSvg;
+    const shellRect = shell.getBoundingClientRect();
+    svg.setAttribute("width", String(Math.max(1, shellRect.width)));
+    svg.setAttribute("height", String(Math.max(1, shellRect.height)));
+    svg.innerHTML = "";
+
+    // Only render when dragging
+    if (!this.bindingDrag.active) {
+      if (this.macroFrame) {
+        cancelAnimationFrame(this.macroFrame);
+        this.macroFrame = 0;
+      }
+      return;
+    }
+
+    const fromEl = document.querySelector(
+      `.macro-axis-handle[aria-label="${this.bindingDrag.axis === "x" ? "Bind Macro X Axis" : "Bind Macro Y Axis"}"]`,
+    );
+
+    const from = this.getPointInSignalFlowShell(fromEl);
+
+    if (from) {
+      const toX = this.bindingDrag.x - shellRect.left;
+      const toY = this.bindingDrag.y - shellRect.top;
+
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const horizontalDist = Math.abs(toX - from.x);
+      const cx = (from.x + toX) / 2;
+      const sag = 15 + horizontalDist * 0.25;
+      const cy = Math.max(from.y, toY) + sag;
+
+      path.setAttribute("d", `M ${from.x} ${from.y} Q ${cx} ${cy} ${toX} ${toY}`);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "rgba(0, 0, 0, 0.4)");
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-dasharray", "6 4");
+      path.setAttribute("opacity", "0.7");
+
+      svg.appendChild(path);
+
+      // Draw start socket dot
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", String(from.x));
+      dot.setAttribute("cy", String(from.y));
+      dot.setAttribute("r", "4");
+      dot.setAttribute("fill", "rgba(0, 0, 0, 0.4)");
+      dot.setAttribute("opacity", "0.7");
+      svg.appendChild(dot);
+    }
+
+    // Schedule next frame for smooth updates (no lerp needed for simple ghost line)
+    this.macroFrame = requestAnimationFrame(() => this.renderMacroOverlay());
   }
 }
