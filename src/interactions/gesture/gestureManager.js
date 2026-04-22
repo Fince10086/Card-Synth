@@ -59,6 +59,7 @@ export class GestureManager {
       duration: DEFAULT_DETECT_FRAME_MS,
     };
     this.lastDetectAt = 0;
+    this.staticLayerDirty = true;
 
     const now = performance.now();
     this.fpsStats = {
@@ -143,8 +144,12 @@ export class GestureManager {
     this.overlay = document.createElement("div");
     this.overlay.className = "gesture-overlay";
 
+    this.staticCanvas = document.createElement("canvas");
+    this.staticCanvas.className = "gesture-canvas gesture-canvas-static";
+    this.overlay.appendChild(this.staticCanvas);
+
     this.canvas = document.createElement("canvas");
-    this.canvas.className = "gesture-canvas";
+    this.canvas.className = "gesture-canvas gesture-canvas-dynamic";
     this.overlay.appendChild(this.canvas);
 
     const closeBtn = document.createElement("button");
@@ -160,6 +165,7 @@ export class GestureManager {
     window.addEventListener("resize", this.onResize);
 
     this.resizeCanvas();
+    this.drawStaticLayer();
     this.startRenderLoop();
   }
 
@@ -177,20 +183,34 @@ export class GestureManager {
       this.overlay = null;
       this.canvas = null;
       this.ctx = null;
+      this.staticCanvas = null;
+      this.staticCtx = null;
     }
   }
 
   resizeCanvas() {
-    if (!this.canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const w = window.innerWidth;
     const h = window.innerHeight;
-    this.canvas.width = w * dpr;
-    this.canvas.height = h * dpr;
-    this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${h}px`;
-    this.ctx = this.canvas.getContext("2d");
-    this.ctx.scale(dpr, dpr);
+
+    if (this.staticCanvas) {
+      this.staticCanvas.width = w * dpr;
+      this.staticCanvas.height = h * dpr;
+      this.staticCanvas.style.width = `${w}px`;
+      this.staticCanvas.style.height = `${h}px`;
+      this.staticCtx = this.staticCanvas.getContext("2d");
+      this.staticCtx.scale(dpr, dpr);
+      this.markStaticLayerDirty();
+    }
+
+    if (this.canvas) {
+      this.canvas.width = w * dpr;
+      this.canvas.height = h * dpr;
+      this.canvas.style.width = `${w}px`;
+      this.canvas.style.height = `${h}px`;
+      this.ctx = this.canvas.getContext("2d");
+      this.ctx.scale(dpr, dpr);
+    }
   }
 
   getControlArea() {
@@ -313,6 +333,7 @@ export class GestureManager {
       chainIndex === this.app.getSelectedChainIndex()
     );
     this.app.selectedPresetId = "custom";
+    this.markStaticLayerDirty();
   }
 
   handleResults({ landmarks, gestures }) {
@@ -373,6 +394,7 @@ export class GestureManager {
               this.app.selectedPresetId = "custom";
               this.gestureState.lastPinchTime = now;
               this.gestureState.leftPinchChainIndex = available;
+              this.markStaticLayerDirty();
             }
           }
         }
@@ -397,6 +419,7 @@ export class GestureManager {
           chainIndex,
           chainIndex === this.app.getSelectedChainIndex()
         );
+        this.markStaticLayerDirty();
       } else if (!this.gestureState.rightPinchConfirmed) {
         if (this.gestureState.rightPinchHoldStart === 0) {
           this.gestureState.rightPinchHoldStart = now;
@@ -427,6 +450,7 @@ export class GestureManager {
         return;
       }
       this.tickFps("render");
+      this.drawStaticLayer();
       this.draw(this.getInterpolatedLandmarks(now), this.lastGestures);
       this.renderFrame = requestAnimationFrame(frame);
     };
@@ -496,21 +520,36 @@ export class GestureManager {
     const h = this.canvas.height;
     this.ctx.clearRect(0, 0, w, h);
 
-    const area = this.getControlArea();
-    this.ctx.strokeStyle = "rgba(0,0,0,0.15)";
-    this.ctx.lineWidth = 1;
-    this.ctx.strokeRect(area.x, area.y, area.width, area.height);
-
-    for (let i = 0; i < this.app.getChainCount(); i++) {
-      if (!this.app.isChainEnabled(i)) continue;
-      this.drawControlPoint(i);
-    }
-
     landmarks.forEach((hand) => {
       this.drawHandLandmarks(hand);
     });
 
     this.drawFpsBadge();
+  }
+
+  drawStaticLayer() {
+    if (!this.staticCtx || !this.staticCanvas) return;
+    if (!this.staticLayerDirty) return;
+
+    const w = this.staticCanvas.width;
+    const h = this.staticCanvas.height;
+    this.staticCtx.clearRect(0, 0, w, h);
+
+    const area = this.getControlArea();
+    this.staticCtx.strokeStyle = "rgba(0,0,0,0.15)";
+    this.staticCtx.lineWidth = 1;
+    this.staticCtx.strokeRect(area.x, area.y, area.width, area.height);
+
+    for (let i = 0; i < this.app.getChainCount(); i++) {
+      if (!this.app.isChainEnabled(i)) continue;
+      this.drawControlPointStatic(i);
+    }
+
+    this.staticLayerDirty = false;
+  }
+
+  markStaticLayerDirty() {
+    this.staticLayerDirty = true;
   }
 
   tickFps(kind) {
@@ -557,29 +596,30 @@ export class GestureManager {
     this.ctx.restore();
   }
 
-  drawControlPoint(chainIndex) {
+  drawControlPointStatic(chainIndex) {
+    if (!this.staticCtx) return;
     const pos = this.getChainPoint(chainIndex);
     const gain = this.getChainGainValue(chainIndex);
     const radiusScale = 0.5 + (gain / 2) * 1.0;
     const radius = BASE_RADIUS * radiusScale;
     const rangeRadius = BASE_RADIUS * CONTROL_RANGE_MULTIPLIER;
 
-    this.ctx.fillStyle = "rgba(0,0,0,0.1)";
-    this.ctx.beginPath();
-    this.ctx.arc(pos.x, pos.y, rangeRadius, 0, Math.PI * 2);
-    this.ctx.fill();
+    this.staticCtx.fillStyle = "rgba(0,0,0,0.1)";
+    this.staticCtx.beginPath();
+    this.staticCtx.arc(pos.x, pos.y, rangeRadius, 0, Math.PI * 2);
+    this.staticCtx.fill();
 
-    this.ctx.fillStyle = "#000000";
-    this.ctx.beginPath();
-    this.ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
-    this.ctx.fill();
+    this.staticCtx.fillStyle = "#000000";
+    this.staticCtx.beginPath();
+    this.staticCtx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+    this.staticCtx.fill();
 
-    this.ctx.fillStyle = "#ffffff";
-    this.ctx.font = `bold ${Math.round(radius)}px "IBM Plex Sans", sans-serif`;
-    this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "middle";
+    this.staticCtx.fillStyle = "#ffffff";
+    this.staticCtx.font = `bold ${Math.round(radius)}px "IBM Plex Sans", sans-serif`;
+    this.staticCtx.textAlign = "center";
+    this.staticCtx.textBaseline = "middle";
     const labels = ["I", "II", "III", "IV"];
-    this.ctx.fillText(labels[chainIndex], pos.x, pos.y + 1);
+    this.staticCtx.fillText(labels[chainIndex], pos.x, pos.y + 1);
   }
 
   smoothLandmarks(landmarks) {
