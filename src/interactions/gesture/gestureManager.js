@@ -60,6 +60,7 @@ export class GestureManager {
     };
     this.lastDetectAt = 0;
     this.staticLayerDirty = true;
+    this.controlPointVisuals = [];
 
     const now = performance.now();
     this.fpsStats = {
@@ -333,7 +334,7 @@ export class GestureManager {
       chainIndex === this.app.getSelectedChainIndex()
     );
     this.app.selectedPresetId = "custom";
-    this.markStaticLayerDirty();
+    // Visual smoothing handled by updateControlPointVisuals in render loop
   }
 
   handleResults({ landmarks, gestures }) {
@@ -394,7 +395,7 @@ export class GestureManager {
               this.app.selectedPresetId = "custom";
               this.gestureState.lastPinchTime = now;
               this.gestureState.leftPinchChainIndex = available;
-              this.markStaticLayerDirty();
+              // Visual smoothing handled by updateControlPointVisuals in render loop
             }
           }
         }
@@ -419,7 +420,7 @@ export class GestureManager {
           chainIndex,
           chainIndex === this.app.getSelectedChainIndex()
         );
-        this.markStaticLayerDirty();
+        // Visual smoothing handled by updateControlPointVisuals in render loop
       } else if (!this.gestureState.rightPinchConfirmed) {
         if (this.gestureState.rightPinchHoldStart === 0) {
           this.gestureState.rightPinchHoldStart = now;
@@ -520,6 +521,9 @@ export class GestureManager {
     const h = this.canvas.height;
     this.ctx.clearRect(0, 0, w, h);
 
+    this.updateControlPointVisuals();
+    this.drawControlPoints();
+
     landmarks.forEach((hand) => {
       this.drawHandLandmarks(hand);
     });
@@ -540,10 +544,11 @@ export class GestureManager {
     this.staticCtx.lineWidth = 1;
     this.staticCtx.strokeRect(area.x, area.y, area.width, area.height);
 
-    for (let i = 0; i < this.app.getChainCount(); i++) {
-      if (!this.app.isChainEnabled(i)) continue;
-      this.drawControlPointStatic(i);
-    }
+    // Control points moved to dynamic canvas with interpolation smoothing
+    // for (let i = 0; i < this.app.getChainCount(); i++) {
+    //   if (!this.app.isChainEnabled(i)) continue;
+    //   this.drawControlPointStatic(i);
+    // }
 
     this.staticLayerDirty = false;
   }
@@ -596,30 +601,71 @@ export class GestureManager {
     this.ctx.restore();
   }
 
-  drawControlPointStatic(chainIndex) {
-    if (!this.staticCtx) return;
-    const pos = this.getChainPoint(chainIndex);
-    const gain = this.getChainGainValue(chainIndex);
-    const radiusScale = 0.5 + (gain / 2) * 1.0;
-    const radius = BASE_RADIUS * radiusScale;
-    const rangeRadius = BASE_RADIUS * CONTROL_RANGE_MULTIPLIER;
+  updateControlPointVisuals() {
+    const chainCount = this.app.getChainCount();
+    while (this.controlPointVisuals.length < chainCount) {
+      this.controlPointVisuals.push(null);
+    }
 
-    this.staticCtx.fillStyle = "rgba(0,0,0,0.1)";
-    this.staticCtx.beginPath();
-    this.staticCtx.arc(pos.x, pos.y, rangeRadius, 0, Math.PI * 2);
-    this.staticCtx.fill();
+    const damping = 0.2;
 
-    this.staticCtx.fillStyle = "#000000";
-    this.staticCtx.beginPath();
-    this.staticCtx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
-    this.staticCtx.fill();
+    for (let i = 0; i < chainCount; i++) {
+      if (!this.app.isChainEnabled(i)) {
+        this.controlPointVisuals[i] = null;
+        continue;
+      }
 
-    this.staticCtx.fillStyle = "#ffffff";
-    this.staticCtx.font = `bold ${Math.round(radius)}px "IBM Plex Sans", sans-serif`;
-    this.staticCtx.textAlign = "center";
-    this.staticCtx.textBaseline = "middle";
+      const targetPos = this.getChainPoint(i);
+      const gain = this.getChainGainValue(i);
+      const radiusScale = 0.5 + (gain / 2) * 1.0;
+      const targetRadius = BASE_RADIUS * radiusScale;
+      const rangeRadius = BASE_RADIUS * CONTROL_RANGE_MULTIPLIER;
+
+      let visual = this.controlPointVisuals[i];
+      if (!visual) {
+        visual = { x: targetPos.x, y: targetPos.y, radius: targetRadius, rangeRadius };
+        this.controlPointVisuals[i] = visual;
+      }
+
+      visual.x += (targetPos.x - visual.x) * damping;
+      visual.y += (targetPos.y - visual.y) * damping;
+      visual.radius += (targetRadius - visual.radius) * damping;
+      visual.rangeRadius = rangeRadius;
+    }
+  }
+
+  drawControlPoints() {
+    for (let i = 0; i < this.app.getChainCount(); i++) {
+      if (!this.app.isChainEnabled(i)) continue;
+      const visual = this.controlPointVisuals[i];
+      if (!visual) continue;
+      this.drawControlPoint(i, visual);
+    }
+  }
+
+  drawControlPoint(chainIndex, visual) {
+    if (!this.ctx) return;
+
+    const pos = { x: visual.x, y: visual.y };
+    const radius = visual.radius;
+    const rangeRadius = visual.rangeRadius || BASE_RADIUS * CONTROL_RANGE_MULTIPLIER;
+
+    this.ctx.fillStyle = "rgba(0,0,0,0.1)";
+    this.ctx.beginPath();
+    this.ctx.arc(pos.x, pos.y, rangeRadius, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    this.ctx.fillStyle = "#000000";
+    this.ctx.beginPath();
+    this.ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    this.ctx.fillStyle = "#ffffff";
+    this.ctx.font = `bold ${Math.round(radius)}px "IBM Plex Sans", sans-serif`;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
     const labels = ["I", "II", "III", "IV"];
-    this.staticCtx.fillText(labels[chainIndex], pos.x, pos.y + 1);
+    this.ctx.fillText(labels[chainIndex], pos.x, pos.y + 1);
   }
 
   smoothLandmarks(landmarks) {
