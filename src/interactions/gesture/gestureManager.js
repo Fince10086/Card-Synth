@@ -28,6 +28,8 @@ const PINCH_HOLD_MS = 100;
 const FPS_SAMPLE_WINDOW_MS = 500;
 /** 默认检测帧间隔，用于初始化 landmark 插值时长（约 30fps） */
 const DEFAULT_DETECT_FRAME_MS = 1000 / 30;
+/** 手部被持续检测到后才生效的防抖时间（毫秒） */
+const HAND_CONFIRMATION_MS = 100;
 
 export class GestureManager {
   /**
@@ -116,6 +118,17 @@ export class GestureManager {
      * 用于实现位置与半径的阻尼平滑。
      */
     this.controlPointVisuals = [];
+
+    // ==================== 手部确认防抖 ====================
+    /**
+     * 每只手的确认状态。
+     * firstSeenAt: 首次检测到该手的时间戳（0 表示未检测到）；
+     * confirmed: 是否已通过持续检测确认。
+     */
+    this.handConfirmation = {
+      left: { firstSeenAt: 0, confirmed: false },
+      right: { firstSeenAt: 0, confirmed: false },
+    };
 
     // ==================== FPS 统计 ====================
     const now = performance.now();
@@ -421,6 +434,56 @@ export class GestureManager {
     return -1;
   }
 
+  // ==================== 手部确认防抖 ====================
+
+  /**
+   * 根据 handedness 更新左右手的确认状态。
+   * 只有当手部被持续检测到超过 HAND_CONFIRMATION_MS 后，confirmed 才置为 true。
+   * 手一旦消失，立即重置。
+   * @param {Array} handedness - Worker 返回的手部类别数组
+   * @param {number} now - 当前时间戳
+   */
+  updateHandConfirmation(handedness, now) {
+    const detected = { left: false, right: false };
+    for (const h of handedness || []) {
+      const name = h?.[0]?.categoryName;
+      // MediaPipe 的 handedness 基于镜像视角：
+      // "Right" 对应用户的左手，"Left" 对应用户的右手
+      if (name === "Right") detected.left = true;
+      if (name === "Left") detected.right = true;
+    }
+
+    for (const side of ["left", "right"]) {
+      if (detected[side]) {
+        if (this.handConfirmation[side].firstSeenAt === 0) {
+          this.handConfirmation[side].firstSeenAt = now;
+        }
+        this.handConfirmation[side].confirmed =
+          now - this.handConfirmation[side].firstSeenAt >= HAND_CONFIRMATION_MS;
+      } else {
+        this.handConfirmation[side].firstSeenAt = 0;
+        this.handConfirmation[side].confirmed = false;
+      }
+    }
+  }
+
+  /**
+   * 过滤 landmark 数组，仅保留已确认的手部。
+   * @param {Array} landmarks - 原始 landmark
+   * @param {Array} handedness - 与 landmark 一一对应的类别数组
+   * @returns {Array} 已确认的 landmark
+   */
+  filterConfirmedLandmarks(landmarks, handedness) {
+    if (!landmarks || !handedness || landmarks.length !== handedness.length) {
+      return [];
+    }
+    return landmarks.filter((_, i) => {
+      const name = handedness[i]?.[0]?.categoryName;
+      const side = name === "Right" ? "left" : name === "Left" ? "right" : null;
+      return side ? this.handConfirmation[side].confirmed : false;
+    });
+  }
+
   // ==================== 增益读写 ====================
 
   /**
@@ -515,18 +578,38 @@ export class GestureManager {
    * @param {Array} param0.landmarks - 检测到的手部关键点数组
    * @param {Object} param0.gestures - 解析后的手势状态
    */
-  handleResults({ landmarks, gestures }) {
-    this.tickFps("detect");
-    const smoothedLandmarks = this.smoothLandmarks(landmarks);
-    this.lastLandmarks = smoothedLandmarks;
-    this.pushDetectionFrame(smoothedLandmarks);
-    this.lastGestures = gestures;
-
+  handleResults({ landmarks, handedness, gestures }) {
     const now = performance.now();
 
+    // 更新手部确认状态：只有持续检测到手超过 HAND_CONFIRMATION_MS 后才生效
+    this.updateHandConfirmation(handedness, now);
+
+    // 过滤未确认的手部 landmark
+    const confirmedLandmarks = this.filterConfirmedLandmarks(landmarks, handedness);
+
+    // 过滤 gestures：未确认的手部对应手势不生效
+    const confirmedGestures = {
+      ...gestures,
+      leftPinch: this.handConfirmation.left.confirmed ? gestures.leftPinch : false,
+      leftPinchPos: this.handConfirmation.left.confirmed ? gestures.leftPinchPos : null,
+      rightPinch: this.handConfirmation.right.confirmed ? gestures.rightPinch : false,
+      rightPinchPos: this.handConfirmation.right.confirmed ? gestures.rightPinchPos : null,
+    };
+    const confirmedHandCount = ["left", "right"].filter((s) => this.handConfirmation[s].confirmed).length;
+    if (confirmedHandCount < 2) {
+      confirmedGestures.xGesture = false;
+      confirmedGestures.xCenter = null;
+    }
+
+    this.tickFps("detect");
+    const smoothedLandmarks = this.smoothLandmarks(confirmedLandmarks);
+    this.lastLandmarks = smoothedLandmarks;
+    this.pushDetectionFrame(smoothedLandmarks);
+    this.lastGestures = confirmedGestures;
+
     // ----- X 手势：禁用当前指向的链 -----
-    if (gestures.xGesture && gestures.xCenter) {
-      const pos = this.cameraToCanvas(gestures.xCenter.x, gestures.xCenter.y);
+    if (confirmedGestures.xGesture && confirmedGestures.xCenter) {
+      const pos = this.cameraToCanvas(confirmedGestures.xCenter.x, confirmedGestures.xCenter.y);
       const chainIndex = this.findChainAtPosition(pos.x, pos.y);
       if (chainIndex >= 0) {
         this.app.setChainEnabled(chainIndex, false);
@@ -538,8 +621,8 @@ export class GestureManager {
     }
 
     // ----- 左手捏合：增益控制 & 新建链 -----
-    if (gestures.leftPinch && gestures.leftPinchPos) {
-      const pos = this.cameraToCanvas(gestures.leftPinchPos.x, gestures.leftPinchPos.y);
+    if (confirmedGestures.leftPinch && confirmedGestures.leftPinchPos) {
+      const pos = this.cameraToCanvas(confirmedGestures.leftPinchPos.x, confirmedGestures.leftPinchPos.y);
 
       // 已确认捏合且已绑定链：进入拖拽调节增益模式
       if (this.gestureState.leftPinchChainIndex >= 0 && this.gestureState.leftPinchConfirmed) {
@@ -592,8 +675,8 @@ export class GestureManager {
     }
 
     // ----- 右手捏合：链位置控制 -----
-    if (gestures.rightPinch && gestures.rightPinchPos) {
-      const pos = this.cameraToCanvas(gestures.rightPinchPos.x, gestures.rightPinchPos.y);
+    if (confirmedGestures.rightPinch && confirmedGestures.rightPinchPos) {
+      const pos = this.cameraToCanvas(confirmedGestures.rightPinchPos.x, confirmedGestures.rightPinchPos.y);
 
       // 已确认且已绑定链：将链宏坐标更新为当前捏合位置
       if (this.gestureState.rightPinchChainIndex >= 0 && this.gestureState.rightPinchConfirmed) {
