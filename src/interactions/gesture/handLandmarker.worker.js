@@ -38,7 +38,7 @@ self.onmessage = async (event) => {
 
 async function initialize(payload) {
   if (initialized && handLandmarker) {
-    self.postMessage({ type: "ready" });
+    self.postMessage({ type: "ready", payload: { delegate: payload.activeDelegate || "CPU" } });
     return;
   }
 
@@ -48,24 +48,46 @@ async function initialize(payload) {
   const modelAssetPath =
     payload.modelAssetPath ||
     "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
-  const delegate = payload.delegate || "CPU";
+
+  // 优先 GPU，失败自动回退 CPU
+  const preferred = payload.preferredDelegate || "GPU";
+  const delegatesToTry = preferred === "GPU" ? ["GPU", "CPU"] : [preferred];
 
   try {
     await ensureVisionLoaded(payload);
     const vision = await FilesetResolverRef.forVisionTasks(wasmPath);
-    handLandmarker = await HandLandmarkerRef.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath,
-        delegate,
-      },
-      runningMode: "VIDEO",
-      numHands: 2,
-      minHandDetectionConfidence: 0.8,
-      minHandPresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-    initialized = true;
-    self.postMessage({ type: "ready" });
+
+    let lastError = null;
+    for (const delegate of delegatesToTry) {
+      try {
+        if (handLandmarker) {
+          handLandmarker.close();
+          handLandmarker = null;
+        }
+
+        handLandmarker = await HandLandmarkerRef.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath,
+            delegate,
+          },
+          runningMode: "VIDEO",
+          numHands: 2,
+          minHandDetectionConfidence: 0.8,
+          minHandPresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+
+        initialized = true;
+        self.postMessage({ type: "ready", payload: { delegate } });
+        return;
+      } catch (delegateError) {
+        lastError = delegateError;
+        const msg = delegateError instanceof Error ? delegateError.message : String(delegateError);
+        console.warn(`[HandLandmarkerWorker] ${delegate} delegate failed, falling back...`, msg);
+      }
+    }
+
+    throw lastError || new Error("All delegates failed.");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     self.postMessage({ type: "error", payload: { message } });

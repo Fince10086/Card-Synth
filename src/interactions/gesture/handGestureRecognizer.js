@@ -27,6 +27,8 @@ export class HandGestureRecognizer {
       if (message.type === "ready") {
         this.workerReady = true;
         this.initializingPromise = null;
+        const usedDelegate = message.payload?.delegate || "CPU";
+        console.info(`[HandGestureRecognizer] Initialized with ${usedDelegate} delegate.`);
         if (this.resolveInit) {
           this.resolveInit();
           this.resolveInit = null;
@@ -105,7 +107,7 @@ export class HandGestureRecognizer {
           libraryUrl: VISION_LIBRARY_URL,
           wasmPath: WASM_PATH,
           modelAssetPath: MODEL_ASSET_PATH,
-          delegate: "CPU",
+          preferredDelegate: "GPU",
         },
       });
     });
