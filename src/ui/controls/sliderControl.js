@@ -138,12 +138,22 @@ export function createSliderControl({
     }
   };
 
+  let pendingValue = null;
+  let rafId = null;
+
   input.addEventListener("input", (event) => {
     const nextValue = Number(event.target.value);
     clearMacroBindingOnManualInput();
     setVisualValue(nextValue);
     if (eventName === "input") {
-      onInput(nextValue);
+      pendingValue = nextValue;
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          onInput(pendingValue);
+          rafId = null;
+          pendingValue = null;
+        });
+      }
     }
   });
 

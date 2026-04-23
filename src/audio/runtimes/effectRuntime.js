@@ -44,23 +44,32 @@ export function createEffectRuntime(module) {
     apply: (nextModule) => {
       const nextOptions = nextModule.options || {};
 
-      if (node instanceof Tone.Filter) {
-        if (nextOptions.frequency !== undefined && nextOptions.frequency !== prevOptions.frequency) {
-          rampParam(node.frequency, nextOptions.frequency, 0.05);
+      // 1. 只提取真正变化的参数
+      const changedOptions = {};
+      Object.keys(nextOptions).forEach((key) => {
+        if (nextOptions[key] !== prevOptions[key]) {
+          changedOptions[key] = nextOptions[key];
         }
+      });
 
-        const changedOptions = {};
-        Object.keys(nextOptions).forEach((key) => {
-          if (key !== "frequency" && nextOptions[key] !== prevOptions[key]) {
-            changedOptions[key] = nextOptions[key];
-          }
-        });
+      if (Object.keys(changedOptions).length === 0) return;
 
-        if (Object.keys(changedOptions).length > 0) {
-          safeSet(node, changedOptions);
+      // 2. 对根级 AudioParam/Signal 使用 rampTo（避免瞬变爆音）
+      Object.keys(changedOptions).forEach((key) => {
+        const param = node[key];
+        if (
+          param &&
+          typeof param.rampTo === "function" &&
+          typeof param.value === "number"
+        ) {
+          rampParam(param, changedOptions[key], 0.05);
+          delete changedOptions[key];
         }
-      } else {
-        safeSet(node, nextOptions);
+      });
+
+      // 3. 剩余参数（setter、嵌套对象等）走 safeSet
+      if (Object.keys(changedOptions).length > 0) {
+        safeSet(node, changedOptions);
       }
 
       prevOptions = { ...nextOptions };
