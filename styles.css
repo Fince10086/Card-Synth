@@ -664,7 +664,6 @@ select {
   font-size: 16px;
   font-weight: 700;
   cursor: ew-resize;
-  top: 2px;
 }
 
 .mod-range-value {
@@ -672,7 +671,7 @@ select {
   font-weight: 400;
   white-space: nowrap;
   pointer-events: none;
-  top: 20px;
+  top: 15px;
 }
 
 .macro-range-marker {
