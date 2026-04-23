@@ -489,12 +489,18 @@ export class ModulationManager {
           return;
         }
 
-        const audioHalf = new Tone.Multiply(0.5);
+        // 对 options.frequency 特殊处理：绕过 Multiply(0.5)，保留 Add(0.5)
+        const isFrequencyParam = mod.targetParamPath === "options.frequency";
+        const audioHalf = isFrequencyParam ? null : new Tone.Multiply(0.5);
         const audioOffset = new Tone.Add(0.5);
         const scale = new Tone.Scale();
 
-        sourceOutput.connect(audioHalf);
-        audioHalf.connect(audioOffset);
+        if (isFrequencyParam) {
+          sourceOutput.connect(audioOffset);
+        } else {
+          sourceOutput.connect(audioHalf);
+          audioHalf.connect(audioOffset);
+        }
         audioOffset.connect(scale);
         scale.connect(param);
 
@@ -671,6 +677,10 @@ export class ModulationManager {
 
     if (targetParamPath === "options.frequencyOffset") {
       return voice.frequencyOffsetParam || null;
+    }
+
+    if (targetParamPath === "options.frequency") {
+      return voice.frequencyBaseSignal || null;
     }
 
     const paramPath = targetParamPath.replace(/^options\./, "");
