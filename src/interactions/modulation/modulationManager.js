@@ -511,6 +511,8 @@ export class ModulationManager {
           sourceVoiceIndex,
           targetParamPath: mod.targetParamPath,
           targetParam: param,  // 存储目标参数引用，用于重复检测
+          targetModuleId: mod.targetModuleId,
+          targetVoiceIndex: voiceIndex,
           sourceOutput,
           audioHalf,
           audioOffset,
@@ -544,6 +546,201 @@ export class ModulationManager {
         && moduleState.midiOn,
       );
     });
+  }
+
+  /**
+   * 创建单个调制连接
+   * 提取自 connectChainModulations，用于复用
+   */
+  _createModulationConnection(mod, chainIndex, sourceVoiceIndex, param, targetIndex, targetVoiceIndex) {
+    const existingRuntime = this.modulationRuntimes.find(
+      (r) => r.chainIndex === chainIndex
+        && r.modulationId === mod.id
+        && r.sourceVoiceIndex === sourceVoiceIndex
+        && r.targetParam === param
+    );
+    if (existingRuntime) {
+      return false;
+    }
+
+    const sourceOutput = this.getModulationSourceOutput(mod, sourceVoiceIndex, chainIndex);
+    if (!sourceOutput) {
+      return false;
+    }
+
+    const isFrequencyParam = mod.targetParamPath === "options.frequency";
+    const audioHalf = isFrequencyParam ? null : new Tone.Multiply(0.5);
+    const audioOffset = new Tone.Add(0.5);
+    const scale = new Tone.Scale();
+
+    if (isFrequencyParam) {
+      sourceOutput.connect(audioOffset);
+    } else {
+      sourceOutput.connect(audioHalf);
+      audioHalf.connect(audioOffset);
+    }
+    audioOffset.connect(scale);
+    scale.connect(param);
+
+    this.modulationRuntimes.push({
+      id: `${chainIndex}-${mod.id}-${sourceVoiceIndex}-${targetIndex}`,
+      chainIndex,
+      modulationId: mod.id,
+      sourceVoiceIndex,
+      targetParamPath: mod.targetParamPath,
+      targetParam: param,
+      targetModuleId: mod.targetModuleId,
+      targetVoiceIndex,
+      sourceOutput,
+      audioHalf,
+      audioOffset,
+      scale,
+    });
+
+    return true;
+  }
+
+  /**
+   * 连接指定 voice 的调制（增量更新）
+   * 只建立涉及该 voice 作为 source 或 target 的调制连接，避免全量重建
+   */
+  connectVoiceModulations(chainIndex, moduleId, voiceIndex) {
+    const chain = this.app.getChain(chainIndex);
+    if (!chain?.enabled) {
+      return;
+    }
+
+    const modulations = this.getModulations(chainIndex);
+    if (!modulations.length) {
+      return;
+    }
+
+    let connectedCount = 0;
+
+    modulations.forEach((mod) => {
+      // 情况1：该 voice 是调制源
+      if (mod.sourceModuleId === moduleId) {
+        const targets = this.getModulationTargetParams(mod, chainIndex);
+        targets.forEach(({ param, voiceIndex: targetVoiceIndex }, targetIndex) => {
+          const sourceVoiceIndex = Number.isFinite(targetVoiceIndex)
+            ? targetVoiceIndex
+            : Number(mod.sourceVoiceIndex ?? 0);
+
+          if (sourceVoiceIndex !== voiceIndex) {
+            return;
+          }
+
+          const created = this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, param, targetIndex, targetVoiceIndex);
+          if (created) {
+            connectedCount++;
+            // 设置调制范围
+            const targetModule = this.getModules(chainIndex).find((m) => m.id === mod.targetModuleId);
+            let centerValue = 0.5;
+            if (targetModule) {
+              const currentSliderValue = getByPath(targetModule, mod.targetParamPath);
+              if (typeof currentSliderValue === "number" && Number.isFinite(currentSliderValue)) {
+                centerValue = currentSliderValue;
+              }
+            }
+            const radius = mod.radius ?? 0.15;
+            this.updateModulationRange(mod.id, centerValue, radius, chainIndex);
+          }
+        });
+      }
+
+      // 情况2：该 voice 是调制目标
+      if (mod.targetModuleId === moduleId) {
+        const targets = this.getModulationTargetParams(mod, chainIndex);
+        const target = targets.find((t) => t.voiceIndex === voiceIndex);
+        if (!target) {
+          return;
+        }
+
+        const sourceVoiceIndex = Number(mod.sourceVoiceIndex ?? 0);
+        const targetIndex = targets.findIndex((t) => t.voiceIndex === voiceIndex);
+
+        const created = this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, target.param, targetIndex, voiceIndex);
+        if (created) {
+          connectedCount++;
+          // 设置调制范围
+          const targetModule = this.getModules(chainIndex).find((m) => m.id === mod.targetModuleId);
+          let centerValue = 0.5;
+          if (targetModule) {
+            const currentSliderValue = getByPath(targetModule, mod.targetParamPath);
+            if (typeof currentSliderValue === "number" && Number.isFinite(currentSliderValue)) {
+              centerValue = currentSliderValue;
+            }
+          }
+          const radius = mod.radius ?? 0.15;
+          this.updateModulationRange(mod.id, centerValue, radius, chainIndex);
+        }
+      }
+    });
+
+    if (connectedCount > 0) {
+      console.log(`[ModulationManager] Connected ${connectedCount} modulation(s) for voice ${voiceIndex} of module ${moduleId}`);
+    }
+  }
+
+  /**
+   * 断开指定 voice 的调制连接（增量清理）
+   * 只清理涉及该 voice 作为 source 或 target 的调制连接
+   */
+  disconnectVoiceModulations(chainIndex, moduleId, voiceIndex) {
+    const toRemove = [];
+
+    this.modulationRuntimes.forEach((runtime, index) => {
+      if (runtime.chainIndex !== chainIndex) {
+        return;
+      }
+
+      const isSourceMatch = runtime.sourceVoiceIndex === voiceIndex &&
+        this.getModulations(chainIndex).some((m) => m.id === runtime.modulationId && m.sourceModuleId === moduleId);
+
+      const isTargetMatch = runtime.targetVoiceIndex === voiceIndex && runtime.targetModuleId === moduleId;
+
+      if (!isSourceMatch && !isTargetMatch) {
+        return;
+      }
+
+      toRemove.push(index);
+
+      // 断开连接
+      if (runtime.sourceOutput && runtime.audioHalf) {
+        try {
+          runtime.sourceOutput.disconnect(runtime.audioHalf);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (runtime.scale && runtime.targetParam) {
+        try {
+          runtime.scale.disconnect(runtime.targetParam);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (runtime.scale && typeof runtime.scale.dispose === "function") {
+        runtime.scale.dispose();
+      }
+      if (runtime.audioHalf && typeof runtime.audioHalf.dispose === "function") {
+        runtime.audioHalf.dispose();
+      }
+      if (runtime.audioOffset && typeof runtime.audioOffset.dispose === "function") {
+        runtime.audioOffset.dispose();
+      }
+    });
+
+    // 从后往前删除，避免索引变化
+    toRemove.sort((a, b) => b - a).forEach((index) => {
+      this.modulationRuntimes.splice(index, 1);
+    });
+
+    if (toRemove.length > 0) {
+      console.log(`[ModulationManager] Disconnected ${toRemove.length} modulation(s) for voice ${voiceIndex} of module ${moduleId}`);
+    }
   }
 
   /**

@@ -140,7 +140,7 @@ export class AudioEngine {
 
       const runtimeMap = new Map();
       modules.forEach((module) => {
-        const runtime = this.createModuleRuntime(module);
+        const runtime = this.createModuleRuntime(module, chainIndex);
         runtimeMap.set(module.id, runtime);
       });
 
@@ -158,28 +158,32 @@ export class AudioEngine {
     this.refreshCurrentRuntimeAlias();
   }
 
-  createModuleRuntime(module) {
+  createModuleRuntime(module, chainIndex) {
     if (module.type === "Envelope") {
       return this.createEnvelopeModulationRuntime(module);
     }
     if (this.isSourceModule(module)) {
-      return this.createSourceRuntime(module);
+      return this.createSourceRuntime(module, chainIndex);
     }
     return createEffectRuntime(module);
   }
 
-  createSourceRuntime(module) {
+  createSourceRuntime(module, chainIndex) {
     return createSourceRuntime({
       module,
       getVelocityEnabled: () => Boolean(this.state?.global?.velocityEnabled),
       onAllVoicesIdle: () => this.rebuildSignalChains(),
-      onVoiceDisposed: () => {
-        // Voice dispose 后重建调制连接（因为 sourceOutput 节点已改变）
-        this.app?.modulationManager?.connectAllModulations?.();
+      onVoiceDisposed: (voiceIndex) => {
+        // Voice dispose 后增量清理调制连接（延迟到下一帧避免阻塞音频线程）
+        setTimeout(() => {
+          this.app?.modulationManager?.disconnectVoiceModulations?.(chainIndex, module.id, voiceIndex);
+        }, 0);
       },
-      onVoiceInitialized: () => {
-        // Voice 初始化后重建调制连接（新 voice 需要建立调制连接）
-        this.app?.modulationManager?.connectAllModulations?.();
+      onVoiceInitialized: (voiceIndex) => {
+        // Voice 初始化后增量建立调制连接（延迟到下一帧避免阻塞音频线程）
+        setTimeout(() => {
+          this.app?.modulationManager?.connectVoiceModulations?.(chainIndex, module.id, voiceIndex);
+        }, 0);
       },
     });
   }
