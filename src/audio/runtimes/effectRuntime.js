@@ -1,5 +1,5 @@
 import * as Tone from "tone";
-import { safeSet } from "../../utils/helpers.js";
+import { rampParam, safeSet } from "../../utils/helpers.js";
 import { createAmplitudeEnvelopeRuntime } from "./amplitudeEnvelopeRuntime.js";
 
 /**
@@ -35,12 +35,35 @@ export function createEffectRuntime(module) {
     node.generate();
   }
 
+  let prevOptions = { ...module.options };
+
   return {
     type: module.type,
     category: module.category || "component",
     node,
     apply: (nextModule) => {
-      safeSet(node, nextModule.options);
+      const nextOptions = nextModule.options || {};
+
+      if (node instanceof Tone.Filter) {
+        if (nextOptions.frequency !== undefined && nextOptions.frequency !== prevOptions.frequency) {
+          rampParam(node.frequency, nextOptions.frequency, 0.05);
+        }
+
+        const changedOptions = {};
+        Object.keys(nextOptions).forEach((key) => {
+          if (key !== "frequency" && nextOptions[key] !== prevOptions[key]) {
+            changedOptions[key] = nextOptions[key];
+          }
+        });
+
+        if (Object.keys(changedOptions).length > 0) {
+          safeSet(node, changedOptions);
+        }
+      } else {
+        safeSet(node, nextOptions);
+      }
+
+      prevOptions = { ...nextOptions };
     },
     dispose: () => {
       if (node && typeof node.dispose === "function") {
