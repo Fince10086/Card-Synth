@@ -345,10 +345,25 @@ export function createSliderControl({
       // 原始比例（0~1）
       const minPct = ((minValue - min) / (max - min));
       const maxPct = ((maxValue - min) / (max - min));
+      const centerPct = ((centerValue - min) / (max - min));
 
-      // 范围显示使用排序后的值，确保正确渲染
-      shell.style.setProperty("--range-start", `${Math.min(minPct, maxPct) * 100}%`);
-      shell.style.setProperty("--range-end", `${Math.max(minPct, maxPct) * 100}%`);
+      // 判断调制源是否为 Envelope（单向 0~1）
+      const sourceModule = modulationManager?.getModules?.()?.find(m => m.id === modulation.sourceModuleId);
+      const isEnvelopeSource = sourceModule?.type === "Envelope";
+
+      if (isEnvelopeSource) {
+        // Envelope 源：只显示 center 到 max 的区间，隐藏 min 部分
+        shell.style.setProperty("--range-start", `${Math.min(centerPct, maxPct) * 100}%`);
+        shell.style.setProperty("--range-end", `${Math.max(centerPct, maxPct) * 100}%`);
+        bracketMin.style.visibility = "hidden";
+        valueMin.style.visibility = "hidden";
+      } else {
+        // 普通源（Source 等双向 -1~1）：显示完整范围
+        shell.style.setProperty("--range-start", `${Math.min(minPct, maxPct) * 100}%`);
+        shell.style.setProperty("--range-end", `${Math.max(minPct, maxPct) * 100}%`);
+        bracketMin.style.visibility = "visible";
+        valueMin.style.visibility = "visible";
+      }
 
       // 边缘约束定位：0% 时左边缘对齐，100% 时右边缘对齐
       const trackWidth = shell.clientWidth || input.clientWidth;
@@ -364,23 +379,35 @@ export function createSliderControl({
       bracketMax.style.left = edgeLeft(maxPct, bracketMax);
       valueMax.style.left = edgeLeft(maxPct, valueMax);
 
-      // 碰撞检测：基于实际渲染边界
-      const minRect = bracketMin.getBoundingClientRect();
-      const maxRect = bracketMax.getBoundingClientRect();
-      const gap = maxRect.left - minRect.right;
-      if (gap < 40) {
-        valueMin.textContent = "";
-        valueMax.textContent = "";
+      // 碰撞检测：基于实际渲染边界（仅对非 Envelope 源生效）
+      if (!isEnvelopeSource) {
+        const minRect = bracketMin.getBoundingClientRect();
+        const maxRect = bracketMax.getBoundingClientRect();
+        const gap = maxRect.left - minRect.right;
+        if (gap < 40) {
+          valueMin.textContent = "";
+          valueMax.textContent = "";
+        } else {
+          valueMin.textContent = minValue.toFixed(2);
+          valueMax.textContent = maxValue.toFixed(2);
+        }
       } else {
-        valueMin.textContent = minValue.toFixed(2);
+        // Envelope 源时只显示 max value
         valueMax.textContent = maxValue.toFixed(2);
       }
 
-      // 更新悬浮 ±radius 值，位置跟随滑块 thumb
-      const radiusStr = radius >= 0 ? `±${Math.abs(radius).toFixed(2)}` : `${radius.toFixed(2)}`;
+      // 更新悬浮 radius 值，位置跟随滑块 thumb
+      const radiusStr = isEnvelopeSource
+        ? `+${Math.abs(radius).toFixed(2)}`
+        : radius >= 0 ? `±${Math.abs(radius).toFixed(2)}` : `${radius.toFixed(2)}`;
       centerValueEl.textContent = radiusStr;
       const sliderPercent = ((centerValue - min) / (max - min));
       centerValueEl.style.left = edgeLeft(sliderPercent, centerValueEl);
+
+      // 如果布局未就绪（宽度为0），延迟重试
+      if (!trackWidth || bracketMin.getBoundingClientRect().width === 0) {
+        requestAnimationFrame(paintRange);
+      }
     };
 
     const commitRange = () => {
