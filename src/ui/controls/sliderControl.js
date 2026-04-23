@@ -291,23 +291,25 @@ export function createSliderControl({
 
   if (modulation) {
     shell.classList.add("slider-shell--mod-range");
-    const markerMin = document.createElement("span");
-    markerMin.className = "mod-range-marker mod-range-marker--min";
-    markerMin.textContent = "[";
-    const markerMinValue = document.createElement("span");
-    markerMinValue.className = "mod-range-marker__value";
-    markerMin.append(markerMinValue);
-    const markerMax = document.createElement("span");
-    markerMax.className = "mod-range-marker mod-range-marker--max";
-    markerMax.textContent = "]";
-    const markerMaxValue = document.createElement("span");
-    markerMaxValue.className = "mod-range-marker__value";
-    markerMax.append(markerMaxValue);
 
-    // 悬浮显示的 ±radius 值（轨道正上方居中）
+    // min 边界：bracket 和 value 独立元素，左边缘对齐
+    const bracketMin = document.createElement("span");
+    bracketMin.className = "mod-range-bracket mod-range-bracket--min";
+    bracketMin.textContent = "[";
+    const valueMin = document.createElement("span");
+    valueMin.className = "mod-range-value mod-range-value--min";
+
+    // max 边界：bracket 和 value 独立元素，右边缘对齐
+    const bracketMax = document.createElement("span");
+    bracketMax.className = "mod-range-bracket mod-range-bracket--max";
+    bracketMax.textContent = "]";
+    const valueMax = document.createElement("span");
+    valueMax.className = "mod-range-value mod-range-value--max";
+
+    // 悬浮显示的 ±radius 值（跟随滑块 thumb）
     const centerValueEl = document.createElement("span");
     centerValueEl.className = "mod-range-center-value";
-    shell.append(centerValueEl, markerMin, markerMax);
+    shell.append(centerValueEl, bracketMin, valueMin, bracketMax, valueMax);
 
     const clamp = (next) => Math.max(min, Math.min(max, next));
     const snap = (next) => {
@@ -330,44 +332,55 @@ export function createSliderControl({
       const minValue = centerValue - radius;
       const maxValue = centerValue + radius;
 
-      // 转换为百分比用于 CSS 显示
-      const minPct = ((minValue - min) / (max - min)) * 100;
-      const maxPct = ((maxValue - min) / (max - min)) * 100;
+      // 原始比例（0~1）
+      const minPct = ((minValue - min) / (max - min));
+      const maxPct = ((maxValue - min) / (max - min));
 
       // 范围显示使用排序后的值，确保正确渲染
-      shell.style.setProperty("--range-start", `${Math.min(minPct, maxPct)}%`);
-      shell.style.setProperty("--range-end", `${Math.max(minPct, maxPct)}%`);
-      // 标记位置保持实际值，允许 max 在 min 左边（radius 为负）
-      markerMin.style.left = `${minPct}%`;
-      markerMax.style.left = `${maxPct}%`;
+      shell.style.setProperty("--range-start", `${Math.min(minPct, maxPct) * 100}%`);
+      shell.style.setProperty("--range-end", `${Math.max(minPct, maxPct) * 100}%`);
 
-      // 碰撞检测：当两标记距离 < 40px 时隐藏各自数值
-      const shellWidth = shell.clientWidth || input.clientWidth;
-      const minPixel = (minPct / 100) * shellWidth;
-      const maxPixel = (maxPct / 100) * shellWidth;
-      if (shellWidth && Math.abs(maxPixel - minPixel) < 40) {
-        markerMinValue.textContent = "";
-        markerMaxValue.textContent = "";
+      // 边缘约束定位：0% 时左边缘对齐，100% 时右边缘对齐
+      const trackWidth = shell.clientWidth || input.clientWidth;
+      const edgeLeft = (percent, element) => {
+        if (!trackWidth) return `${percent * 100}%`;
+        const elWidth = element.getBoundingClientRect().width;
+        const constrained = percent * (1 - elWidth / trackWidth);
+        return `${constrained * 100}%`;
+      };
+
+      bracketMin.style.left = edgeLeft(minPct, bracketMin);
+      valueMin.style.left = edgeLeft(minPct, valueMin);
+      bracketMax.style.left = edgeLeft(maxPct, bracketMax);
+      valueMax.style.left = edgeLeft(maxPct, valueMax);
+
+      // 碰撞检测：基于实际渲染边界
+      const minRect = bracketMin.getBoundingClientRect();
+      const maxRect = bracketMax.getBoundingClientRect();
+      const gap = maxRect.left - minRect.right;
+      if (gap < 40) {
+        valueMin.textContent = "";
+        valueMax.textContent = "";
       } else {
-        markerMinValue.textContent = minValue.toFixed(2);
-        markerMaxValue.textContent = maxValue.toFixed(2);
+        valueMin.textContent = minValue.toFixed(2);
+        valueMax.textContent = maxValue.toFixed(2);
       }
 
       // 更新悬浮 ±radius 值，位置跟随滑块 thumb
       const radiusStr = radius >= 0 ? `±${Math.abs(radius).toFixed(2)}` : `${radius.toFixed(2)}`;
       centerValueEl.textContent = radiusStr;
-      const sliderPercent = ((centerValue - min) / (max - min)) * 100;
-      centerValueEl.style.left = `${sliderPercent}%`;
+      const sliderPercent = ((centerValue - min) / (max - min));
+      centerValueEl.style.left = edgeLeft(sliderPercent, centerValueEl);
     };
 
     const commitRange = () => {
       onPresetChange?.("custom");
     };
 
-    const bindMarkerDrag = (marker) => {
-      marker.addEventListener("pointerdown", (event) => {
+    const bindMarkerDrag = (bracket) => {
+      bracket.addEventListener("pointerdown", (event) => {
         event.preventDefault();
-        const isMinMarker = marker.classList.contains("mod-range-marker--min");
+        const isMinBracket = bracket.classList.contains("mod-range-bracket--min");
         const updateFromPointer = (clientX) => {
           const rect = shell.getBoundingClientRect();
           if (!rect.width) {
@@ -375,17 +388,17 @@ export function createSliderControl({
           }
 
           // 像素位置 → 参数域绝对值
-          const markerPercent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-          const valueAtMarker = min + (max - min) * markerPercent;
+          const bracketPercent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+          const valueAtBracket = min + (max - min) * bracketPercent;
           const centerValue = Number(input.value);
 
-          // 根据标记类型计算有符号的 radius
-          // min 标记：radius = centerValue - valueAtMarker（向右拉为正，向左拉为负）
-          // max 标记：radius = valueAtMarker - centerValue（向右拉为正，向左拉为负）
-          if (isMinMarker) {
-            modulation.radius = centerValue - valueAtMarker;
+          // 根据 bracket 类型计算有符号的 radius
+          // min bracket：radius = centerValue - valueAtBracket（向右拉为正，向左拉为负）
+          // max bracket：radius = valueAtBracket - centerValue（向右拉为正，向左拉为负）
+          if (isMinBracket) {
+            modulation.radius = centerValue - valueAtBracket;
           } else {
-            modulation.radius = valueAtMarker - centerValue;
+            modulation.radius = valueAtBracket - centerValue;
           }
           paintRange();
 
@@ -405,8 +418,8 @@ export function createSliderControl({
       });
     };
 
-    bindMarkerDrag(markerMin);
-    bindMarkerDrag(markerMax);
+    bindMarkerDrag(bracketMin);
+    bindMarkerDrag(bracketMax);
 
     // 双击悬浮 ± 值直接编辑 radius
     centerValueEl.addEventListener("dblclick", () => {
@@ -420,9 +433,8 @@ export function createSliderControl({
       inputField.value = String((modulation.radius ?? ((max - min) * 0.15)).toFixed(2));
       inputField.className = "readout-input";
       inputField.style.position = "absolute";
-      inputField.style.left = centerValueEl.style.left || "50%";
+      inputField.style.left = centerValueEl.style.left || "0%";
       inputField.style.top = "-10px";
-      inputField.style.transform = "translateX(-50%)";
       inputField.style.zIndex = "3";
 
       centerValueEl.style.display = "none";

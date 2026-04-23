@@ -638,32 +638,10 @@ select {
   );
 }
 
-.mod-range-marker {
-  position: absolute;
-  color: var(--modulation);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: ew-resize;
-  user-select: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.mod-range-marker__value {
-  font-size: 8px;
-  font-weight: 400;
-  margin-top: 2px;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
 .mod-range-center-value {
   position: absolute;
   top: -10px;
   left: 0;
-  transform: translateX(-50%);
   color: var(--modulation);
   font-size: 9px;
   font-weight: 500;
@@ -674,12 +652,27 @@ select {
   z-index: 2;
 }
 
-.mod-range-marker--max {
-  transform: translate(-50%, 10%);
+.mod-range-bracket,
+.mod-range-value {
+  position: absolute;
+  color: var(--modulation);
+  line-height: 1;
+  user-select: none;
 }
 
-.mod-range-marker--min {
-  transform: translate(-50%, 10%);
+.mod-range-bracket {
+  font-size: 16px;
+  font-weight: 700;
+  cursor: ew-resize;
+  top: 2px;
+}
+
+.mod-range-value {
+  font-size: 8px;
+  font-weight: 400;
+  white-space: nowrap;
+  pointer-events: none;
+  top: 20px;
 }
 
 .macro-range-marker {
