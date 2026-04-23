@@ -656,6 +656,22 @@ select {
   font-weight: 400;
   margin-top: 2px;
   white-space: nowrap;
+  pointer-events: none;
+}
+
+.mod-range-center-value {
+  position: absolute;
+  top: -10px;
+  left: 0;
+  transform: translateX(-50%);
+  color: var(--modulation);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  z-index: 2;
 }
 
 .mod-range-marker--max {

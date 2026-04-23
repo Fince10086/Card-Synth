@@ -303,7 +303,11 @@ export function createSliderControl({
     const markerMaxValue = document.createElement("span");
     markerMaxValue.className = "mod-range-marker__value";
     markerMax.append(markerMaxValue);
-    shell.append(markerMin, markerMax);
+
+    // 悬浮显示的 ±radius 值（轨道正上方居中）
+    const centerValueEl = document.createElement("span");
+    centerValueEl.className = "mod-range-center-value";
+    shell.append(centerValueEl, markerMin, markerMax);
 
     const clamp = (next) => Math.max(min, Math.min(max, next));
     const snap = (next) => {
@@ -336,8 +340,24 @@ export function createSliderControl({
       // 标记位置保持实际值，允许 max 在 min 左边（radius 为负）
       markerMin.style.left = `${minPct}%`;
       markerMax.style.left = `${maxPct}%`;
-      markerMinValue.textContent = minValue.toFixed(2);
-      markerMaxValue.textContent = maxValue.toFixed(2);
+
+      // 碰撞检测：当两标记距离 < 40px 时隐藏各自数值
+      const shellWidth = shell.clientWidth || input.clientWidth;
+      const minPixel = (minPct / 100) * shellWidth;
+      const maxPixel = (maxPct / 100) * shellWidth;
+      if (shellWidth && Math.abs(maxPixel - minPixel) < 40) {
+        markerMinValue.textContent = "";
+        markerMaxValue.textContent = "";
+      } else {
+        markerMinValue.textContent = minValue.toFixed(2);
+        markerMaxValue.textContent = maxValue.toFixed(2);
+      }
+
+      // 更新悬浮 ±radius 值，位置跟随滑块 thumb
+      const radiusStr = radius >= 0 ? `±${Math.abs(radius).toFixed(2)}` : `${radius.toFixed(2)}`;
+      centerValueEl.textContent = radiusStr;
+      const sliderPercent = ((centerValue - min) / (max - min)) * 100;
+      centerValueEl.style.left = `${sliderPercent}%`;
     };
 
     const commitRange = () => {
@@ -387,6 +407,66 @@ export function createSliderControl({
 
     bindMarkerDrag(markerMin);
     bindMarkerDrag(markerMax);
+
+    // 双击悬浮 ± 值直接编辑 radius
+    centerValueEl.addEventListener("dblclick", () => {
+      if (centerValueEl.parentNode.querySelector(".mod-range-center-value + .readout-input")) {
+        return;
+      }
+
+      const inputField = document.createElement("input");
+      inputField.type = "number";
+      inputField.step = String(step);
+      inputField.value = String((modulation.radius ?? ((max - min) * 0.15)).toFixed(2));
+      inputField.className = "readout-input";
+      inputField.style.position = "absolute";
+      inputField.style.left = centerValueEl.style.left || "50%";
+      inputField.style.top = "-10px";
+      inputField.style.transform = "translateX(-50%)";
+      inputField.style.zIndex = "3";
+
+      centerValueEl.style.display = "none";
+      centerValueEl.parentNode.insertBefore(inputField, centerValueEl);
+      inputField.focus();
+      inputField.select();
+
+      let isCommitting = false;
+
+      const commitValue = () => {
+        if (isCommitting) return;
+        isCommitting = true;
+
+        let newRadius = Number(inputField.value);
+        if (Number.isNaN(newRadius)) {
+          newRadius = modulation.radius ?? ((max - min) * 0.15);
+        }
+        modulation.radius = newRadius;
+        paintRange();
+        modulationManager?.updateModulationRange(modulation.id, Number(input.value), modulation.radius);
+        commitRange();
+        inputField.remove();
+        centerValueEl.style.display = "";
+      };
+
+      const cancelEdit = () => {
+        if (isCommitting) return;
+        isCommitting = true;
+        inputField.remove();
+        centerValueEl.style.display = "";
+      };
+
+      inputField.addEventListener("blur", commitValue);
+      inputField.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commitValue();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          cancelEdit();
+        }
+      });
+    });
+
     paintRange();
     wrapper.append(controlLabel, shell);
     return wrapper;
