@@ -50,7 +50,7 @@ export const SOURCE_LIBRARY = {
     accent: "source",
     tag: "Osc",
     runtime: "pitchedSource",
-    options: { type: "sawtooth", detune: 0, phase: 0, octave: 0 },
+    options: { type: "sawtooth", detune: 0, phase: 0, octave: 0, frequency: 1, frequencyOffset: 1 },
     controls: [
       { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
       { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
@@ -58,6 +58,8 @@ export const SOURCE_LIBRARY = {
       { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
       { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
       { path: "options.octave", kind: "range", label: "Octave", min: -3, max: 3, step: 1, formatter: (value) => `Oct ${value > 0 ? "+" : ""}${value}` },
+      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 100, step: 0.01, formatter: formatHertz, conditional: (module) => module.modulationMode && !module.midiOn },
+      { path: "options.frequencyOffset", kind: "range", label: "Frequency Offset", min: 0, max: 2, step: 0.01, formatter: formatMultiplier },
     ],
   },
   Player: {
@@ -81,7 +83,7 @@ export const SOURCE_LIBRARY = {
     accent: "source",
     tag: "Osc",
     runtime: "pitchedSource",
-    options: { width: 0.22, detune: 0, phase: 0, octave: 0 },
+    options: { width: 0.22, detune: 0, phase: 0, octave: 0, frequency: 1, frequencyOffset: 1 },
     controls: [
       { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
       { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
@@ -89,6 +91,8 @@ export const SOURCE_LIBRARY = {
       { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
       { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
       { path: "options.octave", kind: "range", label: "Octave", min: -3, max: 3, step: 1, formatter: (value) => `Oct ${value > 0 ? "+" : ""}${value}` },
+      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 100, step: 0.01, formatter: formatHertz, conditional: (module) => module.modulationMode && !module.midiOn },
+      { path: "options.frequencyOffset", kind: "range", label: "Frequency Offset", min: 0, max: 2, step: 0.01, formatter: formatMultiplier },
     ],
   },
 };

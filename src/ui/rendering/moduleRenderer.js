@@ -8,7 +8,7 @@ import {
   normalizeSourceModule,
   createModule,
 } from "../../utils/helpers.js";
-import { formatHertz, formatMultiplier } from "../../core/formatters.js";
+import { formatMultiplier } from "../../core/formatters.js";
 import {
   createSelectControl,
   createToggleControl,
@@ -16,16 +16,6 @@ import {
   createAudioImportControl,
 } from "../controls/index.js";
 import { createModuleCard } from "../components/moduleCard.js";
-
-const SOURCE_FREQUENCY_OFFSET_CONTROL = {
-  path: "options.frequencyOffset",
-  kind: "range",
-  label: "Frequency Offset",
-  min: 0,
-  max: 2,
-  step: 0.01,
-  formatter: formatMultiplier,
-};
 
 const MODULATION_DEPTH_CONTROL = {
   path: "options.gain",
@@ -37,22 +27,33 @@ const MODULATION_DEPTH_CONTROL = {
   formatter: formatMultiplier,
 };
 
+/**
+ * 获取可渲染的控件列表
+ * - 非调制模式：显示所有控件（除了 conditional 不满足的）
+ * - 调制模式：将 volume 替换为 Depth，隐藏 pan，条件性显示 octave/frequency
+ */
 function getRenderableControls(module, controls) {
   if (module.category !== "source") {
-    return controls;
+    return controls.filter((control) => !control.conditional || control.conditional(module));
   }
-
-  const sourceControls = controls.some((control) => control.path === "options.frequencyOffset")
-    ? controls
-    : [...controls, SOURCE_FREQUENCY_OFFSET_CONTROL];
 
   if (!module.modulationMode) {
-    return sourceControls;
+    return controls.filter((control) => !control.conditional || control.conditional(module));
   }
 
-  return sourceControls
+  return controls
     .map((control) => (control.path === "volume" ? MODULATION_DEPTH_CONTROL : control))
-    .filter((control) => control.path !== "pan" && (control.path !== "options.octave" || module.midiOn));
+    .filter((control) => {
+      // 调制模式下隐藏 pan
+      if (control.path === "pan") return false;
+      // 条件性显示：octave 在 midiOn 时显示
+      if (control.path === "options.octave") return module.midiOn;
+      // 条件性显示：frequency 在 modulationMode 且 !midiOn 时显示
+      if (control.path === "options.frequency") return !module.midiOn;
+      // 其他控件检查 conditional 函数
+      if (control.conditional && !control.conditional(module)) return false;
+      return true;
+    });
 }
 
 function getMacroSliderProps(app, moduleId, paramPath) {
@@ -162,10 +163,6 @@ export function renderModuleCard(module, index, app) {
     setByPath(module, "options.gain", 1);
   }
 
-  if (module.category === "source" && !Number.isFinite(Number(module?.options?.frequencyOffset))) {
-    setByPath(module, "options.frequencyOffset", 1);
-  }
-
   if (module.category === "source") {
     getSourceSampleSlots(module).forEach((slot) => {
       controls.append(
@@ -195,40 +192,6 @@ export function renderModuleCard(module, index, app) {
           app.selectedPresetId = "custom";
           app.renderAll();
           app.engine.fullSync(app.state);
-        },
-      }),
-    );
-  }
-
-  if (
-    module.category === "source" &&
-    module.modulationMode &&
-    !module.midiOn &&
-    (module.type === "Oscillator" || module.type === "PulseOscillator")
-  ) {
-    const modulationFrequency = Number(module?.options?.frequency);
-    const initialFrequency = Number.isFinite(modulationFrequency) && modulationFrequency > 0
-      ? modulationFrequency
-      : 1;
-
-    controls.append(
-      createSliderControl({
-        label: "Frequency",
-        accent: "modulation",
-        min: 0.1,
-        max: 100,
-        step: 0.01,
-        value: initialFrequency,
-        path: `chains.${chainIndex}.modules.${index}.options.frequency`,
-        controlBindings: app.controlBindings,
-        moduleId: module.id,
-        paramPath: "options.frequency",
-        formatter: formatHertz,
-        ...getMacroSliderProps(app, module.id, "options.frequency"),
-        onInput: (value) => {
-          setByPath(module, "options.frequency", value);
-          app.selectedPresetId = "custom";
-          app.engine.updateSource(module);
         },
       }),
     );
