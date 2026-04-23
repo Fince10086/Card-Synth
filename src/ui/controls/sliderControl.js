@@ -383,8 +383,8 @@ export function createSliderControl({
       if (!isEnvelopeSource) {
         const minRect = bracketMin.getBoundingClientRect();
         const maxRect = bracketMax.getBoundingClientRect();
-        const gap = maxRect.left - minRect.right;
-        if (gap < 40) {
+        const distance = Math.abs(maxRect.left - minRect.right);
+        if (distance < 40) {
           valueMin.textContent = "";
           valueMax.textContent = "";
         } else {
