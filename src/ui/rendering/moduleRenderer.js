@@ -9,6 +9,7 @@ import {
   createModule,
 } from "../../utils/helpers.js";
 import { formatMultiplier } from "../../core/formatters.js";
+import { ENABLED as SOURCE_MONITOR_ENABLED } from "../../debug/sourceOutputMonitor.js";
 import {
   createSelectControl,
   createToggleControl,
@@ -86,6 +87,7 @@ export function renderModuleCard(module, index, app) {
     kicker,
     title: module.type,
     titleOptions: getTitleOptions(module.category),
+    showOutputLevel: module.category === "source" && SOURCE_MONITOR_ENABLED,
     onTitleChange: (value) => {
       const replacement = createModule(module.category, value);
       replacement.id = module.id;

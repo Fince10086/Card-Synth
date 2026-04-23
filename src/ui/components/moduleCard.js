@@ -36,6 +36,7 @@ export function createModuleCard({
   onModulationAnchorPointerDown = null,
   isMainCard = false,
   initModuleDrag = null,
+  showOutputLevel = false,
 }) {
   if (isMainCard) {
     accent = "indigo";
@@ -101,6 +102,26 @@ export function createModuleCard({
     head.append(removeButton);
   }
 
+  // Debug: 输出电平显示（仅 Source 模块）
+  let outputLevelDisplay = null;
+  if (showOutputLevel) {
+    outputLevelDisplay = document.createElement("span");
+    outputLevelDisplay.className = "module-output-level";
+    outputLevelDisplay.textContent = "-∞";
+    outputLevelDisplay.style.cssText = `
+      font-family: monospace;
+      font-size: 10px;
+      background: rgba(0,0,0,0.1);
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #666;
+      margin-left: 8px;
+      min-width: 40px;
+      text-align: right;
+    `;
+    head.append(outputLevelDisplay);
+  }
+
   card.append(head);
 
   if (showModulationToggle) {
@@ -125,6 +146,11 @@ export function createModuleCard({
       }
     });
     card.append(anchor);
+  }
+
+  // Attach output level display reference to card for external updates
+  if (outputLevelDisplay) {
+    card.outputLevelDisplay = outputLevelDisplay;
   }
 
   return card;

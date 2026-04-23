@@ -293,6 +293,8 @@ export function createSourceRuntime({
     voice.volumeNode = volumeNode;
     voice.panNode = panNode;
     voice.hiddenAmpEnv = hiddenAmpEnv;
+    voice.analyser = new Tone.Analyser("waveform", 256);
+    voice.volumeNode.connect(voice.analyser);
 
     // 为 pitchedSource 设置频率控制信号链
     if (definition.runtime === "pitchedSource" && node?.frequency) {
@@ -394,6 +396,7 @@ export function createSourceRuntime({
       voice.hiddenAmpEnv,
       voice.panNode,
       voice.volumeNode,
+      voice.analyser,
     ];
     nodesToDispose.forEach((node) => {
       if (node && typeof node.dispose === "function") {
@@ -409,6 +412,7 @@ export function createSourceRuntime({
     voice.frequencyOffsetParam = null;
     voice.frequencyMultiply = null;
     voice.hiddenAmpEnv = null;
+    voice.analyser = null;
   };
 
   /**
@@ -955,6 +959,28 @@ export function createSourceRuntime({
           releaseVoice(voice, index, now);
         }
       });
+    },
+
+    /**
+     * 获取当前原始波形值（用于调试）
+     * 返回所有活跃 voice 的当前瞬时振幅值（范围 -1 到 1）
+     */
+    getOutputValue: () => {
+      let latestValue = 0;
+      voices.forEach((voice) => {
+        if (voice.initialized && voice.analyser) {
+          try {
+            const waveform = voice.analyser.getValue();
+            if (waveform && waveform.length > 0) {
+              // 获取最近的样本值（保留正负号）
+              latestValue = waveform[waveform.length - 1];
+            }
+          } catch {
+            // ignore
+          }
+        }
+      });
+      return latestValue;
     },
 
     /**

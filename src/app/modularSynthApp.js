@@ -14,6 +14,7 @@ import { ModulationManager } from "../interactions/modulation/modulationManager.
 import { MacroManager } from "../interactions/macro/macroManager.js";
 import { GestureManager } from "../interactions/gesture/gestureManager.js";
 import { ModuleDragManager } from "../interactions/drag/moduleDragManager.js";
+import { ENABLED as SOURCE_MONITOR_ENABLED, SourceOutputMonitor } from "../debug/sourceOutputMonitor.js";
 import {
   renderKeyboard,
   resizeScopeCanvas,
@@ -99,6 +100,12 @@ export class ModularSynthApp {
       this.modulationManager.renderModulationOverlay();
     this.macroManager.renderMacroOverlay();
     });
+
+    // Debug: 启动 Source 输出监控（如已启用）
+    if (SOURCE_MONITOR_ENABLED) {
+      this.sourceMonitor = new SourceOutputMonitor(this);
+      this.sourceMonitor.start();
+    }
   }
 
   ensureChainsState() {
