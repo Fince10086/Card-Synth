@@ -244,12 +244,85 @@ export class AudioEngine {
 
     this.activeNotes.add(note);
 
-    this.forEachRuntime((runtime) => {
+    // 对于有 source-to-source 调制的 chain，统一分配 voice index
+    // 确保 modulation source 和 target source 使用相同的 voice
+    const assignedVoices = new Map(); // key: `${chainIndex}:${moduleId}` -> voiceIndex
+
+    this.chainRuntimes.forEach((runtimeMap, chainIndex) => {
+      const chain = this.getChainState(chainIndex);
+      if (!chain?.enabled) {
+        return;
+      }
+
+      const modulations = Array.isArray(chain.modulations) ? chain.modulations : [];
+      const modules = Array.isArray(chain.modules) ? chain.modules : [];
+
+      // 收集 source-to-source 调制连接
+      const sourceToSourceMods = modulations.filter((mod) => {
+        const targetModule = modules.find((m) => m.id === mod.targetModuleId);
+        return targetModule && this.isSourceModule(targetModule);
+      });
+
+      if (sourceToSourceMods.length === 0) {
+        return;
+      }
+
+      // 按 target 分组，收集所有调制该 target 的 sources
+      const targetToSources = new Map();
+      sourceToSourceMods.forEach((mod) => {
+        if (!targetToSources.has(mod.targetModuleId)) {
+          targetToSources.set(mod.targetModuleId, new Set());
+        }
+        targetToSources.get(mod.targetModuleId).add(mod.sourceModuleId);
+      });
+
+      const processedInChain = new Set();
+
+      targetToSources.forEach((sources, targetId) => {
+        if (processedInChain.has(targetId)) {
+          return;
+        }
+
+        const targetRuntime = runtimeMap.get(targetId);
+        if (!targetRuntime || typeof targetRuntime.triggerAttack !== "function") {
+          return;
+        }
+
+        const voiceIndex = targetRuntime.triggerAttack(note, velocity);
+        if (typeof voiceIndex !== "number" || voiceIndex < 0) {
+          return;
+        }
+
+        processedInChain.add(targetId);
+        assignedVoices.set(`${chainIndex}:${targetId}`, voiceIndex);
+
+        sources.forEach((sourceId) => {
+          if (processedInChain.has(sourceId)) {
+            return;
+          }
+          const sourceRuntime = runtimeMap.get(sourceId);
+          if (sourceRuntime && typeof sourceRuntime.triggerAttack === "function") {
+            sourceRuntime.triggerAttack(note, velocity, voiceIndex);
+            processedInChain.add(sourceId);
+            assignedVoices.set(`${chainIndex}:${sourceId}`, voiceIndex);
+          }
+        });
+      });
+    });
+
+    // 触发剩余的 source 和 modulation-envelope
+    this.forEachRuntime((runtime, chainIndex, moduleId) => {
+      const key = `${chainIndex}:${moduleId}`;
+      if (assignedVoices.has(key)) {
+        return;
+      }
+
       if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.triggerAttack) {
         runtime.triggerAttack(note, velocity);
       }
     });
 
+    // 触发 AmplitudeEnvelope
     this.forEachRuntime((runtime) => {
       if (runtime.type === "AmplitudeEnvelope" && runtime.node && runtime.triggerAttack) {
         runtime.triggerAttack(note, velocity);

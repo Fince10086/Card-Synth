@@ -842,9 +842,9 @@ export function createSourceRuntime({
      * @param {string} note - 音符名称
      * @param {number} velocity - 力度值（0-1）
      */
-    triggerAttack: (note, velocity) => {
+    triggerAttack: (note, velocity, preferredVoiceIndex) => {
       if (!moduleState.enabled) {
-        return;
+        return -1;
       }
 
       // 如果有新的 note 触发，取消重建信号链的定时器
@@ -853,11 +853,47 @@ export function createSourceRuntime({
         allVoicesIdleTimeoutId = null;
       }
 
-      const result = findAvailableVoice();
-      if (!result) {
-        return;
+      let voice, index;
+
+      if (typeof preferredVoiceIndex === 'number' && preferredVoiceIndex >= 0 && preferredVoiceIndex < VOICE_COUNT) {
+        voice = voices[preferredVoiceIndex];
+        index = preferredVoiceIndex;
+        const now = Tone.now();
+
+        // 清除可能存在的 release 定时器
+        if (voice.disposeTimeoutId) {
+          clearTimeout(voice.disposeTimeoutId);
+          voice.disposeTimeoutId = null;
+        }
+
+        // 刷新 lifecycle，可能 RELEASING -> IDLE
+        refreshVoiceLifecycle(voice, now);
+
+        // 如果 voice 绑定的是另一个 note，先释放
+        if (voice.note && voice.note !== note) {
+          releaseVoice(voice, index, now);
+        }
+
+        // 确保 voice 已初始化
+        if (!voice.initialized) {
+          initVoice(index);
+        }
+
+        // 如果还在 releasing，重置状态以便重新 attack
+        if (voice.state === VOICE_STATE.RELEASING) {
+          voice.state = VOICE_STATE.IDLE;
+          voice.releaseEndTime = 0;
+          voice.idleSince = 0;
+          voice.extendedReleaseEndTime = 0;
+        }
+      } else {
+        const result = findAvailableVoice();
+        if (!result) {
+          return -1;
+        }
+        ({ voice, index } = result);
       }
-      const { voice, index } = result;
+
       const now = Tone.now();
 
       // 检查是否需要打断 extended release 的延迟
@@ -874,6 +910,7 @@ export function createSourceRuntime({
       voice.state = VOICE_STATE.ACTIVE;
       voice.releaseEndTime = 0;
       voice.idleSince = 0;
+      voice.extendedReleaseEndTime = 0;
 
       const effectiveVelocity = (!getVelocityEnabled() || moduleState.modulationMode) ? 1 : velocity;
 
@@ -900,7 +937,7 @@ export function createSourceRuntime({
       const sourceNode = ensureVoiceNode(index);
       if (!sourceNode) {
         releaseVoice(voice, index, now);
-        return;
+        return -1;
       }
 
       if (definition.runtime === "pitchedSource") {
@@ -914,7 +951,7 @@ export function createSourceRuntime({
       } else if (definition.runtime === "player") {
         if (!sourceNode.loaded) {
           releaseVoice(voice, index, now);
-          return;
+          return -1;
         }
         if ("playbackRate" in sourceNode) {
           sourceNode.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
@@ -929,6 +966,8 @@ export function createSourceRuntime({
           sourceNode.start(now);
         }
       }
+
+      return index;
     },
 
     /**
