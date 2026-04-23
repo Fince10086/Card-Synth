@@ -1,5 +1,5 @@
 import * as Tone from "tone";
-import { getByPath } from "../../utils/helpers.js";
+import { getByPath, getModuleDefinition } from "../../utils/helpers.js";
 import { MODULATION_BLACKLIST } from "./modulationBlacklist.js";
 
 /**
@@ -72,6 +72,27 @@ export class ModulationManager {
 
   getModules(chainIndex = this.app.getSelectedChainIndex()) {
     return this.app.getChain(chainIndex).modules;
+  }
+
+  /**
+   * 获取目标参数的 min/max 范围
+   * @param {string} targetModuleId - 目标模块ID
+   * @param {string} targetParamPath - 目标参数路径
+   * @param {number} chainIndex - 链索引
+   * @returns {{min: number, max: number}} 参数范围
+   */
+  getParamRange(targetModuleId, targetParamPath, chainIndex = this.app.getSelectedChainIndex()) {
+    const targetModule = this.getModules(chainIndex).find((m) => m.id === targetModuleId);
+    if (!targetModule) {
+      return { min: -Infinity, max: Infinity };
+    }
+    const definition = getModuleDefinition(targetModule);
+    const controls = definition?.controls || [];
+    const control = controls.find((c) => c.path === targetParamPath);
+    if (control && typeof control.min === "number" && typeof control.max === "number") {
+      return { min: control.min, max: control.max };
+    }
+    return { min: -Infinity, max: Infinity };
   }
 
   /**
@@ -366,7 +387,7 @@ export class ModulationManager {
     }
     ranges.forEach(({ modulationId, radius, currentSliderValue, paramMin, paramMax }) => {
       const centerValue = currentSliderValue;
-      this.updateModulationRange(modulationId, centerValue, radius);
+      this.updateModulationRange(modulationId, centerValue, radius, this.app.getSelectedChainIndex(), paramMin, paramMax);
     });
   }
 
@@ -375,8 +396,11 @@ export class ModulationManager {
    * @param {string} modulationId - 调制ID
    * @param {number} centerValue - 中心值
    * @param {number} radius - 范围半径
+   * @param {number} paramMin - 参数最小值（用于钳制）
+   * @param {number} paramMax - 参数最大值（用于钳制）
+   * @param {number} chainIndex - 链索引
    */
-  updateModulationRange(modulationId, centerValue, radius, chainIndex = this.app.getSelectedChainIndex()) {
+  updateModulationRange(modulationId, centerValue, radius, chainIndex = this.app.getSelectedChainIndex(), paramMin = -Infinity, paramMax = Infinity) {
     const items = this.modulationRuntimes.filter(
       (item) => item.modulationId === modulationId && item.chainIndex === chainIndex,
     );
@@ -385,12 +409,20 @@ export class ModulationManager {
     }
 
     items.forEach(({ scale, targetParamPath }) => {
-      let minVal = centerValue - radius;
-      let maxVal = centerValue + radius;
+      // 计算有效范围（软钳制到 [paramMin, paramMax]）
+      let minVal = Math.max(paramMin, Math.min(paramMax, centerValue - radius));
+      let maxVal = Math.max(paramMin, Math.min(paramMax, centerValue + radius));
+
+      // 确保 min <= max
+      const finalMin = Math.min(minVal, maxVal);
+      const finalMax = Math.max(minVal, maxVal);
 
       if (targetParamPath === "volume") {
-        minVal = Tone.dbToGain(minVal);
-        maxVal = Tone.dbToGain(maxVal);
+        minVal = Tone.dbToGain(finalMin);
+        maxVal = Tone.dbToGain(finalMax);
+      } else {
+        minVal = finalMin;
+        maxVal = finalMax;
       }
 
       scale.min = minVal;
@@ -530,7 +562,8 @@ export class ModulationManager {
         }
       }
       const radius = mod.radius ?? 0.15;
-      this.updateModulationRange(mod.id, centerValue, radius, chainIndex)
+      const { min: paramMin, max: paramMax } = this.getParamRange(mod.targetModuleId, mod.targetParamPath, chainIndex);
+      this.updateModulationRange(mod.id, centerValue, radius, chainIndex, paramMin, paramMax)
     });
 
     sourceTargetProfile.forEach((profile, sourceModuleId) => {
@@ -643,7 +676,8 @@ export class ModulationManager {
               }
             }
             const radius = mod.radius ?? 0.15;
-            this.updateModulationRange(mod.id, centerValue, radius, chainIndex);
+            const { min: paramMin, max: paramMax } = this.getParamRange(mod.targetModuleId, mod.targetParamPath, chainIndex);
+            this.updateModulationRange(mod.id, centerValue, radius, chainIndex, paramMin, paramMax);
           }
         });
       }
@@ -672,7 +706,8 @@ export class ModulationManager {
             }
           }
           const radius = mod.radius ?? 0.15;
-          this.updateModulationRange(mod.id, centerValue, radius, chainIndex);
+          const { min: paramMin, max: paramMax } = this.getParamRange(mod.targetModuleId, mod.targetParamPath, chainIndex);
+          this.updateModulationRange(mod.id, centerValue, radius, chainIndex, paramMin, paramMax);
         }
       }
     });

@@ -108,7 +108,7 @@ export function createSliderControl({
     paintRange();
     const centerValue = Number(nextValue);
     const radius = modulation.radius ?? ((max - min) * 0.15);
-    modulationManager?.updateModulationRange(modulation.id, centerValue, radius);
+    modulationManager?.updateModulationRange(modulation.id, centerValue, radius, undefined, min, max);
   };
 
   const setVisualValue = (nextValue) => {
@@ -342,9 +342,13 @@ export function createSliderControl({
       const minValue = centerValue - radius;
       const maxValue = centerValue + radius;
 
-      // 原始比例（0~1）
-      const minPct = ((minValue - min) / (max - min));
-      const maxPct = ((maxValue - min) / (max - min));
+      // 计算有效范围（软钳制到 [min, max]）
+      const effMinValue = Math.max(min, Math.min(max, minValue));
+      const effMaxValue = Math.max(min, Math.min(max, maxValue));
+
+      // 使用有效范围计算比例（0~1）
+      const minPct = ((effMinValue - min) / (max - min));
+      const maxPct = ((effMaxValue - min) / (max - min));
       const centerPct = ((centerValue - min) / (max - min));
 
       // 判断调制源是否为 Envelope（单向 0~1）
@@ -388,12 +392,12 @@ export function createSliderControl({
           valueMin.textContent = "";
           valueMax.textContent = "";
         } else {
-          valueMin.textContent = minValue.toFixed(2);
-          valueMax.textContent = maxValue.toFixed(2);
+          valueMin.textContent = effMinValue.toFixed(2);
+          valueMax.textContent = effMaxValue.toFixed(2);
         }
       } else {
         // Envelope 源时只显示 max value
-        valueMax.textContent = maxValue.toFixed(2);
+        valueMax.textContent = effMaxValue.toFixed(2);
       }
 
       // 更新悬浮 radius 值，位置跟随滑块 thumb
@@ -403,6 +407,9 @@ export function createSliderControl({
       centerValueEl.textContent = radiusStr;
       const sliderPercent = ((centerValue - min) / (max - min));
       centerValueEl.style.left = edgeLeft(sliderPercent, centerValueEl);
+
+      // 更新音频层（传递有效范围边界）
+      modulationManager?.updateModulationRange(modulation.id, centerValue, radius, undefined, min, max);
 
       // 如果布局未就绪（宽度为0），延迟重试
       if (!trackWidth || bracketMin.getBoundingClientRect().width === 0) {
@@ -424,9 +431,9 @@ export function createSliderControl({
             return;
           }
 
-          // 像素位置 → 参数域绝对值
+          // 像素位置 → 参数域绝对值（硬边界限制在 [min, max]）
           const bracketPercent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-          const valueAtBracket = min + (max - min) * bracketPercent;
+          const valueAtBracket = Math.max(min, Math.min(max, min + (max - min) * bracketPercent));
           const centerValue = Number(input.value);
 
           // 根据 bracket 类型计算有符号的 radius
@@ -439,7 +446,7 @@ export function createSliderControl({
           }
           paintRange();
 
-          modulationManager?.updateModulationRange(modulation.id, centerValue, modulation.radius);
+          modulationManager?.updateModulationRange(modulation.id, centerValue, modulation.radius, undefined, min, max);
         };
         const onMove = (moveEvent) => {
           updateFromPointer(moveEvent.clientX);
@@ -489,9 +496,13 @@ export function createSliderControl({
         if (Number.isNaN(newRadius)) {
           newRadius = modulation.radius ?? ((max - min) * 0.15);
         }
+        // 自动 clamp：确保 centerValue ± radius 在 [min, max] 范围内
+        const centerValue = Number(input.value);
+        const maxRadius = Math.min(centerValue - min, max - centerValue);
+        newRadius = Math.max(-maxRadius, Math.min(maxRadius, newRadius));
         modulation.radius = newRadius;
         paintRange();
-        modulationManager?.updateModulationRange(modulation.id, Number(input.value), modulation.radius);
+        modulationManager?.updateModulationRange(modulation.id, Number(input.value), modulation.radius, undefined, min, max);
         commitRange();
         inputField.remove();
         centerValueEl.style.display = "";
