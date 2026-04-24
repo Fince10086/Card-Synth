@@ -410,11 +410,6 @@ export function createSliderControl({
 
       // 更新音频层（传递有效范围边界）
       modulationManager?.updateModulationRange(modulation.id, centerValue, radius, undefined, min, max);
-
-      // 如果布局未就绪（宽度为0），延迟重试
-      if (!trackWidth || bracketMin.getBoundingClientRect().width === 0) {
-        requestAnimationFrame(paintRange);
-      }
     };
 
     const commitRange = () => {
@@ -526,6 +521,15 @@ export function createSliderControl({
         }
       });
     });
+
+    // 使用 ResizeObserver 监听所有标记元素的尺寸变化，确保位置始终正确
+    const resizeObserver = new ResizeObserver(() => {
+      paintRange();
+    });
+    resizeObserver.observe(bracketMin);
+    resizeObserver.observe(valueMin);
+    resizeObserver.observe(bracketMax);
+    resizeObserver.observe(valueMax);
 
     paintRange();
     wrapper.append(controlLabel, shell);
