@@ -15,32 +15,14 @@ export function createEnvelopeModulationRuntime(module) {
   let moduleState = deepClone(module);
   const VOICE_COUNT = 8;
 
-  /**
-   * 提取包络选项
-   *
-   * 排除 gain 参数后的包络选项。
-   *
-   * @param {Object} options - 原始选项
-   * @returns {Object} 包络选项
-   */
-  const getEnvelopeOptions = (options = {}) => {
-    const { gain, ...envelopeOptions } = options || {};
-    return envelopeOptions;
-  };
-
-  /**
-   * 获取调制深度增益值
-   *
-   * @param {Object} options - 选项对象
-   * @returns {number} 增益值
-   */
-  const getDepthGain = (options = {}) => Number(options?.gain ?? 1);
-
-  // 为每个声音创建独立的包络发生器
-  const voices = Array.from({ length: VOICE_COUNT }, () => new Tone.Envelope(getEnvelopeOptions(moduleState.options)));
+  // 为每个声音创建独立的包络发生器（排除 gain 参数）
+  const voices = Array.from({ length: VOICE_COUNT }, () => {
+    const { gain, ...envelopeOptions } = moduleState.options || {};
+    return new Tone.Envelope(envelopeOptions);
+  });
 
   // 为每个声音创建输出增益节点，用于控制调制深度
-  const outputGains = Array.from({ length: VOICE_COUNT }, () => new Tone.Gain(getDepthGain(moduleState.options)));
+  const outputGains = Array.from({ length: VOICE_COUNT }, () => new Tone.Gain(Number(moduleState.options?.gain ?? 1)));
 
   voices.forEach((env, index) => env.connect(outputGains[index]));
 
@@ -68,8 +50,8 @@ export function createEnvelopeModulationRuntime(module) {
      */
     apply: (nextModule) => {
       moduleState = deepClone(nextModule);
-      const envelopeOptions = getEnvelopeOptions(moduleState.options);
-      const gainValue = getDepthGain(moduleState.options);
+      const { gain, ...envelopeOptions } = moduleState.options || {};
+      const gainValue = Number(moduleState.options?.gain ?? 1);
       voices.forEach((env) => safeSet(env, envelopeOptions));
       outputGains.forEach((gainNode) => rampParam(gainNode.gain, gainValue));
     },

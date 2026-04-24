@@ -195,9 +195,7 @@ export class ModulationManager {
     this.modulationDrag.y = event.clientY;
 
     // 清除之前的悬停样式
-    document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
-      node.classList.remove("mod-target-hover");
-    });
+    this._clearHoverStyles();
     
     // 检查是否悬停在有效的滑块控件上
     const slider = event.target?.closest?.(".control.control-slider[data-module-id][data-param-path]");
@@ -230,9 +228,7 @@ export class ModulationManager {
     if (targetControl) {
       const mainCard = targetControl.closest(".module-card[data-main-card='true']");
       if (mainCard) {
-        document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
-          node.classList.remove("mod-target-hover");
-        });
+        this._clearHoverStyles();
         this.app.setStatus("Main Card parameters cannot be modulated.", "error");
         this.cancelModulationDrag();
         return;
@@ -240,9 +236,7 @@ export class ModulationManager {
 
       const paramPath = targetControl.dataset.paramPath;
       if (MODULATION_BLACKLIST.includes(paramPath)) {
-        document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
-          node.classList.remove("mod-target-hover");
-        });
+        this._clearHoverStyles();
         this.app.setStatus(`Parameter "${paramPath}" cannot be modulated.`, "error");
         this.cancelModulationDrag();
         return;
@@ -250,9 +244,7 @@ export class ModulationManager {
     }
 
     // 清除所有悬停样式
-    document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
-      node.classList.remove("mod-target-hover");
-    });
+    this._clearHoverStyles();
 
     // 如果没有找到有效的目标控件
     if (!targetControl) {
@@ -349,6 +341,15 @@ export class ModulationManager {
     this.app.markUnsaved();
     this.app.engine.fullSync(this.app.state);
     this.app.renderAll();
+  }
+
+  /**
+   * 清除所有调制目标悬停样式
+   */
+  _clearHoverStyles() {
+    document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
+      node.classList.remove("mod-target-hover");
+    });
   }
 
   /**

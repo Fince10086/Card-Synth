@@ -171,6 +171,61 @@ export function createSliderControl({
     });
   }
 
+  /**
+   * 创建内联输入框
+   * @param {HTMLElement} targetEl - 要替换显示的元素
+   * @param {Object} config - 输入框配置
+   * @param {Function} onCommit - 提交回调
+   * @param {Function} onCancel - 取消回调（可选）
+   */
+  const createInlineInput = (targetEl, config, onCommit, onCancel) => {
+    const inputField = document.createElement("input");
+    inputField.type = config.type || "number";
+    if (config.min !== undefined) inputField.min = String(config.min);
+    if (config.max !== undefined) inputField.max = String(config.max);
+    if (config.step !== undefined) inputField.step = String(config.step);
+    inputField.value = String(config.value);
+    inputField.className = config.className || "readout-input";
+    if (config.style) {
+      Object.assign(inputField.style, config.style);
+    }
+
+    targetEl.style.display = "none";
+    targetEl.parentNode.insertBefore(inputField, targetEl);
+    inputField.focus();
+    inputField.select();
+
+    let isCommitting = false;
+
+    const commit = () => {
+      if (isCommitting) return;
+      isCommitting = true;
+      onCommit(inputField.value, () => {
+        inputField.remove();
+        targetEl.style.display = "";
+      });
+    };
+
+    const cancel = () => {
+      if (isCommitting) return;
+      isCommitting = true;
+      if (onCancel) onCancel();
+      inputField.remove();
+      targetEl.style.display = "";
+    };
+
+    inputField.addEventListener("blur", commit);
+    inputField.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commit();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        cancel();
+      }
+    });
+  };
+
   // 双击读数手动输入
   const handleReadoutDoubleClick = () => {
     const currentInput = readout.nextElementSibling;
@@ -178,54 +233,22 @@ export function createSliderControl({
       return;
     }
 
-    const inputField = document.createElement("input");
-    inputField.type = "number";
-    inputField.min = String(min);
-    inputField.max = String(max);
-    inputField.step = String(step);
-    inputField.value = String(input.value);
-    inputField.className = "readout-input";
-
-    readout.style.display = "none";
-    readout.parentNode.insertBefore(inputField, readout);
-    inputField.focus();
-    inputField.select();
-
-    let isCommitting = false;
-
-    const commitValue = () => {
-      if (isCommitting) return;
-      isCommitting = true;
-
-      let newValue = Number(inputField.value);
-      if (Number.isNaN(newValue)) {
-        newValue = Number(input.value);
-      }
-      newValue = Math.max(min, Math.min(max, newValue));
-      setVisualValue(newValue);
-      clearMacroBindingOnManualInput();
-      onInput(newValue);
-      inputField.remove();
-      readout.style.display = "";
-    };
-
-    const cancelEdit = () => {
-      if (isCommitting) return;
-      isCommitting = true;
-      inputField.remove();
-      readout.style.display = "";
-    };
-
-    inputField.addEventListener("blur", commitValue);
-    inputField.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        commitValue();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        cancelEdit();
-      }
-    });
+    createInlineInput(
+      readout,
+      { type: "number", min, max, step, value: input.value },
+      (value, cleanup) => {
+        let newValue = Number(value);
+        if (Number.isNaN(newValue)) {
+          newValue = Number(input.value);
+        }
+        newValue = Math.max(min, Math.min(max, newValue));
+        cleanup(); // 先恢复显示
+        setVisualValue(newValue);
+        clearMacroBindingOnManualInput();
+        onInput(newValue);
+      },
+      () => {}
+    );
   };
 
   readout.addEventListener("dblclick", handleReadoutDoubleClick);
@@ -408,8 +431,6 @@ export function createSliderControl({
       const sliderPercent = ((centerValue - min) / (max - min));
       centerValueEl.style.left = edgeLeft(sliderPercent, centerValueEl);
 
-      // 更新音频层（传递有效范围边界）
-      modulationManager?.updateModulationRange(modulation.id, centerValue, radius, undefined, min, max);
     };
 
     const commitRange = () => {
@@ -466,28 +487,21 @@ export function createSliderControl({
         return;
       }
 
-      const inputField = document.createElement("input");
-      inputField.type = "number";
-      inputField.step = String(step);
-      inputField.value = String((modulation.radius ?? ((max - min) * 0.15)).toFixed(2));
-      inputField.className = "readout-input";
-      inputField.style.position = "absolute";
-      inputField.style.left = centerValueEl.style.left || "0%";
-      inputField.style.top = "-10px";
-      inputField.style.zIndex = "3";
-
-      centerValueEl.style.display = "none";
-      centerValueEl.parentNode.insertBefore(inputField, centerValueEl);
-      inputField.focus();
-      inputField.select();
-
-      let isCommitting = false;
-
-      const commitValue = () => {
-        if (isCommitting) return;
-        isCommitting = true;
-
-        let newRadius = Number(inputField.value);
+    createInlineInput(
+      centerValueEl,
+      {
+        type: "number",
+        step,
+        value: (modulation.radius ?? ((max - min) * 0.15)).toFixed(2),
+        style: {
+          position: "absolute",
+          left: centerValueEl.style.left || "0%",
+          top: "-10px",
+          zIndex: "3",
+        },
+      },
+      (value, cleanup) => {
+        let newRadius = Number(value);
         if (Number.isNaN(newRadius)) {
           newRadius = modulation.radius ?? ((max - min) * 0.15);
         }
@@ -496,30 +510,13 @@ export function createSliderControl({
         const maxRadius = Math.min(centerValue - min, max - centerValue);
         newRadius = Math.max(-maxRadius, Math.min(maxRadius, newRadius));
         modulation.radius = newRadius;
-        paintRange();
+        cleanup(); // 先恢复显示
+        paintRange(); // 再计算正确位置（此时元素可见）
         modulationManager?.updateModulationRange(modulation.id, Number(input.value), modulation.radius, undefined, min, max);
         commitRange();
-        inputField.remove();
-        centerValueEl.style.display = "";
-      };
-
-      const cancelEdit = () => {
-        if (isCommitting) return;
-        isCommitting = true;
-        inputField.remove();
-        centerValueEl.style.display = "";
-      };
-
-      inputField.addEventListener("blur", commitValue);
-      inputField.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          commitValue();
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          cancelEdit();
-        }
-      });
+      },
+      () => {}
+    );
     });
 
     // 使用 ResizeObserver 监听所有标记元素的尺寸变化，确保位置始终正确
@@ -530,6 +527,7 @@ export function createSliderControl({
     resizeObserver.observe(valueMin);
     resizeObserver.observe(bracketMax);
     resizeObserver.observe(valueMax);
+    resizeObserver.observe(centerValueEl);
 
     paintRange();
     wrapper.append(controlLabel, shell);
