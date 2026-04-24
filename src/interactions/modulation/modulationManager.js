@@ -42,6 +42,9 @@ export class ModulationManager {
 
     // 防止递归连接调制的标志
     this.isConnectingModulations = false;
+
+    // SVG 元素缓存，避免每帧重建
+    this.cableElements = new Map();
   }
 
   /**
@@ -392,6 +395,26 @@ export class ModulationManager {
   }
 
   /**
+   * 应用调制范围：从调制对象读取参数并更新音频层
+   * 提取重复逻辑，供 connectChainModulations 和 connectVoiceModulations 使用
+   * @param {Object} mod - 调制对象
+   * @param {number} chainIndex - 链索引
+   */
+  _applyModulationRange(mod, chainIndex = this.app.getSelectedChainIndex()) {
+    const targetModule = this.getModules(chainIndex).find((m) => m.id === mod.targetModuleId);
+    let centerValue = 0.5;
+    if (targetModule) {
+      const currentSliderValue = getByPath(targetModule, mod.targetParamPath);
+      if (typeof currentSliderValue === "number" && Number.isFinite(currentSliderValue)) {
+        centerValue = currentSliderValue;
+      }
+    }
+    const radius = mod.radius ?? 0.15;
+    const { min: paramMin, max: paramMax } = this.getParamRange(mod.targetModuleId, mod.targetParamPath, chainIndex);
+    this.updateModulationRange(mod.id, centerValue, radius, chainIndex, paramMin, paramMax);
+  }
+
+  /**
    * 更新调制范围
    * @param {string} modulationId - 调制ID
    * @param {number} centerValue - 中心值
@@ -519,75 +542,12 @@ export class ModulationManager {
         const sourceVoiceIndex = Number.isFinite(voiceIndex)
           ? voiceIndex
           : Number(mod.sourceVoiceIndex ?? 0);
-        const sourceOutput = this.getModulationSourceOutput(mod, sourceVoiceIndex, chainIndex);
-        if (!sourceOutput) {
-          return;
-        }
 
-        // 检查是否已存在相同的调制连接，防止重复连接导致调制值翻倍
-        // 使用 targetParam 作为唯一标识的一部分
-        const existingRuntime = this.modulationRuntimes.find(
-          (r) => r.chainIndex === chainIndex
-            && r.modulationId === mod.id
-            && r.sourceVoiceIndex === sourceVoiceIndex
-            && r.targetParam === param
-        );
-        if (existingRuntime) {
-          console.log(`[ModulationManager] Skipping duplicate modulation connection: ${mod.id} -> ${mod.targetParamPath} (voice ${sourceVoiceIndex})`);
-          return;
-        }
-
-        // 判断是否为 Envelope 源（单向 0~1）
-        const sourceModule = this.getModules(chainIndex).find((m) => m.id === mod.sourceModuleId);
-        const isEnvelopeSource = sourceModule?.type === "Envelope";
-
-        // 对 options.frequency 特殊处理：绕过 Multiply(0.5)，保留 Add(0.5)
-        const isFrequencyParam = mod.targetParamPath === "options.frequency";
-        const audioHalf = isFrequencyParam ? null : new Tone.Multiply(0.5);
-        const audioOffset = new Tone.Add(0.5);
-        const scale = new Tone.Scale();
-
-        if (isEnvelopeSource) {
-          // Envelope 源：直接连接，不经过 Multiply(0.5) 和 Add(0.5)
-          sourceOutput.connect(scale);
-        } else if (isFrequencyParam) {
-          sourceOutput.connect(audioOffset);
-          audioOffset.connect(scale);
-        } else {
-          sourceOutput.connect(audioHalf);
-          audioHalf.connect(audioOffset);
-          audioOffset.connect(scale);
-        }
-        scale.connect(param);
-
-        this.modulationRuntimes.push({
-          id: `${chainIndex}-${mod.id}-${sourceVoiceIndex}-${targetIndex}`,
-          chainIndex,
-          modulationId: mod.id,
-          sourceVoiceIndex,
-          targetParamPath: mod.targetParamPath,
-          targetParam: param,  // 存储目标参数引用，用于重复检测
-          targetModuleId: mod.targetModuleId,
-          targetVoiceIndex: voiceIndex,
-          sourceOutput,
-          audioHalf,
-          audioOffset,
-          scale,
-        });
+        this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, param, targetIndex, voiceIndex);
       });
 
       // 立即应用当前滑块值作为调制范围中心
-      const targetModule = this.getModules(chainIndex).find((m) => m.id === mod.targetModuleId);
-      let centerValue = 0.5; // 默认中心值
-      if (targetModule) {
-        const currentSliderValue = getByPath(targetModule, mod.targetParamPath);
-        if (typeof currentSliderValue === "number" && Number.isFinite(currentSliderValue)) {
-          centerValue = currentSliderValue;
-        }
-      }
-      const radius = mod.radius ?? 0.15;
-      const { min: paramMin, max: paramMax } = this.getParamRange(mod.targetModuleId, mod.targetParamPath, chainIndex);
-      this.updateModulationRange(mod.id, centerValue, radius, chainIndex, paramMin, paramMax)
+      this._applyModulationRange(mod, chainIndex);
     });
 
     sourceTargetProfile.forEach((profile, sourceModuleId) => {
@@ -698,18 +658,7 @@ export class ModulationManager {
           const created = this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, param, targetIndex, targetVoiceIndex);
           if (created) {
             connectedCount++;
-            // 设置调制范围
-            const targetModule = this.getModules(chainIndex).find((m) => m.id === mod.targetModuleId);
-            let centerValue = 0.5;
-            if (targetModule) {
-              const currentSliderValue = getByPath(targetModule, mod.targetParamPath);
-              if (typeof currentSliderValue === "number" && Number.isFinite(currentSliderValue)) {
-                centerValue = currentSliderValue;
-              }
-            }
-            const radius = mod.radius ?? 0.15;
-            const { min: paramMin, max: paramMax } = this.getParamRange(mod.targetModuleId, mod.targetParamPath, chainIndex);
-            this.updateModulationRange(mod.id, centerValue, radius, chainIndex, paramMin, paramMax);
+            this._applyModulationRange(mod, chainIndex);
           }
         });
       }
@@ -728,18 +677,7 @@ export class ModulationManager {
         const created = this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, target.param, targetIndex, voiceIndex);
         if (created) {
           connectedCount++;
-          // 设置调制范围
-          const targetModule = this.getModules(chainIndex).find((m) => m.id === mod.targetModuleId);
-          let centerValue = 0.5;
-          if (targetModule) {
-            const currentSliderValue = getByPath(targetModule, mod.targetParamPath);
-            if (typeof currentSliderValue === "number" && Number.isFinite(currentSliderValue)) {
-              centerValue = currentSliderValue;
-            }
-          }
-          const radius = mod.radius ?? 0.15;
-          const { min: paramMin, max: paramMax } = this.getParamRange(mod.targetModuleId, mod.targetParamPath, chainIndex);
-          this.updateModulationRange(mod.id, centerValue, radius, chainIndex, paramMin, paramMax);
+          this._applyModulationRange(mod, chainIndex);
         }
       }
     });
@@ -1035,21 +973,49 @@ export class ModulationManager {
     const svg = this.modulationSvg;
     svg.setAttribute("width", String(Math.max(1, shellRect.width)));
     svg.setAttribute("height", String(Math.max(1, shellRect.height)));
-    svg.innerHTML = "";
+
+    // 如果尺寸变化或首次创建，清空缓存
+    const sizeKey = `${shellRect.width}x${shellRect.height}`;
+    if (this._lastSvgSize !== sizeKey) {
+      this._lastSvgSize = sizeKey;
+      svg.innerHTML = "";
+      this.cableElements.clear();
+    }
 
     const color = "var(--modulation)";
-    const damping = 0.05;
     const activeKeys = new Set();
-    let shouldContinue = Boolean(this.modulationDrag.active);
+
+    // 获取或创建SVG元素
+    const getOrCreateElement = (id, tag, parent = svg) => {
+      const key = id;
+      let el = this.cableElements.get(key);
+      if (!el) {
+        el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        this.cableElements.set(key, el);
+        parent.appendChild(el);
+      }
+      return el;
+    };
+
+    // 移除未使用的元素
+    const removeUnusedElements = () => {
+      this.cableElements.forEach((el, key) => {
+        if (!activeKeys.has(key)) {
+          el.remove();
+          this.cableElements.delete(key);
+        }
+      });
+    };
 
     /**
-     * 创建连接线SVG路径
+     * 更新连接线SVG路径
      * @param {Object} from - 起点坐标
      * @param {Object} to - 终点坐标
      * @param {boolean} isGhost - 是否为幽灵线（拖拽预览）
+     * @param {string} id - 元素ID
      */
-    const createCablePath = (from, to, isGhost = false) => {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    const updateCablePath = (from, to, isGhost = false, id) => {
+      const path = getOrCreateElement(id, "path");
       const horizontalDist = Math.abs(to.x - from.x);
 
       // 计算二次贝塞尔曲线的控制点
@@ -1064,74 +1030,43 @@ export class ModulationManager {
       path.setAttribute("stroke-linecap", "round");
       path.setAttribute("opacity", isGhost ? "0.5" : "0.6");
 
-      if (isGhost) path.setAttribute("stroke-dasharray", "6 4");
+      if (isGhost) {
+        path.setAttribute("stroke-dasharray", "6 4");
+      } else {
+        path.removeAttribute("stroke-dasharray");
+      }
 
-      svg.appendChild(path);
+      activeKeys.add(id);
     };
 
     /**
-     * 创建连接点（圆形节点）
+     * 更新连接点（圆形节点）
      * @param {Object} point - 点坐标
-     * @param {boolean} interactive - 是否可交互
-     * @param {Object|null} meta - 元数据
+     * @param {string} id - 元素ID
      */
-    const createSocket = (point, interactive = false, meta = null) => {
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    const updateSocket = (point, id) => {
+      const dot = getOrCreateElement(id, "circle");
       dot.setAttribute("cx", String(point.x));
       dot.setAttribute("cy", String(point.y));
       dot.setAttribute("r", "4");
       dot.setAttribute("fill", color);
       dot.setAttribute("opacity", "0.6");
-
-      if (interactive && meta) {
-        dot.setAttribute("class", "cable-socket is-interactive");
-        dot.addEventListener("pointerdown", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          this.startModulationDrag({
-            event,
-            sourceModuleId: meta.sourceModuleId,
-            updateConnectionId: meta.connectionId,
-          });
-        });
-      }
-
-      svg.appendChild(dot);
+      activeKeys.add(id);
     };
 
     /**
      * 渲染单条连接线
      * @param {Object} route - 路由信息
-     * @param {boolean} interactive - 是否可交互
      * @param {boolean} isGhost - 是否为幽灵线
      */
-    const renderCable = (route, interactive = true, isGhost = false) => {
-      activeKeys.add(route.id);
+    const renderCable = (route, isGhost = false) => {
+      const pathId = `path-${route.id}`;
+      const fromSocketId = `from-${route.id}`;
+      const toSocketId = `to-${route.id}`;
 
-      // 获取或初始化视觉状态
-      const visual = this.cableVisuals.get(route.id) || {
-        from: { x: route.from.x, y: route.from.y },
-        to: { x: route.to.x, y: route.to.y },
-      };
-
-      // 平滑移动
-      const movingFrom = this.lerpPoint(visual.from, route.from, damping);
-      const movingTo = this.lerpPoint(visual.to, route.to, damping);
-
-      this.cableVisuals.set(route.id, visual);
-
-      if (movingFrom || movingTo) shouldContinue = true;
-
-      // 绘制连接线和连接点
-      createCablePath(visual.from, visual.to, isGhost);
-
-      if (interactive) {
-        createSocket(visual.from, false, { sourceModuleId: route.sourceModuleId, connectionId: route.id });
-        createSocket(visual.to, false);
-      } else {
-        createSocket(visual.from, false);
-        createSocket(visual.to, false);
-      }
+      updateCablePath(route.from, route.to, isGhost, pathId);
+      updateSocket(route.from, fromSocketId);
+      updateSocket(route.to, toSocketId);
     };
 
     // 渲染所有已建立的调制连接
@@ -1148,8 +1083,7 @@ export class ModulationManager {
 
       if (from && to) {
         renderCable(
-          { id: connection.id, sourceModuleId: connection.sourceModuleId, from, to },
-          true,
+          { id: connection.id, from, to },
           false,
         );
       }
@@ -1169,19 +1103,16 @@ export class ModulationManager {
             from,
             to: { x: this.modulationDrag.x - shellRect.left, y: this.modulationDrag.y - shellRect.top },
           },
-          false,
           true,
         );
       }
     }
 
-    // 清理不再使用的视觉状态
-    this.cableVisuals.forEach((_, key) => {
-      if (!activeKeys.has(key)) this.cableVisuals.delete(key);
-    });
+    // 清理不再使用的SVG元素
+    removeUnusedElements();
 
-    // 如果需要继续动画，请求下一帧
-    if (shouldContinue) {
+    // 如果正在拖拽，请求下一帧
+    if (this.modulationDrag.active) {
       this.modulationFrame = requestAnimationFrame(() => this.renderModulationOverlay());
     } else {
       this.modulationFrame = 0;
