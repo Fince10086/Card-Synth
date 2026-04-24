@@ -408,10 +408,26 @@ export class ModulationManager {
       return;
     }
 
+    // 判断调制源是否为 Envelope（单向 0~1）
+    const modulation = this.getModulationById(modulationId, chainIndex);
+    const sourceModule = modulation ? this.getModules(chainIndex).find((m) => m.id === modulation.sourceModuleId) : null;
+    const isEnvelopeSource = sourceModule?.type === "Envelope";
+
     items.forEach(({ scale, targetParamPath }) => {
-      // 计算有效范围（软钳制到 [paramMin, paramMax]）
-      let minVal = Math.max(paramMin, Math.min(paramMax, centerValue - radius));
-      let maxVal = Math.max(paramMin, Math.min(paramMax, centerValue + radius));
+      let minVal, maxVal;
+
+      if (isEnvelopeSource) {
+        // Envelope 源：只调制正半边（centerValue 到 centerValue + |radius|）
+        minVal = centerValue;
+        maxVal = centerValue + Math.abs(radius);
+        // 钳制到参数范围
+        minVal = Math.max(paramMin, Math.min(paramMax, minVal));
+        maxVal = Math.max(paramMin, Math.min(paramMax, maxVal));
+      } else {
+        // 普通源：完整双向调制（centerValue ± radius）
+        minVal = Math.max(paramMin, Math.min(paramMax, centerValue - radius));
+        maxVal = Math.max(paramMin, Math.min(paramMax, centerValue + radius));
+      }
 
       // 确保 min <= max
       const finalMin = Math.min(minVal, maxVal);
@@ -521,19 +537,27 @@ export class ModulationManager {
           return;
         }
 
+        // 判断是否为 Envelope 源（单向 0~1）
+        const sourceModule = this.getModules(chainIndex).find((m) => m.id === mod.sourceModuleId);
+        const isEnvelopeSource = sourceModule?.type === "Envelope";
+
         // 对 options.frequency 特殊处理：绕过 Multiply(0.5)，保留 Add(0.5)
         const isFrequencyParam = mod.targetParamPath === "options.frequency";
         const audioHalf = isFrequencyParam ? null : new Tone.Multiply(0.5);
         const audioOffset = new Tone.Add(0.5);
         const scale = new Tone.Scale();
 
-        if (isFrequencyParam) {
+        if (isEnvelopeSource) {
+          // Envelope 源：直接连接，不经过 Multiply(0.5) 和 Add(0.5)
+          sourceOutput.connect(scale);
+        } else if (isFrequencyParam) {
           sourceOutput.connect(audioOffset);
+          audioOffset.connect(scale);
         } else {
           sourceOutput.connect(audioHalf);
           audioHalf.connect(audioOffset);
+          audioOffset.connect(scale);
         }
-        audioOffset.connect(scale);
         scale.connect(param);
 
         this.modulationRuntimes.push({
@@ -601,18 +625,26 @@ export class ModulationManager {
       return false;
     }
 
+    // 判断是否为 Envelope 源（单向 0~1）
+    const sourceModule = this.getModules(chainIndex).find((m) => m.id === mod.sourceModuleId);
+    const isEnvelopeSource = sourceModule?.type === "Envelope";
+
     const isFrequencyParam = mod.targetParamPath === "options.frequency";
     const audioHalf = isFrequencyParam ? null : new Tone.Multiply(0.5);
     const audioOffset = new Tone.Add(0.5);
     const scale = new Tone.Scale();
 
-    if (isFrequencyParam) {
+    if (isEnvelopeSource) {
+      // Envelope 源：直接连接，不经过 Multiply(0.5) 和 Add(0.5)
+      sourceOutput.connect(scale);
+    } else if (isFrequencyParam) {
       sourceOutput.connect(audioOffset);
+      audioOffset.connect(scale);
     } else {
       sourceOutput.connect(audioHalf);
       audioHalf.connect(audioOffset);
+      audioOffset.connect(scale);
     }
-    audioOffset.connect(scale);
     scale.connect(param);
 
     this.modulationRuntimes.push({
@@ -784,10 +816,14 @@ export class ModulationManager {
    */
   clearModulationRuntimes() {
     this.modulationRuntimes.forEach((item) => {
-      // 手动断开 sourceOutput 到 audioHalf 的连接
-      if (item.sourceOutput && item.audioHalf) {
+      // 手动断开 sourceOutput 的连接（可能是 audioHalf 或 scale）
+      if (item.sourceOutput) {
         try {
-          item.sourceOutput.disconnect(item.audioHalf);
+          if (item.audioHalf) {
+            item.sourceOutput.disconnect(item.audioHalf);
+          } else if (item.scale) {
+            item.sourceOutput.disconnect(item.scale);
+          }
         } catch (e) {
           // 连接可能已断开，忽略错误
         }
