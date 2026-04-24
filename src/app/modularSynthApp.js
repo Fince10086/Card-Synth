@@ -1,13 +1,25 @@
 import {
   createBasePreset,
   createDefaultMacroChainState,
-  BUILTIN_PRESET_TEMPLATES,
   normalizeCurrentPresetData,
   normalizePreset,
   importPresetFromFile,
   exportCurrentPresetToFile,
   exportAllPresetToFile,
 } from "../preset/preset.js";
+import {
+  loadAllPresets,
+  getBuiltinPresets,
+  getUserPresets,
+  getPresetById,
+  addUserPreset,
+  removeUserPreset,
+  generateUserPresetId,
+  getLastSelectedId,
+  saveLastSelectedId,
+  isBuiltinPreset,
+  isAllTypePreset,
+} from "../preset/presetLoader.js";
 import { AudioEngine } from "../audio/audio.js";
 import { InputManager } from "../input/inputManager.js";
 import { ModulationManager } from "../interactions/modulation/modulationManager.js";
@@ -44,7 +56,8 @@ export class ModularSynthApp {
   constructor() {
     this.state = createBasePreset();
     this.ensureChainsState();
-    this.selectedPresetId = "init";
+    this.selectedPresetId = null;
+    this.hasUnsavedChanges = false;
     this.audioBooted = false;
 
     this.heldPointerNotes = new Set();
@@ -76,29 +89,18 @@ export class ModularSynthApp {
       getKeyboardElement: () => this.elements.keyboard,
       getTransportInfoElement: () => this.elements.transportInfo,
       onSetCustomPreset: () => {
-        this.selectedPresetId = "custom";
+        this.markUnsaved();
       },
     });
 
     this.cacheElements();
     this.bindEvents();
 
-    this.renderAll();
-
-    const scopeEl = document.getElementById("oscilloscope");
-    if (scopeEl) {
-      this.elements.oscilloscope = scopeEl;
-      this.scopeContext = scopeEl.getContext("2d") || null;
-    }
-
-    this.resizeScopeCanvas();
-    this.drawOscilloscope();
-
     window.addEventListener("resize", () => {
       this.resizeScopeCanvas();
       this.layoutModuleMasonry();
       this.modulationManager.renderModulationOverlay();
-    this.macroManager.renderMacroOverlay();
+      this.macroManager.renderMacroOverlay();
     });
 
     // Debug: 启动 Source 输出监控（如已启用）
@@ -242,7 +244,12 @@ export class ModularSynthApp {
           this.state.name = imported.chain.name || this.state.name;
         }
 
-        this.selectedPresetId = "custom";
+        const presetId = generateUserPresetId(this.state.name || "imported");
+        addUserPreset(presetId, imported.type === "all" ? imported.preset : imported.chain);
+        this.selectedPresetId = presetId;
+        this.hasUnsavedChanges = false;
+        saveLastSelectedId(presetId);
+
         this.renderAll(previousState);
         this.engine.fullSync(this.state);
         this.setStatus(
@@ -418,7 +425,7 @@ export class ModularSynthApp {
     const [category, type] = value.split(":");
     const newModule = createModule(category, type);
     this.getCurrentModules().push(newModule);
-    this.selectedPresetId = "custom";
+    this.markUnsaved();
     this.renderAll();
     this.engine.fullSync(this.state);
   }
@@ -551,12 +558,15 @@ export class ModularSynthApp {
 
     const mainCard = renderMainCard({
       selectedPresetId: this.selectedPresetId,
+      hasUnsavedChanges: this.hasUnsavedChanges,
+      builtinPresets: getBuiltinPresets(),
+      userPresets: getUserPresets(),
       state: this.state,
       selectedChainIndex: this.getSelectedChainIndex(),
       chains: this.state.chains,
       macro: this.macroManager.getMainCardViewModel(),
       audioBooted: this.audioBooted,
-      onPresetChange: (value) => this.applyBuiltinPreset(value),
+      onPresetChange: (value) => this.applyPresetById(value),
       onChainIndexClick: (chainIndex, isSelected) => {
         if (!isSelected) {
           this.setSelectedChainIndex(chainIndex);
@@ -565,7 +575,7 @@ export class ModularSynthApp {
         }
 
         this.setChainEnabled(chainIndex, !this.isChainEnabled(chainIndex));
-        this.selectedPresetId = "custom";
+        this.markUnsaved();
         this.renderAll();
         this.engine.fullSync(this.state);
       },
@@ -578,7 +588,11 @@ export class ModularSynthApp {
         const filename = exportAllPresetToFile(this.state);
         this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
       },
-      onResetClick: () => this.applyBuiltinPreset("init"),
+      onResetClick: () => {
+        const builtins = getBuiltinPresets();
+        const firstId = Object.keys(builtins)[0];
+        if (firstId) this.applyPresetById(firstId);
+      },
       onRandomClick: () => this.randomizeCurrentPatch(),
       onMidiClick: () => {
         if (this.inputManager.getMidiInputs().length > 0) {
@@ -589,12 +603,12 @@ export class ModularSynthApp {
       },
       onMasterVolumeChange: (value) => {
         this.state.global.volume = value;
-        this.selectedPresetId = "custom";
+        this.markUnsaved();
         this.engine.updateGlobal(this.state.global);
       },
       onVelocityEnabledChange: (value) => {
         this.state.global.velocityEnabled = value;
-        this.selectedPresetId = "custom";
+        this.markUnsaved();
         this.engine.updateGlobal(this.state.global);
       },
       onMacroPointPointerDown: (event, chainIndex, padElement) => {
@@ -609,6 +623,16 @@ export class ModularSynthApp {
       },
       onGestureClick: () => {
         this.gestureManager.activate();
+      },
+      onDeleteUserPreset: (id) => {
+        removeUserPreset(id);
+        if (this.selectedPresetId === id) {
+          const builtins = getBuiltinPresets();
+          const firstId = Object.keys(builtins)[0];
+          if (firstId) this.applyPresetById(firstId);
+        } else {
+          this.renderAll();
+        }
       },
     });
     if (mainCard) {
@@ -694,26 +718,77 @@ export class ModularSynthApp {
     this.dragManager.initModuleDrag(event, card, moduleIndex);
   }
 
-  async applyBuiltinPreset(presetId) {
-    const template = BUILTIN_PRESET_TEMPLATES[presetId];
-    if (!template) {
+  async init() {
+    await loadAllPresets();
+
+    const lastId = getLastSelectedId();
+    if (lastId && getPresetById(lastId)) {
+      this.applyPresetById(lastId, false);
+    } else {
+      const builtins = getBuiltinPresets();
+      const firstId = Object.keys(builtins)[0];
+      if (firstId) {
+        this.applyPresetById(firstId, false);
+      }
+    }
+
+    this.renderAll();
+
+    const scopeEl = document.getElementById("oscilloscope");
+    if (scopeEl) {
+      this.elements.oscilloscope = scopeEl;
+      this.scopeContext = scopeEl.getContext("2d") || null;
+    }
+    this.resizeScopeCanvas();
+    this.drawOscilloscope();
+  }
+
+  applyPresetById(presetId, shouldRender = true) {
+    const preset = getPresetById(presetId);
+    if (!preset) {
       return;
     }
 
     const previousState = deepClone(this.state);
-    const chainPreset = normalizeCurrentPresetData(template);
-    const chain = this.getCurrentChain();
 
-    chain.modules = chainPreset.modules;
-    chain.modulations = chainPreset.modulations;
-    chain.enabled = true;
-    this.macroManager.resetChainMacro(this.getSelectedChainIndex());
+    if (isAllTypePreset(preset)) {
+      this.state = normalizePreset(preset);
+      this.setSelectedChainIndex(this.state.selectedChainIndex ?? 0);
+      this.selectedPresetId = presetId;
+      this.hasUnsavedChanges = false;
+      saveLastSelectedId(presetId);
+      if (shouldRender) {
+        this.renderAll(previousState);
+        this.engine.fullSync(this.state);
+      }
+      this.setStatus(`LOADED PRESET: ${this.state.name}.`, this.audioBooted ? "live" : "neutral");
+    } else {
+      const chainPreset = normalizeCurrentPresetData(preset);
+      const chain = this.getCurrentChain();
 
-    this.state.name = chainPreset.name;
-    this.selectedPresetId = presetId;
-    this.renderAll(previousState);
-    this.engine.fullSync(this.state);
-    this.setStatus(`LOADED PRESET: ${chainPreset.name}.`, this.audioBooted ? "live" : "neutral");
+      chain.modules = chainPreset.modules;
+      chain.modulations = chainPreset.modulations;
+      chain.enabled = true;
+      this.macroManager.resetChainMacro(this.getSelectedChainIndex());
+
+      this.state.name = chainPreset.name;
+      this.selectedPresetId = presetId;
+      this.hasUnsavedChanges = false;
+      saveLastSelectedId(presetId);
+
+      if (shouldRender) {
+        this.renderAll(previousState);
+        this.engine.fullSync(this.state);
+      }
+      this.setStatus(`LOADED PRESET: ${chainPreset.name}.`, this.audioBooted ? "live" : "neutral");
+    }
+  }
+
+  markUnsaved() {
+    if (!this.hasUnsavedChanges) {
+      this.hasUnsavedChanges = true;
+      this.renderAll();
+    }
   }
 
   syncControlsFromState() {
@@ -794,7 +869,7 @@ export class ModularSynthApp {
       });
     });
 
-    this.selectedPresetId = "custom";
+    this.markUnsaved();
     this.renderAll(previousState);
     this.engine.fullSync(this.state);
     this.setStatus("Randomized the current patch.", this.audioBooted ? "live" : "neutral");

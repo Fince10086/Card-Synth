@@ -111,7 +111,7 @@ export function renderModuleCard(module, index, app) {
       }
       app.macroManager.removeBindingsForModule(module.id);
       app.getCurrentModules()[index] = replacement;
-      app.selectedPresetId = "custom";
+      app.markUnsaved();
       app.renderAll();
       app.engine.fullSync(app.state);
     },
@@ -119,7 +119,7 @@ export function renderModuleCard(module, index, app) {
     enabled: module.enabled,
     onToggleEnabled: () => {
       module.enabled = !module.enabled;
-      app.selectedPresetId = "custom";
+      app.markUnsaved();
       app.engine.fullSync(app.state);
       app.renderAll();
     },
@@ -127,7 +127,7 @@ export function renderModuleCard(module, index, app) {
       app.removeModuleModulations(module.id);
       app.macroManager.removeBindingsForModule(module.id);
       app.getCurrentModules().splice(index, 1);
-      app.selectedPresetId = "custom";
+      app.markUnsaved();
       app.renderAll();
       app.engine.fullSync(app.state);
     },
@@ -139,7 +139,7 @@ export function renderModuleCard(module, index, app) {
         app.removeOutgoingModulations(module.id);
         module.midiOn = false;
       }
-      app.selectedPresetId = "custom";
+      app.markUnsaved();
       app.renderAll();
       app.engine.fullSync(app.state);
     },
@@ -191,7 +191,7 @@ export function renderModuleCard(module, index, app) {
         value: Boolean(module.midiOn),
         onToggle: (nextValue) => {
           module.midiOn = nextValue;
-          app.selectedPresetId = "custom";
+          app.markUnsaved();
           app.renderAll();
           app.engine.fullSync(app.state);
         },
@@ -229,7 +229,7 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
       accent,
       onChange: (nextValue) => {
         setByPath(module, path, nextValue);
-        app.selectedPresetId = "custom";
+        app.markUnsaved();
         onCommit();
       },
     });
@@ -242,7 +242,7 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
       value: Boolean(value),
       onToggle: (nextValue) => {
         setByPath(module, path, nextValue);
-        app.selectedPresetId = "custom";
+        app.markUnsaved();
         onCommit();
       },
     });
@@ -264,7 +264,7 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
     formatter: control.formatter || formatPlain,
     onInput: (nextValue) => {
       setByPath(module, path, nextValue);
-      app.selectedPresetId = "custom";
+      app.markUnsaved();
       onCommit();
     },
     engine: app.engine,
@@ -329,7 +329,7 @@ export async function importSourceSample(module, index, slot, file, app) {
   setByPath(module, slot.path, dataUrl);
   setByPath(module, slot.namePath, file.name);
   app.getCurrentModules()[index] = normalizeSourceModule(module);
-  app.selectedPresetId = "custom";
+  app.markUnsaved();
   app.renderAll();
   app.engine.fullSync(app.state);
   app.setStatus(`Loaded ${file.name} into ${module.type}.`, app.audioBooted ? "live" : "neutral");

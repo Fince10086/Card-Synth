@@ -140,7 +140,7 @@ export class MacroManager {
     });
 
     if (changed) {
-      this.app.selectedPresetId = "custom";
+      this.app.markUnsaved();
     }
 
     return changed;
@@ -162,7 +162,7 @@ export class MacroManager {
     });
 
     if (changed) {
-      this.app.selectedPresetId = "custom";
+      this.app.markUnsaved();
     }
 
     return changed;
@@ -191,7 +191,7 @@ export class MacroManager {
     item.rangeStart = nextStart;
     item.rangeEnd = nextEnd;
 
-    this.app.selectedPresetId = "custom";
+    this.app.markUnsaved();
     this.applyMappingsForChain(chainIndex, chainIndex === this.app.getSelectedChainIndex());
 
     return true;
@@ -385,7 +385,7 @@ export class MacroManager {
     chainMacro.point.x = nextX;
     chainMacro.point.y = nextY;
 
-    this.app.selectedPresetId = "custom";
+    this.app.markUnsaved();
     this.applyMappingsForChain(this.pointDrag.chainIndex, this.pointDrag.chainIndex === this.app.getSelectedChainIndex());
 
     const point = this.pointDrag.pointElement;
@@ -411,7 +411,7 @@ export class MacroManager {
       return;
     }
 
-    this.app.selectedPresetId = "custom";
+    this.app.markUnsaved();
     this.applyMappingsForChain(this.bindingDrag.chainIndex, this.bindingDrag.chainIndex === this.app.getSelectedChainIndex());
     this.app.renderAll();
   }

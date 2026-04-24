@@ -4,6 +4,9 @@ import { createModuleCard } from "./moduleCard.js";
 
 export function renderMainCard({
   selectedPresetId,
+  hasUnsavedChanges,
+  builtinPresets,
+  userPresets,
   state,
   selectedChainIndex,
   chains,
@@ -22,6 +25,7 @@ export function renderMainCard({
   onMacroPointPointerDown,
   onMacroAxisPointerDown,
   onGestureClick,
+  onDeleteUserPreset,
 }) {
   const card = createModuleCard({
     accent: "indigo",
@@ -72,24 +76,72 @@ export function renderMainCard({
   const controls = document.createElement("div");
   controls.className = "module-grid";
 
+  const presetOptions = [];
+  const builtinEntries = Object.entries(builtinPresets || {});
+  if (builtinEntries.length > 0) {
+    presetOptions.push({ value: "", label: "— Built-in —", disabled: true });
+    builtinEntries.forEach(([id, preset]) => {
+      const isSelected = selectedPresetId === id;
+      const name = preset?.name || id;
+      const label = isSelected && hasUnsavedChanges ? `${name} *` : name;
+      presetOptions.push({ value: id, label });
+    });
+  }
+  const userEntries = Object.entries(userPresets || {});
+  if (userEntries.length > 0) {
+    presetOptions.push({ value: "", label: "— User —", disabled: true });
+    userEntries.forEach(([id, preset]) => {
+      const isSelected = selectedPresetId === id;
+      const name = preset?.name || id;
+      const label = isSelected && hasUnsavedChanges ? `${name} *` : name;
+      presetOptions.push({ value: id, label });
+    });
+  }
+
   controls.append(
     createSelectControl({
       label: "Preset",
-      options: [
-        { value: "init", label: "Init Patch" },
-        { value: "fmBell", label: "FM Bell Stack" },
-        { value: "cinematicDust", label: "Cinematic Dust" },
-        { value: "percussionLab", label: "Percussion Lab" },
-        { value: "custom", label: "Current Patch" },
-      ],
-      value: selectedPresetId,
+      options: presetOptions,
+      value: selectedPresetId || "",
       onChange: (value) => {
-        if (value !== "custom" && onPresetChange) {
+        if (value && onPresetChange) {
           onPresetChange(value);
         }
       },
     })
   );
+
+  // User preset delete buttons
+  if (userEntries.length > 0) {
+    const userPresetsContainer = document.createElement("div");
+    userPresetsContainer.className = "user-presets-list";
+    userPresetsContainer.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;";
+
+    userEntries.forEach(([id, preset]) => {
+      const tag = document.createElement("span");
+      tag.className = "user-preset-tag";
+      tag.style.cssText = "display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:rgba(75,0,130,0.15);border-radius:12px;font-size:12px;";
+      const presetName = preset?.name || id;
+      tag.textContent = selectedPresetId === id && hasUnsavedChanges ? `${presetName} *` : presetName;
+
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "user-preset-delete";
+      delBtn.textContent = "×";
+      delBtn.style.cssText = "width:16px;height:16px;line-height:16px;padding:0;border:none;background:rgba(255,0,0,0.2);border-radius:50%;cursor:pointer;font-size:12px;";
+      delBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete preset "${presetName}"?`)) {
+          onDeleteUserPreset?.(id);
+        }
+      });
+
+      tag.appendChild(delBtn);
+      userPresetsContainer.appendChild(tag);
+    });
+
+    controls.append(userPresetsContainer);
+  }
 
   const buttonRow = document.createElement("div");
   buttonRow.className = "preset-buttons";

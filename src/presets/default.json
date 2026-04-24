@@ -1,0 +1,12 @@
+{
+  "global": { "volume": -8, "octave": 4, "velocity": 0.8, "velocityEnabled": true },
+  "modules": [
+    { "type": "Oscillator", "category": "source", "enabled": true, "volume": -9, "pan": -0.12, "options": { "type": "sawtooth", "detune": -8 } },
+    { "type": "PulseOscillator", "category": "source", "enabled": true, "volume": -14, "pan": 0.12, "options": { "width": 0.5, "detune": 6 } },
+    { "type": "AmplitudeEnvelope", "category": "component", "enabled": true, "options": { "attack": 0.02, "decay": 0.18, "sustain": 0.82, "release": 0.65 } },
+    { "type": "Filter", "category": "component", "enabled": true, "options": { "type": "lowpass", "frequency": 2200, "Q": 0.6, "rolloff": -24 } },
+    { "type": "Compressor", "category": "component", "enabled": true, "options": { "threshold": -18, "ratio": 2.6, "attack": 0.01, "release": 0.22, "knee": 20 } },
+    { "type": "Chorus", "category": "effect", "enabled": true, "options": { "frequency": 1.4, "delayTime": 2.4, "depth": 0.5, "spread": 180, "wet": 0.32 } },
+    { "type": "Reverb", "category": "effect", "enabled": true, "options": { "decay": 3.8, "preDelay": 0.02, "wet": 0.2 } }
+  ]
+}

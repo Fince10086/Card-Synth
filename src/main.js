@@ -1,8 +1,9 @@
 import { ModularSynthApp } from "./app/modularSynthApp.js";
 
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   try {
     const app = new ModularSynthApp();
+    await app.init();
     if (typeof Tone === "undefined") {
       app.setStatus(
         "Tone.js failed to load. The UI is available, but audio is disabled until the CDN script loads.",

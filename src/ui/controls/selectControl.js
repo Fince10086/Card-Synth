@@ -14,6 +14,9 @@ export function createSelectControl({ label, options, value, onChange }) {
     const element = document.createElement("option");
     element.value = option.value;
     element.textContent = option.label;
+    if (option.disabled) {
+      element.disabled = true;
+    }
     select.append(element);
   });
   select.value = value;

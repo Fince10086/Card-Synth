@@ -343,7 +343,7 @@ export class ModulationManager {
       });
     }
 
-    this.app.selectedPresetId = "custom";
+    this.app.markUnsaved();
     this.app.engine.fullSync(this.app.state);
     this.app.renderAll();
   }
@@ -354,7 +354,7 @@ export class ModulationManager {
    */
   removeModulationById(connectionId) {
     this.setModulations(this.getModulations().filter((item) => item.id !== connectionId));
-    this.app.selectedPresetId = "custom";
+    this.app.markUnsaved();
   }
 
   /**
@@ -363,7 +363,7 @@ export class ModulationManager {
    */
   removeOutgoingModulations(sourceModuleId) {
     this.setModulations(this.getModulations().filter((item) => item.sourceModuleId !== sourceModuleId));
-    this.app.selectedPresetId = "custom";
+    this.app.markUnsaved();
   }
 
   /**
@@ -374,7 +374,7 @@ export class ModulationManager {
     this.setModulations(this.getModulations().filter(
       (item) => item.sourceModuleId !== moduleId && item.targetModuleId !== moduleId,
     ));
-    this.app.selectedPresetId = "custom";
+    this.app.markUnsaved();
   }
 
   /**

@@ -229,7 +229,7 @@ export class ModuleDragManager {
     const insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
     modules.splice(insertIndex, 0, module);
 
-    this.app.selectedPresetId = "custom";
+    this.app.markUnsaved();
     this.app.renderAll();
     this.app.engine.fullSync(this.app.state);
   }

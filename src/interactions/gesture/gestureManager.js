@@ -215,7 +215,7 @@ export class GestureManager {
       this.app.engine.fullSync(this.app.state);
       this.app.renderAll();
     }
-    this.app.selectedPresetId = "custom";
+    this.app.markUnsaved();
   }
 
   /** 暂停检测：仅停止摄像头采集，保留覆盖层与手势状态。 */
@@ -542,7 +542,7 @@ export class GestureManager {
         rangeStart: 0,
         rangeEnd: 1,
       });
-      this.app.selectedPresetId = "custom";
+      this.app.markUnsaved();
     }
     return gainModule;
   }
@@ -561,7 +561,7 @@ export class GestureManager {
       chainIndex,
       chainIndex === this.app.getSelectedChainIndex()
     );
-    this.app.selectedPresetId = "custom";
+    this.app.markUnsaved();
     // Visual smoothing handled by updateControlPointVisuals in render loop
   }
 
@@ -616,7 +616,7 @@ export class GestureManager {
       if (chainIndex >= 0) {
         this.app.setChainEnabled(chainIndex, false);
         this.app.macroManager.resetChainMacro(chainIndex);
-        this.app.selectedPresetId = "custom";
+        this.app.markUnsaved();
         this.app.renderAll();
       }
       return;
@@ -662,7 +662,7 @@ export class GestureManager {
               chainMacro.point.x = macro.x;
               chainMacro.point.y = macro.y;
               chainMacro.point.z = 0.5;
-              this.app.selectedPresetId = "custom";
+              this.app.markUnsaved();
               this.gestureState.lastPinchTime = now;
               this.gestureState.leftPinchChainIndex = available;
               this.gestureState.leftPinchStartY = pos.y;
@@ -690,7 +690,7 @@ export class GestureManager {
         const chainMacro = this.app.macroManager.getChainMacro(chainIndex);
         chainMacro.point.x = macro.x;
         chainMacro.point.y = macro.y;
-        this.app.selectedPresetId = "custom";
+        this.app.markUnsaved();
         this.app.macroManager.applyMappingsForChain(
           chainIndex,
           chainIndex === this.app.getSelectedChainIndex()
