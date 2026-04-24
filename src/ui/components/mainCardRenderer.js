@@ -76,27 +76,25 @@ export function renderMainCard({
   const controls = document.createElement("div");
   controls.className = "module-grid";
 
-  const presetOptions = [];
-  const builtinEntries = Object.entries(builtinPresets || {});
-  if (builtinEntries.length > 0) {
-    presetOptions.push({ value: "", label: "— Built-in —", disabled: true });
-    builtinEntries.forEach(([id, preset]) => {
-      const isSelected = selectedPresetId === id;
-      const name = preset?.name || id;
-      const label = isSelected && hasUnsavedChanges ? `${name} *` : name;
-      presetOptions.push({ value: id, label });
-    });
+  function buildPresetOptions(entries, groupLabel) {
+    const options = [];
+    const items = Object.entries(entries || {});
+    if (items.length > 0) {
+      options.push({ value: "", label: groupLabel, disabled: true });
+      items.forEach(([id, preset]) => {
+        const isSelected = selectedPresetId === id;
+        const name = preset?.name || id;
+        const label = isSelected && hasUnsavedChanges ? `${name} *` : name;
+        options.push({ value: id, label });
+      });
+    }
+    return options;
   }
-  const userEntries = Object.entries(userPresets || {});
-  if (userEntries.length > 0) {
-    presetOptions.push({ value: "", label: "— User —", disabled: true });
-    userEntries.forEach(([id, preset]) => {
-      const isSelected = selectedPresetId === id;
-      const name = preset?.name || id;
-      const label = isSelected && hasUnsavedChanges ? `${name} *` : name;
-      presetOptions.push({ value: id, label });
-    });
-  }
+
+  const presetOptions = [
+    ...buildPresetOptions(builtinPresets, "— Built-in —"),
+    ...buildPresetOptions(userPresets, "— User —"),
+  ];
 
   const presetSelectWrapper = document.createElement("div");
   presetSelectWrapper.className = "preset-select-wrapper";

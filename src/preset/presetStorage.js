@@ -12,7 +12,7 @@ export function loadUserPresets() {
   }
 }
 
-export function saveUserPresets(presets) {
+function saveUserPresets(presets) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
 }
 

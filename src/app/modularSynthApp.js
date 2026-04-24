@@ -6,6 +6,7 @@ import {
   importPresetFromFile,
   exportCurrentPresetToFile,
   exportAllPresetToFile,
+  isAllTypePreset,
 } from "../preset/preset.js";
 import {
   loadAllPresets,
@@ -18,7 +19,6 @@ import {
   getLastSelectedId,
   saveLastSelectedId,
   isBuiltinPreset,
-  isAllTypePreset,
 } from "../preset/presetLoader.js";
 import { AudioEngine } from "../audio/audio.js";
 import { InputManager } from "../input/inputManager.js";
@@ -758,16 +758,6 @@ export class ModularSynthApp {
     if (isAllTypePreset(preset)) {
       this.state = normalizePreset(preset);
       this.setSelectedChainIndex(this.state.selectedChainIndex ?? 0);
-      this.selectedPresetId = presetId;
-      this.hasUnsavedChanges = false;
-      saveLastSelectedId(presetId);
-      if (shouldRender) {
-        this.renderAll(previousState);
-        this.engine.fullSync(this.state);
-      }
-      const allPreset = getPresetById(presetId);
-      const presetName = allPreset?.name || presetId;
-      this.setStatus(`LOADED PRESET: ${presetName}.`, this.audioBooted ? "live" : "neutral");
     } else {
       const chainPreset = normalizeCurrentPresetData(preset);
       const chain = this.getCurrentChain();
@@ -776,19 +766,20 @@ export class ModularSynthApp {
       chain.modulations = chainPreset.modulations;
       chain.enabled = true;
       this.state.macro.chains[this.getSelectedChainIndex()] = chainPreset.macro || createDefaultMacroChainState();
-
-      this.selectedPresetId = presetId;
-      this.hasUnsavedChanges = false;
-      saveLastSelectedId(presetId);
-
-      if (shouldRender) {
-        this.renderAll(previousState);
-        this.engine.fullSync(this.state);
-      }
-      const allPreset = getPresetById(presetId);
-      const presetName = allPreset?.name || presetId;
-      this.setStatus(`LOADED PRESET: ${presetName}.`, this.audioBooted ? "live" : "neutral");
     }
+
+    this.selectedPresetId = presetId;
+    this.hasUnsavedChanges = false;
+    saveLastSelectedId(presetId);
+
+    if (shouldRender) {
+      this.renderAll(previousState);
+      this.engine.fullSync(this.state);
+    }
+
+    const loadedPreset = getPresetById(presetId);
+    const presetName = loadedPreset?.name || presetId;
+    this.setStatus(`LOADED PRESET: ${presetName}.`, this.audioBooted ? "live" : "neutral");
   }
 
   markUnsaved() {

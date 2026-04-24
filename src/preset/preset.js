@@ -273,11 +273,15 @@ function downloadJson(filename, data) {
   link.remove();
 }
 
+export function isAllTypePreset(preset) {
+  return Array.isArray(preset?.chains) || preset?.presetType === "all";
+}
+
 export async function importPresetFromFile(file) {
   const text = await file.text();
   const raw = JSON.parse(text);
 
-  if (Array.isArray(raw?.chains) || raw?.presetType === "all") {
+  if (isAllTypePreset(raw)) {
     return {
       type: "all",
       preset: normalizePreset(raw),
