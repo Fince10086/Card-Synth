@@ -207,7 +207,6 @@ export function normalizeCurrentPresetData(preset = {}) {
     : createStarterModules();
 
   return {
-    name: String(preset.name || "Untitled Patch"),
     global: normalizeGlobalState(preset.global || {}),
     modules,
     modulations: normalizeModulations(Array.isArray(preset.modulations) ? preset.modulations : []),
@@ -217,7 +216,6 @@ export function normalizeCurrentPresetData(preset = {}) {
 
 export function createBasePreset() {
   return {
-    name: "Untitled Patch",
     global: normalizeGlobalState({}),
     selectedChainIndex: 0,
     chains: [
@@ -241,7 +239,6 @@ export function normalizePreset(preset = {}) {
     });
 
     return {
-      name: String(preset.name || "Untitled Patch"),
       global: normalizeGlobalState(preset.global || {}),
       selectedChainIndex: clamp(Number(preset.selectedChainIndex ?? 0), 0, CHAIN_COUNT - 1),
       chains,
@@ -253,7 +250,6 @@ export function normalizePreset(preset = {}) {
   const macro = createDefaultMacroState();
   macro.chains[0] = current.macro;
   return {
-    name: current.name,
     global: current.global,
     selectedChainIndex: 0,
     chains: [
@@ -294,16 +290,15 @@ export async function importPresetFromFile(file) {
   };
 }
 
-export function exportCurrentPresetToFile(state, chainIndex = 0) {
+export function exportCurrentPresetToFile(state, chainIndex = 0, presetName = "preset") {
   const selectedIndex = clamp(Number(chainIndex || 0), 0, CHAIN_COUNT - 1);
   const chain = state?.chains?.[selectedIndex] || emptyChain();
   const macroChain = normalizeMacroChain(state?.macro?.chains?.[selectedIndex] || {});
-  const slug = (state?.name || "tone-preset").toLowerCase().replace(/\s+/g, "-");
+  const slug = presetName.toLowerCase().replace(/\s+/g, "-");
   const filename = `${slug}-current.json`;
 
   const payload = {
     presetType: "current",
-    name: state?.name || "Current Chain",
     global: deepClone(state?.global || DEFAULT_GLOBAL),
     modules: deepClone(chain.modules || []),
     modulations: deepClone(chain.modulations || []),
@@ -317,13 +312,12 @@ export function exportCurrentPresetToFile(state, chainIndex = 0) {
   return filename;
 }
 
-export function exportAllPresetToFile(state) {
-  const slug = (state?.name || "tone-preset").toLowerCase().replace(/\s+/g, "-");
+export function exportAllPresetToFile(state, presetName = "preset") {
+  const slug = presetName.toLowerCase().replace(/\s+/g, "-");
   const filename = `${slug}-all.json`;
 
   const payload = normalizePreset({
     presetType: "all",
-    name: state?.name || "All Chains",
     global: deepClone(state?.global || DEFAULT_GLOBAL),
     selectedChainIndex: clamp(Number(state?.selectedChainIndex ?? 0), 0, CHAIN_COUNT - 1),
     chains: deepClone(state?.chains || []),

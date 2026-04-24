@@ -1,6 +1,5 @@
 {
   "presetType": "current",
-  "name": "Init Patch",
   "global": {
     "volume": -8,
     "octave": 3,

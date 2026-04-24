@@ -241,10 +241,10 @@ export class ModularSynthApp {
 
           this.macroManager.ensureMacroState();
           this.state.macro.chains[this.getSelectedChainIndex()] = imported.chain.macro || createDefaultMacroChainState();
-          this.state.name = imported.chain.name || this.state.name;
         }
 
-        const presetId = generateUserPresetId(this.state.name || "imported");
+        const baseName = file.name.replace(/\.json$/i, "");
+        const presetId = generateUserPresetId(baseName || "imported");
         addUserPreset(presetId, imported.type === "all" ? imported.preset : imported.chain);
         this.selectedPresetId = presetId;
         this.hasUnsavedChanges = false;
@@ -581,11 +581,15 @@ export class ModularSynthApp {
       },
       onImportClick: () => this.elements.presetFileInput?.click(),
       onExportCurrentClick: () => {
-        const filename = exportCurrentPresetToFile(this.state, this.getSelectedChainIndex());
+        const currentPreset = getPresetById(this.selectedPresetId);
+        const presetName = currentPreset?.name || this.selectedPresetId || "preset";
+        const filename = exportCurrentPresetToFile(this.state, this.getSelectedChainIndex(), presetName);
         this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
       },
       onExportAllClick: () => {
-        const filename = exportAllPresetToFile(this.state);
+        const currentPreset = getPresetById(this.selectedPresetId);
+        const presetName = currentPreset?.name || this.selectedPresetId || "preset";
+        const filename = exportAllPresetToFile(this.state, presetName);
         this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
       },
       onResetClick: () => {
@@ -761,7 +765,9 @@ export class ModularSynthApp {
         this.renderAll(previousState);
         this.engine.fullSync(this.state);
       }
-      this.setStatus(`LOADED PRESET: ${this.state.name}.`, this.audioBooted ? "live" : "neutral");
+      const allPreset = getPresetById(presetId);
+      const presetName = allPreset?.name || presetId;
+      this.setStatus(`LOADED PRESET: ${presetName}.`, this.audioBooted ? "live" : "neutral");
     } else {
       const chainPreset = normalizeCurrentPresetData(preset);
       const chain = this.getCurrentChain();
@@ -771,7 +777,6 @@ export class ModularSynthApp {
       chain.enabled = true;
       this.macroManager.resetChainMacro(this.getSelectedChainIndex());
 
-      this.state.name = chainPreset.name;
       this.selectedPresetId = presetId;
       this.hasUnsavedChanges = false;
       saveLastSelectedId(presetId);
@@ -780,7 +785,9 @@ export class ModularSynthApp {
         this.renderAll(previousState);
         this.engine.fullSync(this.state);
       }
-      this.setStatus(`LOADED PRESET: ${chainPreset.name}.`, this.audioBooted ? "live" : "neutral");
+      const allPreset = getPresetById(presetId);
+      const presetName = allPreset?.name || presetId;
+      this.setStatus(`LOADED PRESET: ${presetName}.`, this.audioBooted ? "live" : "neutral");
     }
   }
 
