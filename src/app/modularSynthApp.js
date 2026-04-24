@@ -776,7 +776,6 @@ export class ModularSynthApp {
       chain.modulations = chainPreset.modulations;
       chain.enabled = true;
       this.state.macro.chains[this.getSelectedChainIndex()] = chainPreset.macro || createDefaultMacroChainState();
-      this.macroManager.resetChainMacro(this.getSelectedChainIndex());
 
       this.selectedPresetId = presetId;
       this.hasUnsavedChanges = false;
