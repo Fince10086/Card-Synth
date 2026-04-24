@@ -98,50 +98,42 @@ export function renderMainCard({
     });
   }
 
-  controls.append(
-    createSelectControl({
-      label: "Preset",
-      options: presetOptions,
-      value: selectedPresetId || "",
-      onChange: (value) => {
-        if (value && onPresetChange) {
-          onPresetChange(value);
-        }
-      },
-    })
-  );
+  const presetSelectWrapper = document.createElement("div");
+  presetSelectWrapper.className = "preset-select-wrapper";
+  presetSelectWrapper.style.cssText = "display:flex;align-items:flex-end;gap:8px;";
 
-  // User preset delete buttons
-  if (userEntries.length > 0) {
-    const userPresetsContainer = document.createElement("div");
-    userPresetsContainer.className = "user-presets-list";
-    userPresetsContainer.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;";
+  const selectControl = createSelectControl({
+    label: "Preset",
+    options: presetOptions,
+    value: selectedPresetId || "",
+    onChange: (value) => {
+      if (value && onPresetChange) {
+        onPresetChange(value);
+      }
+    },
+  });
+  selectControl.style.flex = "1";
+  presetSelectWrapper.appendChild(selectControl);
 
-    userEntries.forEach(([id, preset]) => {
-      const tag = document.createElement("span");
-      tag.className = "user-preset-tag";
-      tag.style.cssText = "display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:rgba(75,0,130,0.15);border-radius:12px;font-size:12px;";
-      const presetName = preset?.name || id;
-      tag.textContent = selectedPresetId === id && hasUnsavedChanges ? `${presetName} *` : presetName;
-
-      const delBtn = document.createElement("button");
-      delBtn.type = "button";
-      delBtn.className = "user-preset-delete";
-      delBtn.textContent = "×";
-      delBtn.style.cssText = "width:16px;height:16px;line-height:16px;padding:0;border:none;background:rgba(255,0,0,0.2);border-radius:50%;cursor:pointer;font-size:12px;";
-      delBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (confirm(`Delete preset "${presetName}"?`)) {
-          onDeleteUserPreset?.(id);
-        }
-      });
-
-      tag.appendChild(delBtn);
-      userPresetsContainer.appendChild(tag);
+  const isUserPreset = selectedPresetId && userPresets && Object.prototype.hasOwnProperty.call(userPresets, selectedPresetId);
+  if (isUserPreset) {
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "user-preset-delete";
+    delBtn.textContent = "×";
+    delBtn.title = "Delete preset";
+    delBtn.style.cssText = "width: 28px;height: 28px;border: none;background: #d54f5a;border-radius: 10%;cursor: pointer;font-size: 20px;color: rgb(255, 255, 255);flex-shrink: 0;margin-bottom: 1px;font-weight: 800;";
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const presetName = userPresets[selectedPresetId]?.name || selectedPresetId;
+      if (confirm(`Delete preset "${presetName}"?`)) {
+        onDeleteUserPreset?.(selectedPresetId);
+      }
     });
-
-    controls.append(userPresetsContainer);
+    presetSelectWrapper.appendChild(delBtn);
   }
+
+  controls.append(presetSelectWrapper);
 
   const buttonRow = document.createElement("div");
   buttonRow.className = "preset-buttons";
