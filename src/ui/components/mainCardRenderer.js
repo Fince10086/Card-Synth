@@ -98,7 +98,6 @@ export function renderMainCard({
 
   const presetSelectWrapper = document.createElement("div");
   presetSelectWrapper.className = "preset-select-wrapper";
-  presetSelectWrapper.style.cssText = "display:flex;align-items:flex-end;gap:8px;";
 
   const selectControl = createSelectControl({
     label: "Preset",
@@ -110,7 +109,6 @@ export function renderMainCard({
       }
     },
   });
-  selectControl.style.flex = "1";
   presetSelectWrapper.appendChild(selectControl);
 
   const isUserPreset = selectedPresetId && userPresets && Object.prototype.hasOwnProperty.call(userPresets, selectedPresetId);
@@ -120,7 +118,7 @@ export function renderMainCard({
     delBtn.className = "user-preset-delete";
     delBtn.textContent = "×";
     delBtn.title = "Delete preset";
-    delBtn.style.cssText = "width: 28px;height: 28px;border: none;background: #d54f5a;border-radius: 10%;cursor: pointer;font-size: 20px;color: rgb(255, 255, 255);flex-shrink: 0;margin-bottom: 1px;font-weight: 800;";
+
     delBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       const presetName = userPresets[selectedPresetId]?.name || selectedPresetId;

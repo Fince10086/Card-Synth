@@ -57,7 +57,6 @@ select {
   position: relative;
   min-width: 0;
   overflow: visible;
-  overflow-y: visible;
   padding-bottom: 8px;
 }
 
@@ -155,10 +154,6 @@ select {
   background: #ffffff;
   padding: 0;
   cursor: pointer;
-}
-
-.signal-flow-shell {
-  position: relative;
 }
 
 .modulation-cables,
@@ -983,6 +978,30 @@ select {
 /* Main Card 特殊样式 */
 .module-card[data-main-card="true"] {
   --accent: var(--main);
+}
+
+.preset-select-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.preset-select-wrapper .control {
+  flex: 1;
+}
+
+.user-preset-delete {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: #d54f5a;
+  border-radius: 10%;
+  cursor: pointer;
+  font-size: 20px;
+  color: rgb(255, 255, 255);
+  flex-shrink: 0;
+  margin-bottom: 1px;
+  font-weight: 800;
 }
 
 .module-card[data-main-card="true"] .module-title-input {
