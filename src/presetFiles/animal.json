@@ -89,7 +89,7 @@
       "volume": 0.2,
       "pan": -0.12,
       "modulationMode": false,
-      "midiOn": false,
+      "midiOn": true,
       "index": 1,
       "options": {
         "type": "sine",
@@ -133,7 +133,7 @@
       "volume": -10.5,
       "pan": 0,
       "modulationMode": false,
-      "midiOn": false,
+      "midiOn": true,
       "index": 10,
       "options": {
         "type": "sine",
