@@ -787,9 +787,10 @@ export class ModularSynthApp {
       this.applyPresetById(lastId, false);
     } else {
       const builtins = getBuiltinPresets();
-      const firstId = Object.keys(builtins)[0];
-      if (firstId) {
-        this.applyPresetById(firstId, false);
+      const defaultId = "default";
+      const targetId = builtins[defaultId] ? defaultId : Object.keys(builtins)[0];
+      if (targetId) {
+        this.applyPresetById(targetId, false);
       }
     }
 
