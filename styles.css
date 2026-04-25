@@ -931,12 +931,14 @@ select {
   transform: translateY(2px);
 }
 
-.white-key:hover {
-  background: #e8e8e8;
-}
+@media (hover: hover) {
+  .white-key:hover {
+    background: #e8e8e8;
+  }
 
-.black-key:hover {
-  background: #4a4a4a;
+  .black-key:hover {
+    background: #4a4a4a;
+  }
 }
 
 .key-cap {
