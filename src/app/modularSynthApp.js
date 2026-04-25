@@ -33,7 +33,6 @@ import {
   startScopeRendering,
   stopScopeRendering,
   renderMainCard,
-  updateMainCard,
   renderMainCardContent,
   cacheDynamicElements as cacheDynamicElementsFn,
 } from "../ui/components/index.js";
@@ -560,8 +559,12 @@ export class ModularSynthApp {
     const oldModuleCards = container.querySelectorAll('.module-card:not([data-main-card="true"])');
     oldModuleCards.forEach((card) => card.remove());
 
-    // 如果没有主卡，创建它；否则更新它
-    if (!existingMainCard) {
+    // 主卡包含动态内容（preset select、删除按钮等），每次重建以确保状态正确
+    if (existingMainCard) {
+      existingMainCard.remove();
+    }
+
+    // 创建主卡
       const mainCardOptions = {
         selectedPresetId: this.selectedPresetId,
         hasUnsavedChanges: this.hasUnsavedChanges,
@@ -654,36 +657,6 @@ export class ModularSynthApp {
           container.appendChild(mainCard);
         }
       }
-    } else {
-      // 更新已有主卡的关键内容
-      updateMainCard(existingMainCard, {
-        selectedChainIndex: this.getSelectedChainIndex(),
-        chains: this.state.chains,
-        onChainIndexClick: (chainIndex, isSelected) => {
-          if (!isSelected) {
-            this.setSelectedChainIndex(chainIndex);
-            this.renderAll();
-            return;
-          }
-
-          this.setChainEnabled(chainIndex, !this.isChainEnabled(chainIndex));
-          this.markUnsaved();
-          this.renderAll();
-          this.engine.fullSync(this.state);
-        },
-        macro: this.macroManager.getMainCardViewModel(),
-        onMacroPointPointerDown: (event, chainIndex, padElement) => {
-          this.macroManager.startPointDrag({ event, chainIndex, padElement });
-        },
-        onMacroAxisPointerDown: (event, axis) => {
-          this.macroManager.startAxisBindingDrag({
-            event,
-            axis,
-            chainIndex: this.getSelectedChainIndex(),
-          });
-        },
-      });
-    }
 
     // 重建普通模块
     const modules = this.getCurrentModules();

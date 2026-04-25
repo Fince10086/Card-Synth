@@ -17,6 +17,7 @@ import {
   createAudioImportControl,
 } from "../controls/index.js";
 import { createModuleCard } from "../components/moduleCard.js";
+import { isBuiltinPreset } from "../../preset/presetLoader.js";
 
 const MODULATION_DEPTH_CONTROL = {
   path: "options.gain",
@@ -149,7 +150,7 @@ export function renderModuleCard(module, index, app) {
       }
       app.startModulationDrag({ event, sourceModuleId: module.id });
     },
-    removable: true,
+    removable: !isBuiltinPreset(app.selectedPresetId),
     index: index + 1,
     initModuleDrag: (event, card, moduleIndex) => app.initModuleDrag(event, card, moduleIndex),
   });
