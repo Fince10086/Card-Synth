@@ -39,18 +39,19 @@ export function renderKeyboard(keyboardElement, state, inputManager, ensureAudio
     keyboardElement.append(fragment);
     
     // 事件委托 + setPointerCapture，支持滑动切换
-    keyboardElement.addEventListener("pointerdown", async (e) => {
+    keyboardElement.addEventListener("pointerdown", (e) => {
       const key = e.target.closest('[data-key]');
       if (!key) return;
 
       key.setPointerCapture(e.pointerId);
 
-      await ensureAudioStartedFn();
       const note = key.dataset.note;
       inputManager.pressNote(note);
       heldPointerNotes.add(note);
       key.classList.add("active");
       pointerDownMap.set(e.pointerId, { keyElement: key, note });
+
+      ensureAudioStartedFn();
     });
 
     keyboardElement.addEventListener("pointermove", (e) => {
