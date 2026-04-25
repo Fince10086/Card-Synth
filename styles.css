@@ -876,6 +876,7 @@ select {
   border: none;
   background: transparent;
   overflow: hidden;
+  touch-action: none;
 }
 
 /* 黑白键都以"平面化控制块"而不是拟物钢琴键为目标。 */
@@ -884,6 +885,7 @@ select {
   position: absolute;
   user-select: none;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
   transition:
     transform 50ms ease,
     border-color 50ms ease,

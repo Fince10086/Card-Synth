@@ -2,6 +2,8 @@ import { KEYBOARD_LAYOUT, noteFromOffset } from "../../utils/helpers.js";
 
 const ONE_OCTAVE_LAYOUT = KEYBOARD_LAYOUT.slice(0, 13);
 
+const pointerDownMap = new Map();
+
 export function renderKeyboard(keyboardElement, state, inputManager, ensureAudioStartedFn, heldPointerNotes) {
   if (!keyboardElement) {
     return;
@@ -36,30 +38,71 @@ export function renderKeyboard(keyboardElement, state, inputManager, ensureAudio
     
     keyboardElement.append(fragment);
     
-    // 事件委托 + setPointerCapture
+    // 事件委托 + setPointerCapture，支持滑动切换
     keyboardElement.addEventListener("pointerdown", async (e) => {
       const key = e.target.closest('[data-key]');
       if (!key) return;
-      
+
       key.setPointerCapture(e.pointerId);
-      
+
       await ensureAudioStartedFn();
       const note = key.dataset.note;
       inputManager.pressNote(note);
       heldPointerNotes.add(note);
       key.classList.add("active");
+      pointerDownMap.set(e.pointerId, { keyElement: key, note });
+    });
+
+    keyboardElement.addEventListener("pointermove", (e) => {
+      const current = pointerDownMap.get(e.pointerId);
+      if (!current) return;
+
+      const key = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-key]');
+
+      if (!key) {
+        inputManager.releaseNote(current.note);
+        heldPointerNotes.delete(current.note);
+        current.keyElement.classList.remove("active");
+        current.keyElement.releasePointerCapture(e.pointerId);
+        pointerDownMap.delete(e.pointerId);
+        return;
+      }
+
+      if (key !== current.keyElement) {
+        current.keyElement.releasePointerCapture(e.pointerId);
+        key.setPointerCapture(e.pointerId);
+
+        inputManager.releaseNote(current.note);
+        heldPointerNotes.delete(current.note);
+        current.keyElement.classList.remove("active");
+
+        const newNote = key.dataset.note;
+        inputManager.pressNote(newNote);
+        heldPointerNotes.add(newNote);
+        key.classList.add("active");
+
+        pointerDownMap.set(e.pointerId, { keyElement: key, note: newNote });
+      }
     });
 
     keyboardElement.addEventListener("pointerup", (e) => {
-      const key = e.target.closest('[data-key]');
-      if (!key) return;
-      
-      const note = key.dataset.note;
-      if (heldPointerNotes.has(note)) {
-        inputManager.releaseNote(note);
-        heldPointerNotes.delete(note);
-        key.classList.remove("active");
-      }
+      const current = pointerDownMap.get(e.pointerId);
+      if (!current) return;
+
+      inputManager.releaseNote(current.note);
+      heldPointerNotes.delete(current.note);
+      current.keyElement.classList.remove("active");
+      pointerDownMap.delete(e.pointerId);
+    });
+
+    keyboardElement.addEventListener("pointercancel", (e) => {
+      const current = pointerDownMap.get(e.pointerId);
+      if (!current) return;
+
+      inputManager.releaseNote(current.note);
+      heldPointerNotes.delete(current.note);
+      current.keyElement.classList.remove("active");
+      pointerDownMap.delete(e.pointerId);
     });
     
     keyboardElement.dataset.keyboardBound = "true";
