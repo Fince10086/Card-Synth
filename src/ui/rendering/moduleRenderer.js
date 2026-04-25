@@ -134,6 +134,10 @@ export function renderModuleCard(module, index, app) {
       if (!module.modulationMode) {
         app.removeOutgoingModulations(module.id);
       }
+      // 切换模式时重置 frequency 为当前模式的默认值
+      if (!module.midiOn) {
+        module.options.frequency = module.modulationMode ? 1 : 440;
+      }
       app.markUnsaved();
       app.renderAll();
       app.engine.fullSync(app.state);
@@ -185,6 +189,10 @@ export function renderModuleCard(module, index, app) {
         value: Boolean(module.midiOn),
         onToggle: (nextValue) => {
           module.midiOn = nextValue;
+          // 关闭 MIDI 时，根据当前模式设置默认 frequency
+          if (!nextValue) {
+            module.options.frequency = module.modulationMode ? 1 : 440;
+          }
           app.markUnsaved();
           app.renderAll();
           app.engine.fullSync(app.state);
