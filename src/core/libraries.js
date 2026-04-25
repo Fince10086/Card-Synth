@@ -328,10 +328,10 @@ export const COMPONENT_LIBRARY = {
     tag: "Component",
     options: { attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65 },
     controls: [
-      { path: "options.attack", kind: "range", label: "Attack", min: 0.001, max: 4, step: 0.001, formatter: formatSeconds },
-      { path: "options.decay", kind: "range", label: "Decay", min: 0.001, max: 4, step: 0.001, formatter: formatSeconds },
+      { path: "options.attack", kind: "range", label: "Attack", min: 0.01, max: 4, step: 0.01, formatter: formatSeconds },
+      { path: "options.decay", kind: "range", label: "Decay", min: 0.01, max: 4, step: 0.01, formatter: formatSeconds },
       { path: "options.sustain", kind: "range", label: "Sustain", min: 0, max: 1, step: 0.01, formatter: formatPercent },
-      { path: "options.release", kind: "range", label: "Release", min: 0.001, max: 4, step: 0.001, formatter: formatSeconds },
+      { path: "options.release", kind: "range", label: "Release", min: 0.01, max: 4, step: 0.01, formatter: formatSeconds },
     ],
   },
   Envelope: {

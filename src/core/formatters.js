@@ -5,6 +5,7 @@ export function formatPlain(value) {
 export function formatSeconds(value) {
   return `${Number(value).toFixed(value < 0.1 ? 3 : value < 1 ? 2 : 1).replace(/0+$/, "").replace(/\.$/, "")}s`;
 }
+formatSeconds.unit = "log";
 
 export function formatPercent(value) {
   return `${Math.round(Number(value) * 100)}%`;
@@ -25,6 +26,7 @@ export function formatRatio(value) {
 export function formatHertz(value) {
   return `${Number(value).toFixed(value < 1 ? 2 : 1).replace(/0+$/, "").replace(/\.$/, "")} Hz`;
 }
+formatHertz.unit = "log";
 
 export function formatFrequency(value) {
   if (value >= 1000) {
@@ -32,6 +34,7 @@ export function formatFrequency(value) {
   }
   return `${Math.round(value)} Hz`;
 }
+formatFrequency.unit = "log";
 
 export function formatMultiplier(value) {
   return `${Number(value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}x`;

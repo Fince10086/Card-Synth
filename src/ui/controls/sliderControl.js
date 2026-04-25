@@ -20,6 +20,28 @@ export function createSliderControl({
   onManualMacroInput = null,
   onMacroRangeChange = null,
 }) {
+  const isLogarithmic = formatter?.unit === "log" && min > 0 && max > 0 && max !== min;
+
+  function toLogPercent(actualValue) {
+    if (!isLogarithmic || actualValue <= 0) return (actualValue - min) / (max - min);
+    return Math.max(0, Math.min(1, Math.log(actualValue / min) / Math.log(max / min)));
+  }
+
+  function fromLogPercent(linearPercent) {
+    if (!isLogarithmic) return min + (max - min) * linearPercent;
+    return min * Math.pow(max / min, Math.max(0, Math.min(1, linearPercent)));
+  }
+
+  function actualToLinear(actualValue) {
+    if (!isLogarithmic) return actualValue;
+    return min + (max - min) * toLogPercent(actualValue);
+  }
+
+  function linearToActual(linearValue) {
+    if (!isLogarithmic) return linearValue;
+    return fromLogPercent((linearValue - min) / (max - min));
+  }
+
   const wrapper = document.createElement("label");
   wrapper.className = "control control-slider";
   if (moduleId && paramPath) {
@@ -87,15 +109,15 @@ export function createSliderControl({
   input.min = String(min);
   input.max = String(max);
   input.step = String(step);
-  input.value = String(value);
+  input.value = String(actualToLinear(value));
   input.className = "slider-input";
 
   shell.append(input);
 
-  const updateVisual = (nextValue) => {
-    const numericValue = Number(nextValue);
-    const percent = (numericValue - min) / (max - min);
-    readout.textContent = formatter(numericValue);
+  const updateVisual = (actualValue) => {
+    const linearValue = actualToLinear(actualValue);
+    const percent = (linearValue - min) / (max - min);
+    readout.textContent = formatter(actualValue);
     shell.style.setProperty("--percent", percent.toString());
   };
 
@@ -112,7 +134,7 @@ export function createSliderControl({
   };
 
   const setVisualValue = (nextValue) => {
-    input.value = String(nextValue);
+    input.value = String(actualToLinear(nextValue));
     updateVisual(nextValue);
     syncModulationRange(nextValue);
   };
@@ -142,7 +164,8 @@ export function createSliderControl({
   let rafId = null;
 
   input.addEventListener("input", (event) => {
-    const nextValue = Number(event.target.value);
+    const linearValue = Number(event.target.value);
+    const nextValue = linearToActual(linearValue);
     clearMacroBindingOnManualInput();
     setVisualValue(nextValue);
     if (eventName === "input") {
@@ -163,7 +186,8 @@ export function createSliderControl({
 
   if (eventName === "change") {
     input.addEventListener("change", (event) => {
-      const nextValue = Number(event.target.value);
+      const linearValue = Number(event.target.value);
+      const nextValue = linearToActual(linearValue);
       clearMacroBindingOnManualInput();
       setVisualValue(nextValue);
       onInput(nextValue);
@@ -235,11 +259,11 @@ export function createSliderControl({
 
     createInlineInput(
       readout,
-      { type: "number", min, max, step, value: input.value },
+      { type: "number", min, max, step, value: linearToActual(Number(input.value)) },
       (value, cleanup) => {
         let newValue = Number(value);
         if (Number.isNaN(newValue)) {
-          newValue = Number(input.value);
+          newValue = linearToActual(Number(input.value));
         }
         newValue = Math.max(min, Math.min(max, newValue));
         cleanup(); // 先恢复显示
@@ -360,7 +384,7 @@ export function createSliderControl({
     }
 
     paintRange = () => {
-      const centerValue = Number(input.value);
+      const centerValue = linearToActual(Number(input.value));
       const radius = modulation.radius ?? ((max - min) * 0.15);
       const minValue = centerValue - radius;
       const maxValue = centerValue + radius;
@@ -369,10 +393,10 @@ export function createSliderControl({
       const effMinValue = Math.max(min, Math.min(max, minValue));
       const effMaxValue = Math.max(min, Math.min(max, maxValue));
 
-      // 使用有效范围计算比例（0~1）
-      const minPct = ((effMinValue - min) / (max - min));
-      const maxPct = ((effMaxValue - min) / (max - min));
-      const centerPct = ((centerValue - min) / (max - min));
+      // 使用有效范围计算比例（0~1），对数滑块使用对数映射
+      const minPct = isLogarithmic ? toLogPercent(effMinValue) : ((effMinValue - min) / (max - min));
+      const maxPct = isLogarithmic ? toLogPercent(effMaxValue) : ((effMaxValue - min) / (max - min));
+      const centerPct = isLogarithmic ? toLogPercent(centerValue) : ((centerValue - min) / (max - min));
 
       // 判断调制源是否为 Envelope（单向 0~1）
       const sourceModule = modulationManager?.getModules?.()?.find(m => m.id === modulation.sourceModuleId);
@@ -428,7 +452,7 @@ export function createSliderControl({
         ? `+${Math.abs(radius).toFixed(2)}`
         : radius >= 0 ? `±${Math.abs(radius).toFixed(2)}` : `${radius.toFixed(2)}`;
       centerValueEl.textContent = radiusStr;
-      const sliderPercent = ((centerValue - min) / (max - min));
+      const sliderPercent = isLogarithmic ? toLogPercent(centerValue) : ((centerValue - min) / (max - min));
       centerValueEl.style.left = edgeLeft(sliderPercent, centerValueEl);
 
     };
@@ -449,8 +473,10 @@ export function createSliderControl({
 
           // 像素位置 → 参数域绝对值（硬边界限制在 [min, max]）
           const bracketPercent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-          const valueAtBracket = Math.max(min, Math.min(max, min + (max - min) * bracketPercent));
-          const centerValue = Number(input.value);
+          const valueAtBracket = isLogarithmic
+            ? fromLogPercent(bracketPercent)
+            : Math.max(min, Math.min(max, min + (max - min) * bracketPercent));
+          const centerValue = linearToActual(Number(input.value));
 
           // 根据 bracket 类型计算有符号的 radius
           // min bracket：radius = centerValue - valueAtBracket（向右拉为正，向左拉为负）
