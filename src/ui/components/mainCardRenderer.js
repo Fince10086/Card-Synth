@@ -280,7 +280,7 @@ export function renderMainCard({
 
   const keyboard = document.createElement("div");
   keyboard.id = "virtualKeyboard";
-  keyboard.className = "virtual-keyboard virtual-keyboard--compact";
+  keyboard.className = "virtual-keyboard";
   controls.append(keyboard);
 
   card.append(controls);

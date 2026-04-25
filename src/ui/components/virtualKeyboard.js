@@ -6,14 +6,18 @@ export function renderKeyboard(keyboardElement, state, inputManager, ensureAudio
   }
   keyboardElement.innerHTML = "";
 
-  const whiteKeyWidth = 38;
-  const blackKeyWidth = 28;
+  const ONE_OCTAVE_LAYOUT = KEYBOARD_LAYOUT.slice(0, 13);
+
+  const containerWidth = keyboardElement.clientWidth;
+  const whiteKeyCount = ONE_OCTAVE_LAYOUT.filter((e) => !e.black).length;
+  const whiteKeyWidth = containerWidth / whiteKeyCount;
+  const blackKeyWidth = whiteKeyWidth * 0.65;
   const keyboardPadding = 0;
 
   keyboardElement.style.setProperty("--white-key-width", `${whiteKeyWidth}px`);
   keyboardElement.style.setProperty("--black-key-width", `${blackKeyWidth}px`);
 
-  KEYBOARD_LAYOUT.forEach((entry) => {
+  ONE_OCTAVE_LAYOUT.forEach((entry) => {
     const note = noteFromOffset(state.global.octave, entry.offset);
     const key = document.createElement("button");
     key.type = "button";
@@ -28,13 +32,6 @@ export function renderKeyboard(keyboardElement, state, inputManager, ensureAudio
 
     const cap = document.createElement("div");
     cap.className = "key-cap";
-    const bind = document.createElement("span");
-    bind.className = "key-bind";
-    bind.textContent = entry.key.toUpperCase();
-    const noteLabel = document.createElement("span");
-    noteLabel.className = "key-note";
-    noteLabel.textContent = note;
-    cap.append(bind, noteLabel);
     key.append(cap);
 
     key.addEventListener("pointerdown", async () => {

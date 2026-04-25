@@ -877,21 +877,15 @@ select {
   border: 1px solid #e2e5ed;
 }
 
-/* 键盘本体保留横向滚动能力，方便小屏幕下完整显示。 */
+/* 虚拟键盘 */
 .virtual-keyboard {
-  --white-key-width: 72px;
-  --black-key-width: 46px;
   position: relative;
-  min-height: 186px;
-  padding: 10px;
-  border: 1px solid #d9dde7;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(240, 243, 250, 0.96)),
-    linear-gradient(180deg, rgba(47, 159, 149, 0.05), rgba(61, 127, 184, 0.04));
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: #c5cada #edf0f6;
+  flex: 1;
+  min-height: 60px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  overflow: hidden;
 }
 
 /* 黑白键都以"平面化控制块"而不是拟物钢琴键为目标。 */
@@ -901,101 +895,65 @@ select {
   user-select: none;
   cursor: pointer;
   transition:
-    transform var(--transition),
-    border-color var(--transition),
-    box-shadow var(--transition),
-    background var(--transition),
-    color var(--transition);
+    transform 50ms ease,
+    border-color 50ms ease,
+    box-shadow 50ms ease,
+    background 50ms ease,
+    color 50ms ease;
 }
 
 .white-key {
-  top: 10px;
+  top: 0;
   width: var(--white-key-width);
-  height: 152px;
-  padding: 8px 8px 10px;
-  border-radius: 0;
-  background: #fffdf9;
+  height: calc(100% - 2px);
+  border-radius: 0 0 3px 3px;
+  background: #ffffff;
   border: 1px solid #d7dce7;
-  box-shadow: inset 0 -8px 0 rgba(230, 233, 240, 0.7);
+  box-shadow: none;
 }
 
 .black-key {
-  top: 10px;
+  top: 0;
   width: var(--black-key-width);
-  height: 92px;
-  padding: 7px 6px 8px;
-  border-radius: 0;
-  background: #2f333c;
+  height: calc(60% - 2px);
+  border-radius: 0 0 2px 2px;
+  background: var(--ink);
   color: #f3f6fb;
   border: 1px solid #272b33;
-  box-shadow: inset 0 -8px 0 rgba(21, 25, 31, 0.28);
+  box-shadow: none;
   z-index: 2;
 }
 
 .white-key.active {
-  background: color-mix(in srgb, var(--source) 12%, white);
-  border-color: color-mix(in srgb, var(--source) 32%, white);
-  color: color-mix(in srgb, var(--source) 72%, #243346);
-  box-shadow: inset 0 0 0 1px rgba(47, 159, 149, 0.12);
+  background: #d0d0d0;
+  border-color: #a0a0a0;
 }
 
 .black-key.active {
-  background: color-mix(in srgb, var(--source) 36%, #28313c);
-  border-color: color-mix(in srgb, var(--source) 46%, #1f2832);
+  background: #555555;
+  border-color: #444444;
 }
 
 .white-key.active,
-.black-key.active,
-.white-key:hover,
-.black-key:hover {
+.black-key.active {
   transform: translateY(2px);
 }
 
 .white-key:hover {
-  background: #ffffff;
-  border-color: #bcc6d8;
+  background: #e8e8e8;
 }
 
 .black-key:hover {
-  background: #39414f;
-  border-color: #313847;
+  background: #4a4a4a;
 }
 
 .key-cap {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-end;
+  align-items: center;
   height: 100%;
-}
-
-/* 键位映射标签用于提示 PC 键盘绑定。 */
-.key-bind {
-  display: inline-flex;
-  width: fit-content;
-  padding: 3px 6px;
-  border-radius: 999px;
-  font-size: 0.64rem;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.06em;
-  background: #f0f2f7;
-  color: #667089;
-}
-
-.black-key .key-bind {
-  background: rgba(255, 255, 255, 0.12);
-  color: #edf3ff;
-}
-
-.key-note {
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: #2d3140;
-}
-
-.black-key .key-note {
-  color: #f8fbff;
+  padding-bottom: 4px;
 }
 
 .helper-row {
@@ -1020,90 +978,6 @@ select {
   min-width: 50px;
   font-size: 0.68rem;
   padding: 4px 8px;
-}
-
-/* 键盘提示 */
-
-/* 紧凑型虚拟键盘样式 */
-.virtual-keyboard--compact {
-  --white-key-width: 28px;
-  --black-key-width: 18px;
-  position: relative;
-  flex: 1;
-  min-height: 60px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  overflow: hidden;
-}
-
-.virtual-keyboard--compact .white-key,
-.virtual-keyboard--compact .black-key {
-  top: 0;
-  transition: background 80ms ease, border-color 80ms ease;
-}
-
-.virtual-keyboard--compact .white-key {
-  height: 100%;
-  background: #fdfbf7;
-  border: 1px solid #d7dce7;
-  border-radius: 0 0 3px 3px;
-  box-shadow: none;
-}
-
-.virtual-keyboard--compact .white-key:hover {
-  background: #f0f4fb;
-}
-
-.virtual-keyboard--compact .white-key.active {
-  background: #c8daf0;
-  border-color: #7fa8d4;
-}
-
-.virtual-keyboard--compact .black-key {
-  height: 60%;
-  background: #3a3f4c;
-  border-radius: 0 0 2px 2px;
-  box-shadow: none;
-}
-
-.virtual-keyboard--compact .black-key:hover {
-  background: #4a5060;
-}
-
-.virtual-keyboard--compact .black-key.active {
-  background: #5a7090;
-}
-
-.virtual-keyboard--compact .key-cap {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  height: 100%;
-  padding-bottom: 4px;
-}
-
-.virtual-keyboard--compact .key-bind {
-  font-size: 0.58rem;
-  font-weight: 600;
-  color: #667089;
-  padding: 0;
-  background: transparent;
-}
-
-.virtual-keyboard--compact .black-key .key-bind {
-  color: #c5cade;
-}
-
-.virtual-keyboard--compact .key-note {
-  font-size: 0.62rem;
-  font-weight: 600;
-  color: #2d3140;
-}
-
-.virtual-keyboard--compact .black-key .key-note {
-  color: #f0f4ff;
 }
 
 /* Main Card 特殊样式 */

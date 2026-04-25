@@ -61,6 +61,7 @@ export class ModularSynthApp {
     this.audioBooted = false;
 
     this.heldPointerNotes = new Set();
+    this.keyboardResizeObserver = null;
 
     this.controlBindings = new Map();
 
@@ -654,6 +655,10 @@ export class ModularSynthApp {
 
   renderKeyboard() {
     const keyboard = document.getElementById("virtualKeyboard");
+    if (!keyboard) {
+      return;
+    }
+
     renderKeyboard(
       keyboard,
       this.state,
@@ -661,6 +666,26 @@ export class ModularSynthApp {
       () => this.ensureAudioStarted(),
       this.heldPointerNotes
     );
+
+    if (this.keyboardResizeObserver) {
+      this.keyboardResizeObserver.disconnect();
+    }
+
+    let lastWidth = keyboard.clientWidth;
+    this.keyboardResizeObserver = new ResizeObserver((entries) => {
+      const newWidth = entries[0]?.contentRect?.width;
+      if (newWidth && newWidth !== lastWidth) {
+        lastWidth = newWidth;
+        renderKeyboard(
+          keyboard,
+          this.state,
+          this.inputManager,
+          () => this.ensureAudioStarted(),
+          this.heldPointerNotes
+        );
+      }
+    });
+    this.keyboardResizeObserver.observe(keyboard);
   }
 
   resizeScopeCanvas() {
