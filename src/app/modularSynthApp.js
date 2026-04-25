@@ -33,6 +33,7 @@ import {
   startScopeRendering,
   stopScopeRendering,
   renderMainCard,
+  updateMainCard,
   renderMainCardContent,
   cacheDynamicElements as cacheDynamicElementsFn,
 } from "../ui/components/index.js";
@@ -553,103 +554,147 @@ export class ModularSynthApp {
     }
 
     const addCard = container.querySelector(".add-module-card");
-    container.innerHTML = "";
-    if (addCard) {
-      container.appendChild(addCard);
-    }
+    const existingMainCard = container.querySelector('.module-card[data-main-card="true"]');
 
-    const mainCard = renderMainCard({
-      selectedPresetId: this.selectedPresetId,
-      hasUnsavedChanges: this.hasUnsavedChanges,
-      builtinPresets: getBuiltinPresets(),
-      userPresets: getUserPresets(),
-      state: this.state,
-      selectedChainIndex: this.getSelectedChainIndex(),
-      chains: this.state.chains,
-      macro: this.macroManager.getMainCardViewModel(),
-      audioBooted: this.audioBooted,
-      onPresetChange: (value) => this.applyPresetById(value),
-      onChainIndexClick: (chainIndex, isSelected) => {
-        if (!isSelected) {
-          this.setSelectedChainIndex(chainIndex);
+    // 删除所有普通模块卡（保留主卡和添加卡）
+    const oldModuleCards = container.querySelectorAll('.module-card:not([data-main-card="true"])');
+    oldModuleCards.forEach((card) => card.remove());
+
+    // 如果没有主卡，创建它；否则更新它
+    if (!existingMainCard) {
+      const mainCardOptions = {
+        selectedPresetId: this.selectedPresetId,
+        hasUnsavedChanges: this.hasUnsavedChanges,
+        builtinPresets: getBuiltinPresets(),
+        userPresets: getUserPresets(),
+        state: this.state,
+        selectedChainIndex: this.getSelectedChainIndex(),
+        chains: this.state.chains,
+        macro: this.macroManager.getMainCardViewModel(),
+        audioBooted: this.audioBooted,
+        onPresetChange: (value) => this.applyPresetById(value),
+        onChainIndexClick: (chainIndex, isSelected) => {
+          if (!isSelected) {
+            this.setSelectedChainIndex(chainIndex);
+            this.renderAll();
+            return;
+          }
+
+          this.setChainEnabled(chainIndex, !this.isChainEnabled(chainIndex));
+          this.markUnsaved();
           this.renderAll();
-          return;
-        }
-
-        this.setChainEnabled(chainIndex, !this.isChainEnabled(chainIndex));
-        this.markUnsaved();
-        this.renderAll();
-        this.engine.fullSync(this.state);
-      },
-      onImportClick: () => this.elements.presetFileInput?.click(),
-      onExportCurrentClick: () => {
-        const currentPreset = getPresetById(this.selectedPresetId);
-        const presetName = currentPreset?.name || this.selectedPresetId || "preset";
-        const filename = exportCurrentPresetToFile(this.state, this.getSelectedChainIndex(), presetName);
-        this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
-      },
-      onExportAllClick: () => {
-        const currentPreset = getPresetById(this.selectedPresetId);
-        const presetName = currentPreset?.name || this.selectedPresetId || "preset";
-        const filename = exportAllPresetToFile(this.state, presetName);
-        this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
-      },
-      onResetClick: () => {
-        const builtins = getBuiltinPresets();
-        const firstId = Object.keys(builtins)[0];
-        if (firstId) this.applyPresetById(firstId);
-      },
-      onRandomClick: () => this.randomizeCurrentPatch(),
-      onMidiClick: () => {
-        if (this.inputManager.getMidiInputs().length > 0) {
-          this.inputManager.closeMidi();
-        } else {
-          this.inputManager.requestMidiAccess();
-        }
-      },
-      onMasterVolumeChange: (value) => {
-        this.state.global.volume = value;
-        this.markUnsaved();
-        this.engine.updateGlobal(this.state.global);
-      },
-      onVelocityEnabledChange: (value) => {
-        this.state.global.velocityEnabled = value;
-        this.markUnsaved();
-        this.engine.updateGlobal(this.state.global);
-      },
-      onMacroPointPointerDown: (event, chainIndex, padElement) => {
-        this.macroManager.startPointDrag({ event, chainIndex, padElement });
-      },
-      onMacroAxisPointerDown: (event, axis) => {
-        this.macroManager.startAxisBindingDrag({
-          event,
-          axis,
-          chainIndex: this.getSelectedChainIndex(),
-        });
-      },
-      onGestureClick: () => {
-        this.gestureManager.activate();
-      },
-      onDeleteUserPreset: (id) => {
-        removeUserPreset(id);
-        if (this.selectedPresetId === id) {
+          this.engine.fullSync(this.state);
+        },
+        onImportClick: () => this.elements.presetFileInput?.click(),
+        onExportCurrentClick: () => {
+          const currentPreset = getPresetById(this.selectedPresetId);
+          const presetName = currentPreset?.name || this.selectedPresetId || "preset";
+          const filename = exportCurrentPresetToFile(this.state, this.getSelectedChainIndex(), presetName);
+          this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
+        },
+        onExportAllClick: () => {
+          const currentPreset = getPresetById(this.selectedPresetId);
+          const presetName = currentPreset?.name || this.selectedPresetId || "preset";
+          const filename = exportAllPresetToFile(this.state, presetName);
+          this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
+        },
+        onResetClick: () => {
           const builtins = getBuiltinPresets();
           const firstId = Object.keys(builtins)[0];
           if (firstId) this.applyPresetById(firstId);
+        },
+        onRandomClick: () => this.randomizeCurrentPatch(),
+        onMidiClick: () => {
+          if (this.inputManager.getMidiInputs().length > 0) {
+            this.inputManager.closeMidi();
+          } else {
+            this.inputManager.requestMidiAccess();
+          }
+        },
+        onMasterVolumeChange: (value) => {
+          this.state.global.volume = value;
+          this.markUnsaved();
+          this.engine.updateGlobal(this.state.global);
+        },
+        onVelocityEnabledChange: (value) => {
+          this.state.global.velocityEnabled = value;
+          this.markUnsaved();
+          this.engine.updateGlobal(this.state.global);
+        },
+        onMacroPointPointerDown: (event, chainIndex, padElement) => {
+          this.macroManager.startPointDrag({ event, chainIndex, padElement });
+        },
+        onMacroAxisPointerDown: (event, axis) => {
+          this.macroManager.startAxisBindingDrag({
+            event,
+            axis,
+            chainIndex: this.getSelectedChainIndex(),
+          });
+        },
+        onGestureClick: () => {
+          this.gestureManager.activate();
+        },
+        onDeleteUserPreset: (id) => {
+          removeUserPreset(id);
+          if (this.selectedPresetId === id) {
+            const builtins = getBuiltinPresets();
+            const firstId = Object.keys(builtins)[0];
+            if (firstId) this.applyPresetById(firstId);
+          } else {
+            this.renderAll();
+          }
+        },
+      };
+
+      const mainCard = renderMainCard(mainCardOptions);
+      if (mainCard) {
+        if (addCard) {
+          container.insertBefore(mainCard, addCard);
         } else {
-          this.renderAll();
+          container.appendChild(mainCard);
         }
-      },
-    });
-    if (mainCard) {
-      container.insertBefore(mainCard, addCard);
+      }
+    } else {
+      // 更新已有主卡的关键内容
+      updateMainCard(existingMainCard, {
+        selectedChainIndex: this.getSelectedChainIndex(),
+        chains: this.state.chains,
+        onChainIndexClick: (chainIndex, isSelected) => {
+          if (!isSelected) {
+            this.setSelectedChainIndex(chainIndex);
+            this.renderAll();
+            return;
+          }
+
+          this.setChainEnabled(chainIndex, !this.isChainEnabled(chainIndex));
+          this.markUnsaved();
+          this.renderAll();
+          this.engine.fullSync(this.state);
+        },
+        macro: this.macroManager.getMainCardViewModel(),
+        onMacroPointPointerDown: (event, chainIndex, padElement) => {
+          this.macroManager.startPointDrag({ event, chainIndex, padElement });
+        },
+        onMacroAxisPointerDown: (event, axis) => {
+          this.macroManager.startAxisBindingDrag({
+            event,
+            axis,
+            chainIndex: this.getSelectedChainIndex(),
+          });
+        },
+      });
     }
 
+    // 重建普通模块
     const modules = this.getCurrentModules();
     modules.forEach((module, index) => {
       const card = renderModuleCard(module, index, this);
       if (card) {
-        container.insertBefore(card, addCard);
+        if (addCard) {
+          container.insertBefore(card, addCard);
+        } else {
+          container.appendChild(card);
+        }
       }
     });
   }

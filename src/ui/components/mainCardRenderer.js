@@ -285,6 +285,71 @@ export function renderMainCard({
   return card;
 }
 
+export function updateMainCard(card, {
+  selectedChainIndex,
+  chains,
+  onChainIndexClick,
+  macro,
+  onMacroPointPointerDown,
+  onMacroAxisPointerDown,
+}) {
+  if (!card) return;
+
+  // 更新 chain badges
+  const head = card.querySelector(".module-head");
+  if (head) {
+    const badges = head.querySelectorAll(".chain-index");
+    badges.forEach((badge, index) => {
+      const chain = chains?.[index] || { enabled: false };
+      const isSelected = selectedChainIndex === index;
+
+      badge.classList.toggle("is-selected", isSelected);
+      badge.classList.toggle("is-disabled", !chain.enabled);
+
+      // 替换点击事件以更新闭包
+      const newBadge = badge.cloneNode(true);
+      newBadge.addEventListener("click", () => {
+        onChainIndexClick?.(index, isSelected);
+      });
+      badge.replaceWith(newBadge);
+    });
+  }
+
+  // 更新 macro pad
+  const macroPad = card.querySelector(".macro-pad");
+  if (macroPad) {
+    macroPad.innerHTML = "";
+    const points = Array.isArray(macro?.points) ? macro.points : [];
+    points.forEach((point) => {
+      if (!point?.visible) return;
+
+      const macroPoint = document.createElement("button");
+      macroPoint.type = "button";
+      macroPoint.className = "macro-point";
+      if (point.selected) {
+        macroPoint.classList.add("is-selected");
+      }
+      macroPoint.style.left = `${Number(point.x) * 100}%`;
+      macroPoint.style.top = `${(1 - Number(point.y)) * 100}%`;
+      macroPoint.style.background = point.color;
+      macroPoint.setAttribute("aria-label", `Macro Chain ${point.chainIndex + 1}`);
+
+      macroPoint.addEventListener("pointerdown", (event) => {
+        onMacroPointPointerDown?.(event, point.chainIndex, macroPad);
+      });
+
+      macroPad.append(macroPoint);
+    });
+  }
+
+  // 更新 axis buttons 禁用状态
+  const selectedChainEnabled = Boolean(macro?.selectedChainEnabled);
+  const axisHandles = card.querySelectorAll(".macro-axis-handle");
+  axisHandles.forEach((handle) => {
+    handle.disabled = !selectedChainEnabled;
+  });
+}
+
 export function renderMainCardContent({
   updatePresetSelect,
   updateMasterReadout,
