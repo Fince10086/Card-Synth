@@ -15,7 +15,7 @@ export function renderKeyboard(keyboardElement, state, inputManager, ensureAudio
   keyboardElement.style.setProperty("--white-key-width", `${whiteKeyWidth}px`);
   keyboardElement.style.setProperty("--black-key-width", `${blackKeyWidth}px`);
 
-  const isFirstRender = keyboardElement.children.length === 0;
+  const isFirstRender = !keyboardElement.dataset.keyboardBound;
   
   if (isFirstRender) {
     const fragment = document.createDocumentFragment();
@@ -30,34 +30,38 @@ export function renderKeyboard(keyboardElement, state, inputManager, ensureAudio
       cap.className = "key-cap";
       key.append(cap);
       
-      key.addEventListener("pointerdown", async () => {
-        await ensureAudioStartedFn();
-        const note = key.dataset.note;
-        inputManager.pressNote(note);
-        heldPointerNotes.add(note);
-        key.classList.add("active");
-      });
-
-      key.addEventListener("pointerup", () => {
-        const note = key.dataset.note;
-        inputManager.releaseNote(note);
-        heldPointerNotes.delete(note);
-        key.classList.remove("active");
-      });
-
-      key.addEventListener("pointerleave", () => {
-        const note = key.dataset.note;
-        if (heldPointerNotes.has(note)) {
-          inputManager.releaseNote(note);
-          heldPointerNotes.delete(note);
-          key.classList.remove("active");
-        }
-      });
-      
       fragment.append(key);
     });
     
     keyboardElement.append(fragment);
+    
+    // 事件委托 + setPointerCapture
+    keyboardElement.addEventListener("pointerdown", async (e) => {
+      const key = e.target.closest('[data-key]');
+      if (!key) return;
+      
+      key.setPointerCapture(e.pointerId);
+      
+      await ensureAudioStartedFn();
+      const note = key.dataset.note;
+      inputManager.pressNote(note);
+      heldPointerNotes.add(note);
+      key.classList.add("active");
+    });
+
+    keyboardElement.addEventListener("pointerup", (e) => {
+      const key = e.target.closest('[data-key]');
+      if (!key) return;
+      
+      const note = key.dataset.note;
+      if (heldPointerNotes.has(note)) {
+        inputManager.releaseNote(note);
+        heldPointerNotes.delete(note);
+        key.classList.remove("active");
+      }
+    });
+    
+    keyboardElement.dataset.keyboardBound = "true";
   }
 
   // 更新所有键的位置、note 和 active 状态

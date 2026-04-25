@@ -21,6 +21,8 @@ export const KEYBOARD_LAYOUT = [
   { key: "'", offset: 17, whiteIndex: 10, black: false },
 ];
 
+export const KEY_MAP = new Map(KEYBOARD_LAYOUT.map((item) => [item.key, item]));
+
 export function noteFromOffset(baseOctave, offset) {
   const pitchClass = NOTE_NAMES[offset % 12];
   const octaveShift = Math.floor(offset / 12);

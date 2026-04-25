@@ -1,5 +1,5 @@
 import { clamp, noteFromOffset } from "../utils/helpers.js";
-import { KEYBOARD_LAYOUT } from "../core/keyboard.js";
+import { KEY_MAP } from "../core/keyboard.js";
 import * as Tone from "tone";
 
 export class InputManager {
@@ -30,16 +30,24 @@ export class InputManager {
 
     this.boundOnKeyDown = this.onKeyDown.bind(this);
     this.boundOnKeyUp = this.onKeyUp.bind(this);
+    this.boundOnBlur = () => this.releaseAllNotes();
+    this.boundOnVisibilityChange = () => {
+      if (document.hidden) this.releaseAllNotes();
+    };
   }
 
   bindEvents() {
     window.addEventListener("keydown", this.boundOnKeyDown);
     window.addEventListener("keyup", this.boundOnKeyUp);
+    window.addEventListener("blur", this.boundOnBlur);
+    document.addEventListener("visibilitychange", this.boundOnVisibilityChange);
   }
 
   unbindEvents() {
     window.removeEventListener("keydown", this.boundOnKeyDown);
     window.removeEventListener("keyup", this.boundOnKeyUp);
+    window.removeEventListener("blur", this.boundOnBlur);
+    document.removeEventListener("visibilitychange", this.boundOnVisibilityChange);
   }
 
   getMidiStatus() {
@@ -190,7 +198,7 @@ export class InputManager {
     }
 
     // 音符触发
-    const entry = KEYBOARD_LAYOUT.find((item) => item.key === key);
+    const entry = KEY_MAP.get(key);
     if (!entry) {
       return;
     }
