@@ -684,13 +684,21 @@ export class ModularSynthApp {
       return;
     }
 
+    const onOctaveChange = (octave) => {
+      this.state.global.octave = octave;
+      this.renderKeyboard();
+      this.inputManager.updateTransportInfo();
+      this.markUnsaved();
+    };
+
     const doRender = () =>
       renderKeyboard(
         keyboard,
         this.state,
         this.inputManager,
         () => this.ensureAudioStarted(),
-        this.heldPointerNotes
+        this.heldPointerNotes,
+        onOctaveChange
       );
 
     doRender();
@@ -707,7 +715,8 @@ export class ModularSynthApp {
               this.state,
               this.inputManager,
               () => this.ensureAudioStarted(),
-              this.heldPointerNotes
+              this.heldPointerNotes,
+              onOctaveChange
             );
           }
         }
