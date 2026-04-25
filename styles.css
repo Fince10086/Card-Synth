@@ -86,6 +86,7 @@ select {
   box-shadow: none;
   z-index: var(--z-base);
   outline: none;
+  touch-action: none;
 }
 
 .module-card:focus-visible {
@@ -153,6 +154,7 @@ select {
   background: #ffffff;
   padding: 0;
   cursor: pointer;
+  touch-action: none;
 }
 
 .modulation-cables,
@@ -597,6 +599,7 @@ select {
   border-radius: 0;
   background: transparent;
   border: 0;
+  touch-action: none;
 }
 
 .slider-input {
@@ -1082,6 +1085,7 @@ select {
   border-radius: 999px;
   transform: translate(-50%, -50%);
   cursor: grab;
+  touch-action: none;
 }
 
 .macro-point:active {
@@ -1109,6 +1113,7 @@ select {
   font-size: 0.72rem;
   line-height: 1;
   cursor: grab;
+  touch-action: none;
   transition:
     transform var(--transition),
     border-color var(--transition),

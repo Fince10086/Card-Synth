@@ -4,6 +4,7 @@ import {
   normalizeMacroChain,
   normalizeMacroState,
 } from "../../preset/preset.js";
+import { EdgeScrollManager } from "../edgeScrollManager.js";
 
 const AXES = ["x", "y", "z"];
 const POINT_OPACITY = [1, 0.9, 0.8, 0.7];
@@ -51,6 +52,9 @@ export class MacroManager {
     this.macroSvg = null;
     // requestAnimationFrame id
     this.macroFrame = 0;
+
+    // 边缘滚动管理器
+    this.edgeScroll = new EdgeScrollManager();
   }
 
   bindEvents() {
@@ -306,11 +310,13 @@ export class MacroManager {
 
   handlePointerMove(event) {
     if (this.pointDrag.active && event.pointerId === this.pointDrag.pointerId) {
+      this.edgeScroll.update(event);
       this.updatePointFromPointer(event);
       return;
     }
 
     if (this.bindingDrag.active && event.pointerId === this.bindingDrag.pointerId) {
+      this.edgeScroll.update(event);
       this.updateBindingHover(event);
       this.bindingDrag.x = event.clientX;
       this.bindingDrag.y = event.clientY;
@@ -319,6 +325,9 @@ export class MacroManager {
   }
 
   handlePointerUp(event) {
+    // 停止边缘滚动
+    this.edgeScroll.stopScrolling();
+
     if (this.pointDrag.active && event.pointerId === this.pointDrag.pointerId) {
       this.cancelPointDrag();
       return;
@@ -356,6 +365,7 @@ export class MacroManager {
   }
 
   cancelAllDrags() {
+    this.edgeScroll.stopScrolling();
     this.cancelPointDrag();
     this.cancelAxisBindingDrag();
   }

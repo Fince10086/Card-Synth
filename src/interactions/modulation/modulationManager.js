@@ -1,6 +1,7 @@
 import * as Tone from "tone";
 import { getByPath, getModuleDefinition } from "../../utils/helpers.js";
 import { MODULATION_BLACKLIST } from "./modulationBlacklist.js";
+import { EdgeScrollManager } from "../edgeScrollManager.js";
 
 /**
  * ModulationManager - 调制连接管理器
@@ -45,6 +46,9 @@ export class ModulationManager {
 
     // SVG 元素缓存，避免每帧重建
     this.cableElements = new Map();
+
+    // 边缘滚动管理器
+    this.edgeScroll = new EdgeScrollManager();
   }
 
   /**
@@ -194,6 +198,9 @@ export class ModulationManager {
     this.modulationDrag.x = event.clientX;
     this.modulationDrag.y = event.clientY;
 
+    // 边缘滚动
+    this.edgeScroll.update(event);
+
     // 清除之前的悬停样式
     this._clearHoverStyles();
     
@@ -220,6 +227,9 @@ export class ModulationManager {
     if (!this.modulationDrag.active) {
       return;
     }
+
+    // 停止边缘滚动
+    this.edgeScroll.stopScrolling();
 
     const drag = { ...this.modulationDrag };
     const targetControl = event.target?.closest?.(".control.control-slider[data-module-id][data-param-path]");

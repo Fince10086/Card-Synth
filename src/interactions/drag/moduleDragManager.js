@@ -1,3 +1,5 @@
+import { EdgeScrollManager } from "../edgeScrollManager.js";
+
 export class ModuleDragManager {
   constructor(app) {
     this.app = app;
@@ -16,6 +18,7 @@ export class ModuleDragManager {
       originalRect: null,
       targetIndex: -1,
     };
+    this.edgeScroll = new EdgeScrollManager();
   }
 
   initModuleDrag(event, card, moduleIndex) {
@@ -66,6 +69,9 @@ export class ModuleDragManager {
       card.setPointerCapture(this.dragState.pointerId);
       this.dragState.hasPointerCapture = true;
     }
+
+    // 边缘滚动
+    this.edgeScroll.update(event);
 
     const container = this.app.elements.signalFlow;
 
@@ -163,6 +169,9 @@ export class ModuleDragManager {
     if (!this.dragState.dragCard) {
       return;
     }
+
+    // 停止边缘滚动
+    this.edgeScroll.stopScrolling();
 
     const card = this.dragState.dragCard;
 
