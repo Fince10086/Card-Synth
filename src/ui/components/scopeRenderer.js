@@ -31,6 +31,7 @@ export function resizeScopeCanvas(canvas, context) {
   }
 
   canvasMetrics = { width, height };
+  cachedMainColor = null; // 窗口变化时刷新颜色缓存
 
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
@@ -151,20 +152,16 @@ function renderSpectrum(canvas, context, width, height, analyser, spectrumAnalys
     const barWidth = Math.max(0.5, binWidth - gap);
 
     for (let i = 0; i < safeBinsToRender; i++) {
-      let value = fftData[i];
-      if (typeof value === "number" && !isNaN(value)) {
-        value = Math.abs(value);
-        if (value > 0.001) {
-          const normalizedValue = Math.min(value / 128, 1);
-          const invertedValue = 1 - normalizedValue;
-          if (invertedValue > 0.01) {
-            const barHeight = invertedValue * height;
-            const x = i * binWidth;
-            const y = height - barHeight;
+      const db = fftData[i];
+      if (typeof db === "number" && !isNaN(db)) {
+        const normalized = Math.min(Math.max((db + 100) / 100, 0), 1);
+        if (normalized > 0.01) {
+          const barHeight = normalized * height;
+          const x = i * binWidth;
+          const y = height - barHeight;
 
-            context.fillStyle = getMainColor();
-            context.fillRect(x, y, barWidth, barHeight);
-          }
+          context.fillStyle = getMainColor();
+          context.fillRect(x, y, barWidth, barHeight);
         }
       }
     }
