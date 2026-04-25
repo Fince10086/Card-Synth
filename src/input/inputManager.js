@@ -184,6 +184,10 @@ export class InputManager {
       this.onOctaveChange(newOctave);
       this.onSetCustomPreset();
       this.updateTransportInfo();
+      if (!this.heldComputerKeys.has(key)) {
+        this.heldComputerKeys.set(key, null);
+        this.onUpdateKeyboardKeyState(key, true);
+      }
       return;
     }
 
@@ -214,14 +218,17 @@ export class InputManager {
 
   onKeyUp(event) {
     const key = event.key.toLowerCase();
-    const note = this.heldComputerKeys.get(key);
-    if (!note) {
+    if (!this.heldComputerKeys.has(key)) {
       return;
     }
 
+    const note = this.heldComputerKeys.get(key);
     this.heldComputerKeys.delete(key);
-    this.releaseNote(note);
     this.onUpdateKeyboardKeyState(key, false);
+
+    if (note) {
+      this.releaseNote(note);
+    }
   }
 
   pressNote(note, velocity) {

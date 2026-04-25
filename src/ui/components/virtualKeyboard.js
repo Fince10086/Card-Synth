@@ -61,6 +61,7 @@ export function renderKeyboard(
         el.className = "octave-btn";
         el.textContent = def.label;
         el.dataset.octave = String(def.delta);
+        el.dataset.key = def.delta === -1 ? "z" : "x";
       } else {
         el.className = def.type === "black" ? "black-key" : "white-key";
         el.dataset.key = def.key;

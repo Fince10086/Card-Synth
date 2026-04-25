@@ -979,7 +979,8 @@ select {
   }
 }
 
-.octave-btn:active {
+.octave-btn:active,
+.octave-btn.active {
   background: #d0d0d0;
   border-color: #a0a0a0;
 }
