@@ -11,6 +11,7 @@ export function createToggleControl({ label, value, onToggle, accent }) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `pill-button ${value ? "is-on" : ""}`;
+  button.setAttribute("tabindex", "-1");
   button.style.setProperty("--accent", `var(--${accent})`);
 
   const syncState = (nextValue) => {

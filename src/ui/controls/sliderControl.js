@@ -111,6 +111,7 @@ export function createSliderControl({
   input.step = String(step);
   input.value = String(actualToLinear(value));
   input.className = "slider-input";
+  input.setAttribute("tabindex", "-1");
 
   shell.append(input);
 

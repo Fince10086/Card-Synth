@@ -18,6 +18,7 @@ export function createAudioImportControl({ label, value, onSelect, onError }) {
   const trigger = document.createElement("button");
   trigger.type = "button";
   trigger.className = "action-button file-action";
+  trigger.setAttribute("tabindex", "-1");
   trigger.textContent = "Import";
 
   const input = document.createElement("input");

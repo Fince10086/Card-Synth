@@ -85,6 +85,17 @@ select {
   background: #ffffff;
   box-shadow: none;
   z-index: var(--z-base);
+  outline: none;
+}
+
+.module-card:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent, var(--ink)) 50%, transparent);
+  outline-offset: 2px;
+}
+
+.module-card.is-keyboard-active {
+  outline: 3px solid color-mix(in srgb, var(--accent, var(--ink)) 50%, transparent);
+  outline-offset: 2px;
 }
 
 /* 每种模块只通过 accent 变量切换颜色，不复制整套样式。 */
@@ -195,6 +206,11 @@ select {
 
 .add-module-card:hover {
   background: #f5f5f8;
+}
+
+.add-module-card:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ink) 50%, transparent);
+  outline-offset: 2px;
 }
 
 .add-module-card.active {

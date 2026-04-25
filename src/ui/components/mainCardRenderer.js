@@ -59,6 +59,7 @@ export function renderMainCard({
         badge.classList.add("is-disabled");
       }
 
+      badge.setAttribute("tabindex", "-1");
       badge.addEventListener("click", () => {
         onChainIndexClick?.(chainIndex, isSelected);
       });
@@ -118,6 +119,7 @@ export function renderMainCard({
     delBtn.className = "user-preset-delete";
     delBtn.textContent = "×";
     delBtn.title = "Delete preset";
+    delBtn.setAttribute("tabindex", "-1");
 
     delBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -137,6 +139,7 @@ export function renderMainCard({
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "pill-button";
+    btn.setAttribute("tabindex", "-1");
     btn.textContent = label;
 
     if (label === "Import") {
@@ -213,6 +216,7 @@ export function renderMainCard({
     const macroPoint = document.createElement("button");
     macroPoint.type = "button";
     macroPoint.className = "macro-point";
+    macroPoint.setAttribute("tabindex", "-1");
     if (point.selected) {
       macroPoint.classList.add("is-selected");
     }
@@ -238,6 +242,7 @@ export function renderMainCard({
     const button = document.createElement("button");
     button.type = "button";
     button.className = "macro-axis-handle";
+    button.setAttribute("tabindex", "-1");
     button.textContent = text;
     button.disabled = !selectedChainEnabled;
     button.setAttribute("aria-label", axis === "x" ? "Bind Macro X Axis" : "Bind Macro Y Axis");
@@ -253,6 +258,7 @@ export function renderMainCard({
   const gestureBtn = document.createElement("button");
   gestureBtn.type = "button";
   gestureBtn.className = "macro-gesture-btn";
+  gestureBtn.setAttribute("tabindex", "-1");
   gestureBtn.textContent = "Gesture";
   gestureBtn.addEventListener("click", () => {
     onGestureClick?.();
@@ -273,6 +279,8 @@ export function renderMainCard({
 
   const scopeCanvas = document.createElement("canvas");
   scopeCanvas.id = "oscilloscope";
+  scopeCanvas.setAttribute("tabindex", "-1");
+  scopeCanvas.setAttribute("aria-hidden", "true");
   scopeContainer.append(scopeCanvas);
   controls.append(scopeContainer);
 
@@ -308,6 +316,7 @@ export function updateMainCard(card, {
 
       // 替换点击事件以更新闭包
       const newBadge = badge.cloneNode(true);
+      newBadge.setAttribute("tabindex", "-1");
       newBadge.addEventListener("click", () => {
         onChainIndexClick?.(index, isSelected);
       });
@@ -326,6 +335,7 @@ export function updateMainCard(card, {
       const macroPoint = document.createElement("button");
       macroPoint.type = "button";
       macroPoint.className = "macro-point";
+      macroPoint.setAttribute("tabindex", "-1");
       if (point.selected) {
         macroPoint.classList.add("is-selected");
       }

@@ -120,6 +120,27 @@ export function renderModuleCard(module, index, app) {
       app.renderAll();
     },
     onRemove: () => {
+      // 删除前先保存前一个卡片的引用，以便重建后聚焦
+      const container = app.elements.signalFlow;
+      const currentCard = container?.querySelector(
+        `.module-card[data-module-ref="${module.id}"]`
+      );
+      if (currentCard) {
+        const prevCard = currentCard.previousElementSibling;
+        if (
+          prevCard &&
+          (prevCard.classList.contains("module-card") ||
+            prevCard.classList.contains("add-module-card"))
+        ) {
+          const ref =
+            prevCard.dataset.moduleRef ||
+            prevCard.dataset.mainCard ||
+            prevCard.id ||
+            "";
+          app.keyboardNavigation.setNextFocusTarget(ref);
+        }
+      }
+
       app.removeModuleModulations(module.id);
       app.macroManager.removeBindingsForModule(module.id);
       app.getCurrentModules().splice(index, 1);

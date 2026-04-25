@@ -27,6 +27,7 @@ import { MacroManager } from "../interactions/macro/macroManager.js";
 import { GestureManager } from "../interactions/gesture/gestureManager.js";
 import { ModuleDragManager } from "../interactions/drag/moduleDragManager.js";
 import { ENABLED as SOURCE_MONITOR_ENABLED, SourceOutputMonitor } from "../debug/sourceOutputMonitor.js";
+import { KeyboardNavigationManager } from "../input/keyboardNavigation.js";
 import {
   renderKeyboard,
   resizeScopeCanvas,
@@ -72,6 +73,7 @@ export class ModularSynthApp {
     this.gestureManager = new GestureManager(this);
     this.modulationManager = new ModulationManager(this);
     this.dragManager = new ModuleDragManager(this);
+    this.keyboardNavigation = new KeyboardNavigationManager();
     this.engine = new AudioEngine(this);
 
     this.inputManager = new InputManager({
@@ -209,6 +211,7 @@ export class ModularSynthApp {
     document.addEventListener("keydown", wakeAudio);
 
     this.inputManager.bindEvents();
+    this.keyboardNavigation.bind();
 
     this.populateAddModuleDropdown();
     this.elements.addModuleCard?.addEventListener("click", (e) => {
@@ -433,6 +436,7 @@ export class ModularSynthApp {
   }
 
   renderAll(previousState = null) {
+    this.keyboardNavigation.saveFocusState();
     this.populateAddModuleDropdown();
     this.controlBindings = new Map();
     this.macroManager.applyAllMappings();
@@ -473,6 +477,8 @@ export class ModularSynthApp {
     if (previousState) {
       this.animateControlTransition(previousState, this.state);
     }
+
+    this.keyboardNavigation.restoreFocusState(this.elements.signalFlow);
   }
 
   layoutModuleMasonry() {

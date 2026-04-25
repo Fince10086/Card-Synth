@@ -24,6 +24,7 @@ export function renderKeyboard(keyboardElement, state, inputManager, ensureAudio
       const key = document.createElement("button");
       key.type = "button";
       key.className = entry.black ? "black-key" : "white-key";
+      key.setAttribute("tabindex", "-1");
       key.dataset.key = entry.key;
       
       const cap = document.createElement("div");

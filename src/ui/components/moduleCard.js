@@ -4,6 +4,7 @@ export function createTitleSelect({ accent, title, value, options, onChange }) {
 
   const select = document.createElement("select");
   select.className = "module-title-input";
+  select.setAttribute("tabindex", "-1");
   options.forEach((option) => {
     const element = document.createElement("option");
     element.value = option.value;
@@ -48,6 +49,9 @@ export function createModuleCard({
 
   const card = document.createElement("section");
   card.className = "module-card";
+  card.setAttribute("tabindex", "0");
+  card.setAttribute("role", "region");
+  card.setAttribute("aria-label", isMainCard ? "Main controls" : `${title} module`);
   if (!enabled) {
     card.classList.add("disabled");
   }
@@ -98,6 +102,7 @@ export function createModuleCard({
     removeButton.type = "button";
     removeButton.className = "module-remove";
     removeButton.textContent = "×";
+    removeButton.setAttribute("tabindex", "-1");
     removeButton.addEventListener("click", onRemove);
     head.append(removeButton);
   }
@@ -118,6 +123,7 @@ export function createModuleCard({
     toggle.type = "button";
     toggle.className = `module-mod-toggle ${modulationEnabled ? "is-on" : ""}`;
     toggle.textContent = "◣";
+    toggle.setAttribute("tabindex", "-1");
     if (onToggleModulation) {
       toggle.addEventListener("click", onToggleModulation);
     }
@@ -128,6 +134,7 @@ export function createModuleCard({
     const anchor = document.createElement("button");
     anchor.type = "button";
     anchor.className = "module-mod-anchor";
+    anchor.setAttribute("tabindex", "-1");
     anchor.dataset.moduleId = moduleRef;
     anchor.addEventListener("pointerdown", (event) => {
       if (onModulationAnchorPointerDown) {

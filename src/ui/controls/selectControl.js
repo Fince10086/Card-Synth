@@ -10,6 +10,7 @@ export function createSelectControl({ label, options, value, onChange }) {
 
   const select = document.createElement("select");
   select.className = "select-input";
+  select.setAttribute("tabindex", "-1");
   options.forEach((option) => {
     const element = document.createElement("option");
     element.value = option.value;
