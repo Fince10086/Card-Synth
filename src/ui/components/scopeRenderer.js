@@ -1,9 +1,13 @@
 let currentAnimationId = null;
 let currentMode = null;
+let canvasMetrics = { width: 0, height: 0 };
+let cachedMainColor = null;
 
 function getMainColor() {
+  if (cachedMainColor) return cachedMainColor;
   const style = getComputedStyle(document.documentElement);
-  return style.getPropertyValue("--main").trim() || "#4b0082";
+  cachedMainColor = style.getPropertyValue("--main").trim() || "#4b0082";
+  return cachedMainColor;
 }
 
 export function resizeScopeCanvas(canvas, context) {
@@ -25,6 +29,8 @@ export function resizeScopeCanvas(canvas, context) {
   if (width <= 0 || height <= 0) {
     return;
   }
+
+  canvasMetrics = { width, height };
 
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
@@ -53,16 +59,7 @@ export function startScopeRendering({
       return;
     }
 
-    const rect = canvas.getBoundingClientRect();
-    const computedStyle = getComputedStyle(canvas);
-    const borderLeft = parseFloat(computedStyle.borderLeftWidth) || 0;
-    const borderRight = parseFloat(computedStyle.borderRightWidth) || 0;
-    const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
-    const borderBottom = parseFloat(computedStyle.borderBottomWidth) || 0;
-
-    const width = rect.width - borderLeft - borderRight;
-    const height = rect.height - borderTop - borderBottom;
-
+    const { width, height } = canvasMetrics;
     if (width <= 0 || height <= 0) {
       return;
     }
@@ -81,8 +78,6 @@ export function startScopeRendering({
       const spectrumAnalyser = getSpectrumAnalyserFn ? getSpectrumAnalyserFn() : null;
       renderSpectrum(canvas, context, width, height, analyser, spectrumAnalyser);
     } else {
-      context.fillStyle = "#ffffff";
-      context.fillRect(0, 0, width, height);
       renderOscilloscope(canvas, context, width, height, analyser);
     }
   }
@@ -137,9 +132,6 @@ function renderOscilloscope(canvas, context, width, height, analyser) {
 }
 
 function renderSpectrum(canvas, context, width, height, analyser, spectrumAnalyser) {
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, width, height);
-
   if (spectrumAnalyser) {
     const fftData = spectrumAnalyser.getValue();
     if (!fftData || fftData.length === 0) {
@@ -148,7 +140,7 @@ function renderSpectrum(canvas, context, width, height, analyser, spectrumAnalys
 
     const bufferLength = fftData.length;
     const sampleRate = analyser.context.sampleRate || 44100;
-    const nyquist = sampleRate;
+    const nyquist = sampleRate / 2;
     const targetFreq = 12000;
 
     const binsToRender = Math.floor((targetFreq / nyquist) * bufferLength);

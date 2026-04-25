@@ -62,6 +62,7 @@ export class ModularSynthApp {
 
     this.heldPointerNotes = new Set();
     this.keyboardResizeObserver = null;
+    this._keyboardLastWidth = 0;
 
     this.controlBindings = new Map();
 
@@ -659,32 +660,38 @@ export class ModularSynthApp {
       return;
     }
 
-    renderKeyboard(
-      keyboard,
-      this.state,
-      this.inputManager,
-      () => this.ensureAudioStarted(),
-      this.heldPointerNotes
-    );
+    const doRender = () =>
+      renderKeyboard(
+        keyboard,
+        this.state,
+        this.inputManager,
+        () => this.ensureAudioStarted(),
+        this.heldPointerNotes
+      );
 
-    if (this.keyboardResizeObserver) {
-      this.keyboardResizeObserver.disconnect();
+    doRender();
+
+    if (!this.keyboardResizeObserver) {
+      this.keyboardResizeObserver = new ResizeObserver((entries) => {
+        const newWidth = entries[0]?.contentRect?.width;
+        if (newWidth && newWidth !== this._keyboardLastWidth) {
+          this._keyboardLastWidth = newWidth;
+          const kb = document.getElementById("virtualKeyboard");
+          if (kb) {
+            renderKeyboard(
+              kb,
+              this.state,
+              this.inputManager,
+              () => this.ensureAudioStarted(),
+              this.heldPointerNotes
+            );
+          }
+        }
+      });
     }
 
-    let lastWidth = keyboard.clientWidth;
-    this.keyboardResizeObserver = new ResizeObserver((entries) => {
-      const newWidth = entries[0]?.contentRect?.width;
-      if (newWidth && newWidth !== lastWidth) {
-        lastWidth = newWidth;
-        renderKeyboard(
-          keyboard,
-          this.state,
-          this.inputManager,
-          () => this.ensureAudioStarted(),
-          this.heldPointerNotes
-        );
-      }
-    });
+    this._keyboardLastWidth = keyboard.clientWidth;
+    this.keyboardResizeObserver.disconnect();
     this.keyboardResizeObserver.observe(keyboard);
   }
 
