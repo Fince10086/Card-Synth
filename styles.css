@@ -86,7 +86,6 @@ select {
   box-shadow: none;
   z-index: var(--z-base);
   outline: none;
-  touch-action: none;
 }
 
 .module-card:focus-visible {
@@ -324,6 +323,7 @@ select {
     justify-content: center;
     cursor: pointer;
     user-select: none;
+    touch-action: none;
     z-index: var(--z-elevated);
 }
 
@@ -599,7 +599,6 @@ select {
   border-radius: 0;
   background: transparent;
   border: 0;
-  touch-action: none;
 }
 
 .slider-input {
