@@ -653,8 +653,9 @@ export class ModularSynthApp {
   }
 
   renderKeyboard() {
+    const keyboard = document.getElementById("virtualKeyboard");
     renderKeyboard(
-      this.elements.keyboard,
+      keyboard,
       this.state,
       this.inputManager,
       () => this.ensureAudioStarted(),
