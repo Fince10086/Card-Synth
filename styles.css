@@ -871,7 +871,7 @@ select {
 .virtual-keyboard {
   position: relative;
   flex: 1;
-  min-height: 60px;
+  min-height: 80px;
   padding: 0;
   border: none;
   background: transparent;
@@ -1055,14 +1055,31 @@ select {
 }
 
 .macro-axis-handle {
+  appearance: none;
   min-height: 28px;
   border: 1px solid #e0e2eb;
   border-radius: 4px;
   background: #ffffff;
-  color: var(--ink);
+  color: #181d6b;
+  font-weight: 500;
   font-size: 0.72rem;
   line-height: 1;
   cursor: grab;
+  transition:
+    transform var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition),
+    background var(--transition);
+}
+
+.macro-axis-handle:focus {
+  outline: none;
+  border-color: rgba(41, 33, 21, 0.24);
+  box-shadow: 0 0 0 4px rgba(61, 127, 184, 0.1);
+}
+
+.macro-axis-handle:hover {
+  border-color: #cad0de;
 }
 
 .macro-axis-handle:active {
@@ -1085,19 +1102,32 @@ select {
 }
 
 .macro-gesture-btn {
+  appearance: none;
   min-height: 28px;
   border: 1px solid #e0e2eb;
   border-radius: 4px;
   background: #ffffff;
-  color: var(--ink);
+  color: #181d6b;
+  font-weight: 500;
   font-size: 0.72rem;
   line-height: 1;
   cursor: pointer;
   margin-top: 6px;
+  transition:
+    transform var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition),
+    background var(--transition);
+}
+
+.macro-gesture-btn:focus {
+  outline: none;
+  border-color: rgba(41, 33, 21, 0.24);
+  box-shadow: 0 0 0 4px rgba(61, 127, 184, 0.1);
 }
 
 .macro-gesture-btn:hover {
-  background: #f5f5f7;
+  border-color: #cad0de;
 }
 
 .gesture-overlay {
