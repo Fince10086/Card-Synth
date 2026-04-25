@@ -815,12 +815,13 @@ export function createSourceRuntime({
           if (voice.frequencyOffsetParam) {
             rampParam(voice.frequencyOffsetParam, getFrequencyOffset());
           }
-          if (moduleState.modulationMode && voice.node.frequency) {
-            if (moduleState.midiOn && voice.note) {
-              const nextFrequency = getBaseFrequencyForNote(voice.note);
-              voice.frequencyBaseSignal?.rampTo(nextFrequency, 0.02);
-            } else if (!moduleState.midiOn) {
-              voice.frequencyBaseSignal?.rampTo(getModulationFrequency(), 0.02);
+          if (voice.node.frequency && voice.frequencyBaseSignal) {
+            if (!moduleState.midiOn) {
+              // 固定频率模式（调制或非调制）：实时更新
+              voice.frequencyBaseSignal.rampTo(getModulationFrequency(), 0.02);
+            } else if (moduleState.modulationMode && voice.note) {
+              // 调制模式 + MIDI On：跟踪音符
+              voice.frequencyBaseSignal.rampTo(getBaseFrequencyForNote(voice.note), 0.02);
             }
           }
         } else if (definition.runtime === "noise") {
@@ -942,7 +943,7 @@ export function createSourceRuntime({
 
       if (definition.runtime === "pitchedSource") {
         if (sourceNode.frequency) {
-          const useMidiPitch = !moduleState.modulationMode || moduleState.midiOn;
+          const useMidiPitch = moduleState.midiOn !== false;
           const nextFrequency = useMidiPitch
             ? getBaseFrequencyForNote(note)
             : getModulationFrequency();

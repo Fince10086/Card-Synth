@@ -93,7 +93,7 @@ export function createSourceModule(type = "Oscillator") {
     volume: -8,
     pan: 0,
     modulationMode: false,
-    midiOn: false,
+    midiOn: true,
     index: moduleCounter - 1,
     ...(definition.moduleDefaults ? deepClone(definition.moduleDefaults) : {}),
     options,

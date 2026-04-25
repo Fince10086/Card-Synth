@@ -38,18 +38,14 @@ function getRenderableControls(module, controls) {
     return controls.filter((control) => !control.conditional || control.conditional(module));
   }
 
-  if (!module.modulationMode) {
-    return controls.filter((control) => !control.conditional || control.conditional(module));
-  }
-
   return controls
-    .map((control) => (control.path === "volume" ? MODULATION_DEPTH_CONTROL : control))
+    .map((control) => (module.modulationMode && control.path === "volume" ? MODULATION_DEPTH_CONTROL : control))
     .filter((control) => {
       // 调制模式下隐藏 pan
-      if (control.path === "pan") return false;
+      if (module.modulationMode && control.path === "pan") return false;
       // 条件性显示：octave 在 midiOn 时显示
       if (control.path === "options.octave") return module.midiOn;
-      // 条件性显示：frequency 在 modulationMode 且 !midiOn 时显示
+      // 条件性显示：frequency 在 !midiOn 时显示
       if (control.path === "options.frequency") return !module.midiOn;
       // 其他控件检查 conditional 函数
       if (control.conditional && !control.conditional(module)) return false;
@@ -137,7 +133,6 @@ export function renderModuleCard(module, index, app) {
       module.modulationMode = !module.modulationMode;
       if (!module.modulationMode) {
         app.removeOutgoingModulations(module.id);
-        module.midiOn = false;
       }
       app.markUnsaved();
       app.renderAll();
@@ -181,7 +176,6 @@ export function renderModuleCard(module, index, app) {
 
   if (
     module.category === "source" &&
-    module.modulationMode &&
     (module.type === "Oscillator" || module.type === "PulseOscillator")
   ) {
     controls.append(
@@ -248,12 +242,22 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
     });
   }
 
+  // 动态调整 frequency 滑块范围：非调制模式下扩展为 20-20000Hz
+  let controlMin = control.min;
+  let controlMax = control.max;
+  let controlStep = control.step;
+  if (control.path === "options.frequency" && module.category === "source" && !module.modulationMode) {
+    controlMin = 20;
+    controlMax = 20000;
+    controlStep = 1;
+  }
+
   return createSliderControl({
     label: control.label,
     accent,
-    min: control.min,
-    max: control.max,
-    step: control.step,
+    min: controlMin,
+    max: controlMax,
+    step: controlStep,
     value,
     path: bindingPath,
     controlBindings: app.controlBindings,
