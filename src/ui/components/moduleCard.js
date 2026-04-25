@@ -108,17 +108,6 @@ export function createModuleCard({
     outputLevelDisplay = document.createElement("span");
     outputLevelDisplay.className = "module-output-level";
     outputLevelDisplay.textContent = "-∞";
-    outputLevelDisplay.style.cssText = `
-      font-family: monospace;
-      font-size: 10px;
-      background: rgba(0,0,0,0.1);
-      padding: 2px 6px;
-      border-radius: 3px;
-      color: #666;
-      margin-left: 8px;
-      min-width: 40px;
-      text-align: right;
-    `;
     head.append(outputLevelDisplay);
   }
 

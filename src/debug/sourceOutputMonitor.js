@@ -37,6 +37,20 @@ export class SourceOutputMonitor {
     this.frameId = requestAnimationFrame(() => this.tick());
   }
 
+  getLevelClass(value) {
+    if (value > 0) {
+      if (value > 0.8) return "output-level--high-positive";
+      if (value > 0.5) return "output-level--medium-positive";
+      if (value > 0.1) return "output-level--low-positive";
+      return "output-level--near-zero";
+    } else {
+      if (value < -0.8) return "output-level--high-negative";
+      if (value < -0.5) return "output-level--medium-negative";
+      if (value < -0.1) return "output-level--low-negative";
+      return "output-level--near-zero";
+    }
+  }
+
   update() {
     const app = this.app;
     if (!app.engine?.ready) return;
@@ -62,19 +76,7 @@ export class SourceOutputMonitor {
           );
           if (card?.outputLevelDisplay) {
             card.outputLevelDisplay.textContent = displayValue;
-
-            // 颜色编码
-            if (value > 0) {
-              if (value > 0.8) card.outputLevelDisplay.style.color = "#d32f2f";
-              else if (value > 0.5) card.outputLevelDisplay.style.color = "#f57c00";
-              else if (value > 0.1) card.outputLevelDisplay.style.color = "#388e3c";
-              else card.outputLevelDisplay.style.color = "#2196f3";
-            } else {
-              if (value < -0.8) card.outputLevelDisplay.style.color = "#d32f2f";
-              else if (value < -0.5) card.outputLevelDisplay.style.color = "#f57c00";
-              else if (value < -0.1) card.outputLevelDisplay.style.color = "#388e3c";
-              else card.outputLevelDisplay.style.color = "#9c27b0";
-            }
+            card.outputLevelDisplay.className = `module-output-level ${this.getLevelClass(value)}`;
           }
         }
       });

@@ -12,6 +12,21 @@
   --black-key: #2b2b31;
   --main: #4b0082;
   --transition: 180ms ease;
+
+  /* z-index 层级系统 */
+  --z-base: 1;
+  --z-elevated: 5;
+  --z-dropdown: 100;
+  --z-drag-indicator: 100;
+  --z-overlay: 1000;
+  --z-drag: 1001;
+
+  /* 状态颜色 */
+  --danger: #d32f2f;
+  --warning: #f57c00;
+  --success: #388e3c;
+  --info: #2196f3;
+  --info-alt: #9c27b0;
 }
 
 /* 统一盒模型，减少复杂布局中的尺寸计算偏差。 */
@@ -44,11 +59,6 @@ select {
   padding: 20px;
 }
 
-/* 当前主布局由绝对定位的瀑布流卡片驱动，这里仅保留块级上下文。 */
-.workspace-layout {
-  display: block;
-}
-
 .workspace-main {
   min-width: 0;
 }
@@ -60,29 +70,9 @@ select {
   padding-bottom: 8px;
 }
 
-.title-block h1,
-.stage-header h2,
-.panel-header h2 {
-  margin: 4px 0 0;
-  font-family: "IBM Plex Sans", sans-serif;
-  letter-spacing: -0.04em;
-}
-
-.title-block h1 {
-  font-size: clamp(1.2rem, 2vw, 1.7rem);
-  line-height: 1;
-  font-weight: 600;
-}
-
-.panel {
-  background: #ffffff;
-  box-shadow: none;
-}
-
 .signal-flow {
   position: relative;
   display: block;
-  gap: 10px;
   min-width: 0;
   padding: 2px 0 8px;
 }
@@ -96,7 +86,7 @@ select {
   border-radius: 0;
   background: #ffffff;
   box-shadow: none;
-  z-index: 1;
+  z-index: var(--z-base);
 }
 
 /* 每种模块只通过 accent 变量切换颜色，不复制整套样式。 */
@@ -146,7 +136,7 @@ select {
   position: absolute;
   left: 3px;
   bottom: 3px;
-  z-index: 2;
+  z-index: calc(var(--z-base) + 1);
   width: 10px;
   height: 10px;
   border-radius: 999px;
@@ -161,7 +151,7 @@ select {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 3;
+  z-index: calc(var(--z-base) + 2);
   overflow: visible;
 }
 
@@ -201,7 +191,7 @@ select {
   box-shadow: none;
   cursor: pointer;
   transition: background 0.2s;
-  z-index: 1;
+  z-index: var(--z-base);
   min-height: 100px;
 }
 
@@ -245,7 +235,7 @@ select {
   max-height: 300px;
   overflow-y: auto;
   display: none;
-  z-index: 200;
+  z-index: var(--z-dropdown);
   min-width: 180px;
 }
 
@@ -318,7 +308,7 @@ select {
     justify-content: center;
     cursor: pointer;
     user-select: none;
-    z-index: 5;
+    z-index: var(--z-elevated);
 }
 
 .module-head--main {
@@ -423,7 +413,7 @@ select {
 .module-card.dragging {
   position: fixed;
   opacity: 0.9;
-  z-index: 1000;
+  z-index: var(--z-overlay);
   pointer-events: none;
 }
 
@@ -434,7 +424,7 @@ select {
   bottom: 0;
   width: 3px;
   background: #8a8a8a;
-  z-index: 100;
+  z-index: var(--z-drag-indicator);
   pointer-events: none;
 }
 
@@ -444,10 +434,6 @@ select {
   gap: 10px;
   align-items: start;
   padding: 20px 20px 25px 20px;
-}
-
-.module-grid.compact {
-  grid-template-columns: 1fr;
 }
 
 /* 所有控制都采用“标签 + 读数 + 控件本体”的一致结构。 */
@@ -644,7 +630,7 @@ select {
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
-  z-index: 2;
+  z-index: calc(var(--z-base) + 1);
 }
 
 .mod-range-bracket,
@@ -678,11 +664,6 @@ select {
   line-height: 1;
   cursor: ew-resize;
   user-select: none;
-  transform: translateX(-50%);
-}
-
-.macro-range-marker--start,
-.macro-range-marker--end {
   transform: translateX(-50%);
 }
 
@@ -916,7 +897,7 @@ select {
   color: #f3f6fb;
   border: 1px solid #272b33;
   box-shadow: none;
-  z-index: 2;
+  z-index: calc(var(--z-base) + 1);
 }
 
 .white-key.active {
@@ -1104,7 +1085,7 @@ select {
 .gesture-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-overlay);
   background: rgba(255, 255, 255, 0.9);
   display: flex;
   align-items: center;
@@ -1119,11 +1100,11 @@ select {
 }
 
 .gesture-canvas-static {
-  z-index: 1;
+  z-index: var(--z-base);
 }
 
 .gesture-canvas-dynamic {
-  z-index: 2;
+  z-index: calc(var(--z-base) + 1);
 }
 
 .gesture-close-btn {
@@ -1143,7 +1124,7 @@ select {
   justify-content: center;
   padding: 0;
   user-select: none;
-  z-index: 10;
+  z-index: calc(var(--z-elevated) + 5);
 }
 
 .gesture-close-btn:hover {
@@ -1158,5 +1139,33 @@ select {
   font-size: 20px;
   font-weight: bold;
   pointer-events: none;
+}
+
+/* ==================== 模块输出电平显示 ==================== */
+.module-output-level {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #666;
+  margin-left: 8px;
+  min-width: 40px;
+  text-align: right;
+  display: inline-block;
+  transition: color 0.15s ease;
+}
+
+.output-level--high-positive { color: var(--danger); }
+.output-level--medium-positive { color: var(--warning); }
+.output-level--low-positive { color: var(--success); }
+.output-level--near-zero { color: var(--info); }
+.output-level--low-negative { color: var(--success); }
+.output-level--medium-negative { color: var(--warning); }
+.output-level--high-negative { color: var(--danger); }
+
+/* ==================== 工具类 ==================== */
+.is-hidden {
+  display: none !important;
 }
 
