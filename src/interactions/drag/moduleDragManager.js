@@ -42,6 +42,8 @@ export class ModuleDragManager {
       offsetY: event.clientY - rect.top,
       originalRect: rect,
       targetIndex: -1,
+      initialScrollX: window.scrollX,
+      initialScrollY: window.scrollY,
     };
 
     card.addEventListener("pointermove", this.handleDragMove.bind(this));
@@ -75,9 +77,13 @@ export class ModuleDragManager {
 
     const container = this.app.elements.signalFlow;
 
+    // 补偿页面滚动偏移，保持卡片与指针相对静止
+    const scrollDeltaX = window.scrollX - (this.dragState.initialScrollX || 0);
+    const scrollDeltaY = window.scrollY - (this.dragState.initialScrollY || 0);
+
     card.classList.add("dragging");
-    card.style.left = `${event.clientX - this.dragState.offsetX}px`;
-    card.style.top = `${event.clientY - this.dragState.offsetY}px`;
+    card.style.left = `${event.clientX - this.dragState.offsetX + scrollDeltaX}px`;
+    card.style.top = `${event.clientY - this.dragState.offsetY + scrollDeltaY}px`;
 
     const containerRect = container.getBoundingClientRect();
     const isOutsideContainer =
@@ -223,6 +229,8 @@ export class ModuleDragManager {
       startY: 0,
       offsetX: 0,
       offsetY: 0,
+      initialScrollX: 0,
+      initialScrollY: 0,
       placeholder: null,
     };
   }
