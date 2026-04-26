@@ -268,12 +268,16 @@ function parseGestures(results, now = performance.now()) {
     hands,
   };
 
-    // ----- 左手捏合检测（控制增益） -----
-  // 仅在手心朝摄像头（正手）时检测捏合；反手（手背朝摄像头）强制释放
-  if (leftHand && now > cooldowns.leftPinch && isPalmFacing(leftHand.landmarks)) {
+  // ----- 左手捏合检测（控制增益） -----
+  if (leftHand && now > cooldowns.leftPinch) {
     const pinchDist = getPinchDistance(leftHand.landmarks);
     const wasPinching = pinchState.left;
-    const isPinching = updatePinchState("left", pinchDist);
+    let isPinching = updatePinchState("left", pinchDist);
+    // 只在开始新的捏合时检查正反手；已在捏合中则保持，不因 z 值抖动而中断
+    if (isPinching && !wasPinching && !isPalmFacing(leftHand.landmarks)) {
+      pinchState.left = false;
+      isPinching = false;
+    }
     if (isPinching) {
       gestures.leftPinch = true;
       const center = getPinchCenter(leftHand.landmarks);
@@ -289,11 +293,15 @@ function parseGestures(results, now = performance.now()) {
   }
 
   // ----- 右手捏合检测（控制位置） -----
-  // 仅在手心朝摄像头（正手）时检测捏合；反手（手背朝摄像头）强制释放
-  if (rightHand && now > cooldowns.rightPinch && isPalmFacing(rightHand.landmarks)) {
+  if (rightHand && now > cooldowns.rightPinch) {
     const pinchDist = getPinchDistance(rightHand.landmarks);
     const wasPinching = pinchState.right;
-    const isPinching = updatePinchState("right", pinchDist);
+    let isPinching = updatePinchState("right", pinchDist);
+    // 只在开始新的捏合时检查正反手；已在捏合中则保持，不因 z 值抖动而中断
+    if (isPinching && !wasPinching && !isPalmFacing(rightHand.landmarks)) {
+      pinchState.right = false;
+      isPinching = false;
+    }
     if (isPinching) {
       gestures.rightPinch = true;
       const center = getPinchCenter(rightHand.landmarks);
