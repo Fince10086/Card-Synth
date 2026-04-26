@@ -287,6 +287,8 @@ export function renderMainCard({
   const keyboard = document.createElement("div");
   keyboard.id = "virtualKeyboard";
   keyboard.className = "virtual-keyboard";
+  keyboard.setAttribute("aria-hidden", "true");
+  keyboard.setAttribute("tabindex", "-1");
   controls.append(keyboard);
 
   card.append(controls);

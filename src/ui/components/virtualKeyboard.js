@@ -53,9 +53,8 @@ export function renderKeyboard(
 
     // 统一创建所有元素
     KEYBOARD_DEF.forEach((def) => {
-      const el = document.createElement("button");
-      el.type = "button";
-      el.setAttribute("tabindex", "-1");
+      const el = document.createElement("div");
+      el.setAttribute("aria-hidden", "true");
 
       if (def.type === "octave") {
         el.className = "octave-btn";
