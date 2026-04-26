@@ -268,8 +268,9 @@ function parseGestures(results, now = performance.now()) {
     hands,
   };
 
-  // ----- 左手捏合检测（控制增益） -----
-  if (leftHand && now > cooldowns.leftPinch) {
+    // ----- 左手捏合检测（控制增益） -----
+  // 仅在手心朝摄像头（正手）时检测捏合；反手（手背朝摄像头）强制释放
+  if (leftHand && now > cooldowns.leftPinch && isPalmFacing(leftHand.landmarks)) {
     const pinchDist = getPinchDistance(leftHand.landmarks);
     const wasPinching = pinchState.left;
     const isPinching = updatePinchState("left", pinchDist);
@@ -288,7 +289,8 @@ function parseGestures(results, now = performance.now()) {
   }
 
   // ----- 右手捏合检测（控制位置） -----
-  if (rightHand && now > cooldowns.rightPinch) {
+  // 仅在手心朝摄像头（正手）时检测捏合；反手（手背朝摄像头）强制释放
+  if (rightHand && now > cooldowns.rightPinch && isPalmFacing(rightHand.landmarks)) {
     const pinchDist = getPinchDistance(rightHand.landmarks);
     const wasPinching = pinchState.right;
     const isPinching = updatePinchState("right", pinchDist);
@@ -319,6 +321,19 @@ function parseGestures(results, now = performance.now()) {
 }
 
 // ==================== 几何与状态辅助函数 ====================
+
+/**
+ * 判断手掌是否朝向摄像头（正手）。
+ * 基于手掌中心点（middle_mcp, landmark 9）的 z 深度：
+ * MediaPipe 中 z 坐标以 wrist 为参考，正值表示更靠近摄像头。
+ * z >= 0 时判定为正手（手心朝摄像头）；z < 0 时为反手（手背朝摄像头）。
+ * 侧向手（z ≈ 0）按正手处理，方便后续单独调整阈值。
+ * @param {Array<{x:number, y:number, z:number}>} landmarks - 单手的 21 个关键点
+ * @returns {boolean} 是否正手（手心朝摄像头）
+ */
+function isPalmFacing(landmarks) {
+  return landmarks[9].z >= 0;
+}
 
 /**
  * 计算拇指指尖（landmark 4）与食指指尖（landmark 8）的欧几里得距离。
