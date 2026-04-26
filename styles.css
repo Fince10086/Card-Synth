@@ -130,11 +130,21 @@ select {
   border: 0;
   background: transparent;
   color: var(--accent);
-  font-size: 30px;
   cursor: pointer;
   line-height: 1;
   padding: 0;
   user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+}
+
+.module-mod-toggle svg {
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
 }
 
 .module-mod-toggle.is-on {

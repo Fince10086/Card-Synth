@@ -122,7 +122,14 @@ export function createModuleCard({
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = `module-mod-toggle ${modulationEnabled ? "is-on" : ""}`;
-    toggle.textContent = "◣";
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", "24");
+    svg.setAttribute("height", "24");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", "/icons.svg#mod-toggle");
+    svg.appendChild(use);
+    toggle.appendChild(svg);
     toggle.setAttribute("tabindex", "-1");
     if (onToggleModulation) {
       toggle.addEventListener("click", onToggleModulation);
