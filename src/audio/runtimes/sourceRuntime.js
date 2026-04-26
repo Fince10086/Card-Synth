@@ -34,6 +34,17 @@ export function createSourceRuntime({
   const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
   let moduleState = deepClone(module);
 
+  // 为 Player 预加载共享 buffer，避免每个 voice 重复异步加载
+  let sharedPlayerBuffer = null;
+  if (definition.runtime === "player" && moduleState.options?.url) {
+    try {
+      sharedPlayerBuffer = new Tone.Buffer(moduleState.options.url);
+      console.log(`[Player] Preloading buffer: ${moduleState.options.url}`);
+    } catch (e) {
+      console.warn(`[Player] Failed to preload buffer: ${e.message}`);
+    }
+  }
+
   // 常量定义
   const VOICE_COUNT = 8;
   const VOICE_INDEX_RESERVE_SECONDS = 10;
@@ -241,9 +252,15 @@ export function createSourceRuntime({
       node.start();
     } else if (definition.runtime === "player") {
       const nodeOptions = getNodeOptions(moduleState.options, ["gain", "frequencyOffset"]);
-      node = new Tone.Player(nodeOptions);
+      // 使用预加载的共享 buffer 避免重复异步加载
+      if (sharedPlayerBuffer) {
+        node = new Tone.Player(sharedPlayerBuffer);
+      } else {
+        node = new Tone.Player(nodeOptions);
+      }
       applyPlayerLikeOptions(node, nodeOptions);
       node.connect(connectTarget);
+      console.log(`[Player] createSourceNode: loaded=${node.loaded}, hasSharedBuffer=${!!sharedPlayerBuffer}`);
     } else {
       node = new Tone.Oscillator(getNodeOptions(moduleState.options, ["gain", "frequencyOffset"]));
       node.connect(connectTarget);
@@ -264,8 +281,10 @@ export function createSourceRuntime({
   const initVoice = (index) => {
     const voice = voices[index];
     if (voice.initialized) {
+      console.log(`[Player] initVoice(${index}): already initialized`);
       return voice;
     }
+    console.log(`[Player] initVoice(${index}): initializing new voice`);
 
     const volumeNode = new Tone.Gain(getSourceOutputGain());
     const isModulationMode = moduleState.modulationMode;
@@ -475,6 +494,7 @@ export function createSourceRuntime({
    */
   const refreshVoiceLifecycle = (voice, now = Tone.now()) => {
     if (voice.state === VOICE_STATE.RELEASING && now >= voice.releaseEndTime) {
+      console.log(`[Player] voice lifecycle: RELEASING->IDLE voice=${voices.indexOf(voice)} now=${now.toFixed(3)} releaseEndTime=${voice.releaseEndTime.toFixed(3)}`);
       voice.state = VOICE_STATE.IDLE;
       voice.releaseEndTime = 0;
       voice.idleSince = now;
@@ -484,6 +504,7 @@ export function createSourceRuntime({
       // 变为 IDLE 后立即 dispose 节点
       // 注意：调制模式下不 dispose，保持调制波一直运行
       if (voice.node && !moduleState.modulationMode) {
+        console.log(`[Player] disposeVoiceNode voice=${voices.indexOf(voice)}`);
         disposeVoiceNode(voice);
         voice.initialized = false;
       }
@@ -591,6 +612,8 @@ export function createSourceRuntime({
 
     const isLastNote = hadAssignedNote && voices.filter((v, i) => i !== voiceIndex && v.initialized && v.note !== null).length === 0;
 
+    console.log(`[Player] releaseVoice voice=${voiceIndex} hadNote=${hadAssignedNote} isLastNote=${isLastNote} state=${voice.state} hasAmpEnv=${runtime.hasAmpEnv} needsExt=${runtime.needsExtendedRelease}`);
+
     voice.note = null;
 
     // 对于调制模式下的 Source，跳过 hiddenAmpEnv 的 Release
@@ -652,6 +675,7 @@ export function createSourceRuntime({
   const findAvailableVoice = () => {
     const now = Tone.now();
     refreshAllVoiceLifecycles(now);
+    console.log(`[Player] findAvailableVoice: states=${voices.map((v, i) => `v${i}:${v.state}${v.note ? ':' + v.note : ''}`).join(', ')}`);
 
     // 检查是否有且只有一个 voice 处于 extended release 状态（可打断）
     if (runtime.needsExtendedRelease) {
@@ -795,8 +819,24 @@ export function createSourceRuntime({
      * @param {Object} nextModule - 新的模块状态
      */
     apply: (nextModule) => {
+      const prevUrl = moduleState.options?.url;
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
+
+      // Player: 如果 url 改变，更新共享 buffer
+      if (definition.runtime === "player" && moduleState.options?.url !== prevUrl) {
+        if (sharedPlayerBuffer) {
+          sharedPlayerBuffer.dispose();
+          sharedPlayerBuffer = null;
+        }
+        if (moduleState.options?.url) {
+          try {
+            sharedPlayerBuffer = new Tone.Buffer(moduleState.options.url);
+            console.log(`[Player] Buffer updated`);
+          }
+        }
+      }
+
       refreshAllVoiceLifecycles();
       voices.forEach((voice) => {
         if (!voice.initialized) {
@@ -949,7 +989,9 @@ export function createSourceRuntime({
           voice.frequencyBaseSignal?.rampTo(nextFrequency, 0.02);
         }
       } else if (definition.runtime === "player") {
+        console.log(`[Player] triggerAttack note=${note} voice=${index} loaded=${sourceNode.loaded}`);
         if (!sourceNode.loaded) {
+          console.log(`[Player] triggerAttack FAILED: voice=${index} not loaded`);
           releaseVoice(voice, index, now);
           return -1;
         }
@@ -1038,6 +1080,11 @@ export function createSourceRuntime({
           disposeVoiceNode(voice);
         }
       });
+      // 释放共享 buffer
+      if (sharedPlayerBuffer) {
+        sharedPlayerBuffer.dispose();
+        sharedPlayerBuffer = null;
+      }
     },
   };
 
