@@ -257,10 +257,48 @@ export function rampParam(param, value, time = 0.12) {
   if (!param) {
     return;
   }
+
+  // 获取参数的有效范围
+  const minValue = param.minValue ?? -Infinity;
+  const maxValue = param.maxValue ?? Infinity;
+
+  // 检查范围是否有效（min === max 是无效范围）
+  if (minValue === maxValue) {
+    // 范围无效，直接设置值而不使用 rampTo
+    if ("value" in param) {
+      param.value = Math.max(minValue, Math.min(maxValue, value));
+    }
+    return;
+  }
+
+  // 将值钳制到有效范围内
+  const clampedValue = Math.max(minValue, Math.min(maxValue, value));
+
   if (typeof param.rampTo === "function") {
-    param.rampTo(value, time);
+    // 检查值是否接近0，如果是则使用线性渐变而不是指数渐变
+    // 因为 exponentialRampToValueAtTime 不能 ramp 到 0
+    const isNearZero = Math.abs(clampedValue) < 1e-10;
+    
+    if (isNearZero && typeof param.linearRampTo === "function") {
+      // 使用线性渐变到接近0的值
+      param.linearRampTo(0, time);
+    } else if (isNearZero && typeof param.linearRampToValueAtTime === "function") {
+      // 直接使用 AudioParam 的线性渐变
+      const now = param.context?.currentTime ?? 0;
+      param.linearRampToValueAtTime(0, now + time);
+    } else {
+      // 正常使用 rampTo（通常是指数渐变）
+      try {
+        param.rampTo(clampedValue, time);
+      } catch (e) {
+        // 如果 rampTo 失败（比如范围错误），直接设置值
+        if ("value" in param) {
+          param.value = clampedValue;
+        }
+      }
+    }
   } else if ("value" in param) {
-    param.value = value;
+    param.value = clampedValue;
   }
 }
 

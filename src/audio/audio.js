@@ -121,7 +121,7 @@ export class AudioEngine {
   }
 
   rebuildSignalChains() {
-    console.log("[AudioEngine] Rebuilding signal chains...");
+    console.log("[Audio] Rebuilding signal chains...");
     if (!this.masterVolume) {
       return;
     }

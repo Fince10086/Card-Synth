@@ -781,7 +781,6 @@ export function createSourceRuntime({
       if (!voice || !voice.initialized) {
         return null;
       }
-      console.log(`[VoiceManager] getModulationOutput: voice=${voiceIndex}, note=${voice.note}, modFreq=${voice.frequencyBaseSignal?.value?.toFixed?.(2) || 'N/A'}`);
       return voice.panNode || voice.volumeNode;
     },
 

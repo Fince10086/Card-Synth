@@ -694,10 +694,6 @@ export class ModulationManager {
         }
       }
     });
-
-    if (connectedCount > 0) {
-      console.log(`[ModulationManager] Connected ${connectedCount} modulation(s) for voice ${voiceIndex} of module ${moduleId}`);
-    }
   }
 
   /**
@@ -755,10 +751,6 @@ export class ModulationManager {
     toRemove.sort((a, b) => b - a).forEach((index) => {
       this.modulationRuntimes.splice(index, 1);
     });
-
-    if (toRemove.length > 0) {
-      console.log(`[ModulationManager] Disconnected ${toRemove.length} modulation(s) for voice ${voiceIndex} of module ${moduleId}`);
-    }
   }
 
   /**
