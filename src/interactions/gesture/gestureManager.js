@@ -42,6 +42,8 @@ export class GestureManager {
     this.recognizer = new HandGestureRecognizer();
     /** 手势系统是否处于激活状态 */
     this.active = false;
+    /** 是否正在激活中（防止加载过程中重复触发） */
+    this.activating = false;
 
     // ==================== DOM 与画布 ====================
     /** @type {HTMLDivElement|null} 覆盖层容器 */
@@ -172,7 +174,8 @@ export class GestureManager {
    * 若过程中出错，将在控制台打印错误并在应用状态栏提示。
    */
   async activate() {
-    if (this.active) return;
+    if (this.active || this.activating) return;
+    this.activating = true;
     try {
       await this.recognizer.initialize();
       await this.recognizer.startCamera();
@@ -189,6 +192,8 @@ export class GestureManager {
     } catch (err) {
       console.error("Gesture activation failed:", err);
       this.app.setStatus?.(`Gesture failed: ${err.message}`, "error");
+    } finally {
+      this.activating = false;
     }
   }
 
