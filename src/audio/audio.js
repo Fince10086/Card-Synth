@@ -129,7 +129,6 @@ export class AudioEngine {
   }
 
   rebuildSignalChains() {
-    console.log("[Audio] Rebuilding signal chains...");
     if (!this.masterVolume) {
       return;
     }
@@ -254,7 +253,7 @@ export class AudioEngine {
       return;
     }
 
-    console.log(`[AudioEngine] attack note=${note} vel=${velocity}`);
+
     this.activeNotes.add(note);
 
     // 对于有 source-to-source 调制的 chain，统一分配 voice index
@@ -331,9 +330,7 @@ export class AudioEngine {
       }
 
       if ((runtime.category === "source" || runtime.category === "modulation-envelope") && runtime.triggerAttack) {
-        console.log(`[AudioEngine] triggerAttack on chain=${chainIndex} module=${moduleId} type=${runtime.type}`);
-        const voiceIdx = runtime.triggerAttack(note, velocity);
-        console.log(`[AudioEngine] triggerAttack result voiceIdx=${voiceIdx}`);
+        runtime.triggerAttack(note, velocity);
       }
     });
 

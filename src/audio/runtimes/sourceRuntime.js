@@ -39,9 +39,8 @@ export function createSourceRuntime({
   if (definition.runtime === "player" && moduleState.options?.url) {
     try {
       sharedPlayerBuffer = new Tone.Buffer(moduleState.options.url);
-      console.log(`[Player] Preloading buffer: ${moduleState.options.url}`);
-    } catch (e) {
-      console.warn(`[Player] Failed to preload buffer: ${e.message}`);
+    } catch {
+      // 静默忽略 buffer 预加载失败
     }
   }
 
@@ -260,7 +259,6 @@ export function createSourceRuntime({
       }
       applyPlayerLikeOptions(node, nodeOptions);
       node.connect(connectTarget);
-      console.log(`[Player] createSourceNode: loaded=${node.loaded}, hasSharedBuffer=${!!sharedPlayerBuffer}`);
     } else {
       node = new Tone.Oscillator(getNodeOptions(moduleState.options, ["gain", "frequencyOffset"]));
       node.connect(connectTarget);
@@ -281,10 +279,8 @@ export function createSourceRuntime({
   const initVoice = (index) => {
     const voice = voices[index];
     if (voice.initialized) {
-      console.log(`[Player] initVoice(${index}): already initialized`);
       return voice;
     }
-    console.log(`[Player] initVoice(${index}): initializing new voice`);
 
     const volumeNode = new Tone.Gain(getSourceOutputGain());
     const isModulationMode = moduleState.modulationMode;
@@ -494,7 +490,6 @@ export function createSourceRuntime({
    */
   const refreshVoiceLifecycle = (voice, now = Tone.now()) => {
     if (voice.state === VOICE_STATE.RELEASING && now >= voice.releaseEndTime) {
-      console.log(`[Player] voice lifecycle: RELEASING->IDLE voice=${voices.indexOf(voice)} now=${now.toFixed(3)} releaseEndTime=${voice.releaseEndTime.toFixed(3)}`);
       voice.state = VOICE_STATE.IDLE;
       voice.releaseEndTime = 0;
       voice.idleSince = now;
@@ -504,7 +499,12 @@ export function createSourceRuntime({
       // 变为 IDLE 后立即 dispose 节点
       // 注意：调制模式下不 dispose，保持调制波一直运行
       if (voice.node && !moduleState.modulationMode) {
-        console.log(`[Player] disposeVoiceNode voice=${voices.indexOf(voice)}`);
+        // Player 需要在 dispose 前先 stop，避免残留播放
+        if (definition.runtime === "player" && voice.node) {
+          try {
+            voice.node.stop(now);
+          } catch {}
+        }
         disposeVoiceNode(voice);
         voice.initialized = false;
       }
@@ -612,8 +612,6 @@ export function createSourceRuntime({
 
     const isLastNote = hadAssignedNote && voices.filter((v, i) => i !== voiceIndex && v.initialized && v.note !== null).length === 0;
 
-    console.log(`[Player] releaseVoice voice=${voiceIndex} hadNote=${hadAssignedNote} isLastNote=${isLastNote} state=${voice.state} hasAmpEnv=${runtime.hasAmpEnv} needsExt=${runtime.needsExtendedRelease}`);
-
     voice.note = null;
 
     // 对于调制模式下的 Source，跳过 hiddenAmpEnv 的 Release
@@ -644,11 +642,16 @@ export function createSourceRuntime({
     }
 
     // 对于调制模式下的 player，不停止播放，让调制波继续运行
+    // 对于有 AmpEnv 的情况，也不立即 stop，让 AmpEnv 的 release 正常生效
+    // Player 会在 refreshVoiceLifecycle（RELEASING->IDLE）时被 stop
     if (definition.runtime === "player" && !moduleState.modulationMode) {
       if (voice.node) {
-        try {
-          voice.node.stop(now);
-        } catch {}
+        // 只有没有 AmpEnv 时才立即 stop；有 AmpEnv 时延迟到 release 结束
+        if (!runtime.hasAmpEnv && !runtime.needsExtendedRelease) {
+          try {
+            voice.node.stop(now);
+          } catch {}
+        }
       }
     }
 
@@ -675,8 +678,6 @@ export function createSourceRuntime({
   const findAvailableVoice = () => {
     const now = Tone.now();
     refreshAllVoiceLifecycles(now);
-    console.log(`[Player] findAvailableVoice: states=${voices.map((v, i) => `v${i}:${v.state}${v.note ? ':' + v.note : ''}`).join(', ')}`);
-
     // 检查是否有且只有一个 voice 处于 extended release 状态（可打断）
     if (runtime.needsExtendedRelease) {
       const activeVoices = voices.filter((v) => v.initialized && v.note !== null);
@@ -983,9 +984,7 @@ export function createSourceRuntime({
           voice.frequencyBaseSignal?.rampTo(nextFrequency, 0.02);
         }
       } else if (definition.runtime === "player") {
-        console.log(`[Player] triggerAttack note=${note} voice=${index} loaded=${sourceNode.loaded}`);
         if (!sourceNode.loaded) {
-          console.log(`[Player] triggerAttack FAILED: voice=${index} not loaded`);
           releaseVoice(voice, index, now);
           return -1;
         }

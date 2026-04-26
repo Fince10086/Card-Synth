@@ -68,7 +68,6 @@ function findNextNonSourceIndex(modules, startIndex, isSourceModule) {
  */
 function connectSourceModule({ modules, sourceIndex, runtime, ampEnvIndices, runtimeMap, masterVolume, isSourceModule }) {
   const sourceModule = modules[sourceIndex];
-  console.log(`[SignalChain] connectSourceModule index=${sourceIndex} type=${sourceModule?.type} modMode=${sourceModule?.modulationMode}`);
   if (sourceModule?.type === "Envelope") {
     return;
   }
@@ -92,7 +91,6 @@ function connectSourceModule({ modules, sourceIndex, runtime, ampEnvIndices, run
   runtime.needsExtendedRelease = needsExtendedRelease;
 
   runtime.hasAmpEnv = isFirstModuleAmpEnv;
-  console.log(`[SignalChain]   targetIndex=${targetIndex} isFirstAmpEnv=${isFirstModuleAmpEnv} hasAmpEnvAnywhere=${hasAmpEnvAnywhere} needsExtended=${needsExtendedRelease}`);
 
   if (isFirstModuleAmpEnv) {
     const ampEnvModule = modules[targetIndex];
