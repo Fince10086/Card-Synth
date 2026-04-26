@@ -470,7 +470,8 @@ export class MacroManager {
   }
 
   findTargetControl(event) {
-    const control = event.target?.closest?.(TARGET_SELECTOR);
+    const targetEl = document.elementFromPoint(event.clientX, event.clientY);
+    const control = targetEl?.closest?.(TARGET_SELECTOR);
     return control && !control.closest(".module-card[data-main-card='true']") ? control : null;
   }
 

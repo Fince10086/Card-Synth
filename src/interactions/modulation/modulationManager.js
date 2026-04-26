@@ -205,7 +205,8 @@ export class ModulationManager {
     this._clearHoverStyles();
     
     // 检查是否悬停在有效的滑块控件上
-    const slider = event.target?.closest?.(".control.control-slider[data-module-id][data-param-path]");
+    const targetEl = document.elementFromPoint(event.clientX, event.clientY);
+    const slider = targetEl?.closest(".control.control-slider[data-module-id][data-param-path]");
     if (slider) {
       const mainCard = slider.closest(".module-card[data-main-card='true']");
       const paramPath = slider.dataset.paramPath;
@@ -232,7 +233,8 @@ export class ModulationManager {
     this.edgeScroll.stopScrolling();
 
     const drag = { ...this.modulationDrag };
-    const targetControl = event.target?.closest?.(".control.control-slider[data-module-id][data-param-path]");
+    const targetEl = document.elementFromPoint(event.clientX, event.clientY);
+    const targetControl = targetEl?.closest(".control.control-slider[data-module-id][data-param-path]");
 
     // 检查目标是否是主卡（主卡参数不能被调制）
     if (targetControl) {

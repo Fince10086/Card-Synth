@@ -465,6 +465,7 @@ export function createSliderControl({
     const bindMarkerDrag = (bracket) => {
       bracket.addEventListener("pointerdown", (event) => {
         event.preventDefault();
+        event.stopPropagation();
         const isMinBracket = bracket.classList.contains("mod-range-bracket--min");
         const updateFromPointer = (clientX) => {
           const rect = shell.getBoundingClientRect();
