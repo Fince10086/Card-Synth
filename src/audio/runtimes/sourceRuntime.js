@@ -829,12 +829,6 @@ export function createSourceRuntime({
           sharedPlayerBuffer.dispose();
           sharedPlayerBuffer = null;
         }
-        if (moduleState.options?.url) {
-          try {
-            sharedPlayerBuffer = new Tone.Buffer(moduleState.options.url);
-            console.log(`[Player] Buffer updated`);
-          }
-        }
       }
 
       refreshAllVoiceLifecycles();
