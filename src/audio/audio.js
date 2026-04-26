@@ -40,8 +40,16 @@ export class AudioEngine {
 
     this.masterVolume.connect(this.limiter);
     this.limiter.toDestination();
-    this.masterVolume.connect(this.analyser);
-    this.masterVolume.connect(this.spectrumAnalyser);
+
+    // Downmix stereo master output to mono before analysers so the
+    // oscilloscope displays the combined L+R signal instead of left channel only.
+    this.scopeMonoMix = new Tone.Gain(1);
+    this.scopeMonoMix.input.channelCount = 1;
+    this.scopeMonoMix.input.channelCountMode = 'explicit';
+
+    this.masterVolume.connect(this.scopeMonoMix);
+    this.scopeMonoMix.connect(this.analyser);
+    this.scopeMonoMix.connect(this.spectrumAnalyser);
 
     this.rebuildSignalChains();
 
