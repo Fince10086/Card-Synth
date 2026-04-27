@@ -112,8 +112,8 @@ export function createEffectModule(type = "Chorus") {
   };
 }
 
-export function createComponentModule(type = "Compressor") {
-  const definition = COMPONENT_LIBRARY[type] || COMPONENT_LIBRARY.Compressor;
+export function createComponentModule(type = "AmplitudeEnvelope") {
+  const definition = COMPONENT_LIBRARY[type] || COMPONENT_LIBRARY.AmplitudeEnvelope;
   return {
     id: createId("cmp"),
     type,
@@ -141,15 +141,15 @@ export function getAddableModuleOptions() {
       label: `OSC / ${type}`,
       category: "source",
     })),
-    ...Object.keys(COMPONENT_LIBRARY).map((type) => ({
-      value: `component:${type}`,
-      label: `Component / ${type}`,
-      category: "component",
-    })),
     ...Object.keys(EFFECT_LIBRARY).map((type) => ({
       value: `effect:${type}`,
       label: `Effect / ${type}`,
       category: "effect",
+    })),
+    ...Object.keys(COMPONENT_LIBRARY).map((type) => ({
+      value: `component:${type}`,
+      label: `Envelope / ${type}`,
+      category: "component",
     })),
   ];
 }
@@ -199,11 +199,18 @@ export function normalizeEffectModule(module) {
 }
 
 export function normalizeComponentModule(module) {
-  return normalizeModule(module, "component", (type) => createComponentModule(type || "Compressor"));
+  return normalizeModule(module, "component", (type) => createComponentModule(type || "AmplitudeEnvelope"));
 }
 
 export function normalizeAnyModule(module) {
-  const category = module?.category || "component";
+  let category = module?.category || "component";
+
+  // Backward compatibility: modules that used to be in COMPONENT_LIBRARY
+  // but are now in EFFECT_LIBRARY should be treated as effect
+  if (category === "component" && EFFECT_LIBRARY[module?.type]) {
+    category = "effect";
+  }
+
   if (category === "source") {
     return normalizeSourceModule(module);
   }
@@ -309,7 +316,7 @@ export function getModuleDefinition(module) {
   if (module.category === "effect" || EFFECT_LIBRARY[module.type]) {
     return EFFECT_LIBRARY[module.type] || EFFECT_LIBRARY.Chorus;
   }
-  return COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.Compressor;
+  return COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.AmplitudeEnvelope;
 }
 
 export function getModuleAccent(module) {

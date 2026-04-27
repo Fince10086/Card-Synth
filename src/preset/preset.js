@@ -18,7 +18,7 @@ const MACRO_EPSILON = 1e-6;
 function createStarterModules() {
   return [
     createSourceModule("Oscillator"),
-    createComponentModule("Filter"),
+    createEffectModule("Filter"),
     createComponentModule("AmplitudeEnvelope"),
     createEffectModule("Chorus"),
   ];

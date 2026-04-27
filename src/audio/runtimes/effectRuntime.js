@@ -20,7 +20,7 @@ export function createEffectRuntime(module) {
   if (!RuntimeCtor) {
     return {
       type: module.type,
-      category: module.category || "component",
+      category: module.category || "effect",
       node: null,
       dispose: () => {},
     };
@@ -39,7 +39,7 @@ export function createEffectRuntime(module) {
 
   return {
     type: module.type,
-    category: module.category || "component",
+    category: module.category || "effect",
     node,
     apply: (nextModule) => {
       const nextOptions = nextModule.options || {};

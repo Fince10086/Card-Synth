@@ -10,7 +10,7 @@
  */
 
 import { HandGestureRecognizer } from "./handGestureRecognizer.js";
-import { createComponentModule, clamp } from "../../utils/helpers.js";
+import { createEffectModule, clamp } from "../../utils/helpers.js";
 
 // ==================== 常量配置 ====================
 
@@ -210,7 +210,7 @@ export class GestureManager {
       const modules = chain.modules || [];
       const hasGain = modules.some((m) => m.type === "Gain");
       if (!hasGain) {
-        const gainModule = createComponentModule("Gain");
+        const gainModule = createEffectModule("Gain");
         modules.push(gainModule);
         added = true;
       }
@@ -526,7 +526,7 @@ export class GestureManager {
       }
     }
     if (!gainModule) {
-      gainModule = createComponentModule("Gain");
+      gainModule = createEffectModule("Gain");
       modules.push(gainModule);
       this.app.engine.fullSync(this.app.state);
       this.app.renderAll();

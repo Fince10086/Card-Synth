@@ -299,12 +299,9 @@ export const EFFECT_LIBRARY = {
       { path: "options.wet", kind: "range", label: "Wet", min: 0, max: 1, step: 0.01, formatter: formatPercent },
     ],
   },
-};
-
-export const COMPONENT_LIBRARY = {
   Filter: {
-    accent: "component",
-    tag: "Component",
+    accent: "fx",
+    tag: "Effect",
     options: { type: "lowpass", frequency: 2200, Q: 0.6, rolloff: -24 },
     controls: [
       { path: "options.type", kind: "select", label: "Type", options: [
@@ -323,6 +320,53 @@ export const COMPONENT_LIBRARY = {
       { path: "options.Q", kind: "range", label: "Q", min: 0.001, max: 20, step: 0.001, formatter: formatPlain },
     ],
   },
+  Compressor: {
+    accent: "fx",
+    tag: "Effect",
+    options: { threshold: -24, ratio: 3, attack: 0.01, release: 0.2, knee: 20 },
+    controls: [
+      { path: "options.threshold", kind: "range", label: "Thresh", min: -60, max: 0, step: 0.1, formatter: formatDb },
+      { path: "options.ratio", kind: "range", label: "Ratio", min: 1, max: 20, step: 0.1, formatter: formatPlain },
+      { path: "options.attack", kind: "range", label: "Attack", min: 0.001, max: 0.5, step: 0.001, formatter: formatSeconds },
+      { path: "options.release", kind: "range", label: "Release", min: 0.01, max: 1, step: 0.001, formatter: formatSeconds },
+    ],
+  },
+  Limiter: {
+    accent: "fx",
+    tag: "Effect",
+    options: { threshold: -5 },
+    controls: [{ path: "options.threshold", kind: "range", label: "Ceiling", min: -24, max: 0, step: 0.1, formatter: formatDb }],
+  },
+  EQ3: {
+    accent: "fx",
+    tag: "Effect",
+    options: { low: 0, mid: 0, high: 0, lowFrequency: 300, highFrequency: 2600 },
+    controls: [
+      { path: "options.low", kind: "range", label: "Low", min: -24, max: 24, step: 0.1, formatter: formatDb },
+      { path: "options.mid", kind: "range", label: "Mid", min: -24, max: 24, step: 0.1, formatter: formatDb },
+      { path: "options.high", kind: "range", label: "High", min: -24, max: 24, step: 0.1, formatter: formatDb },
+      { path: "options.lowFrequency", kind: "range", label: "Lo Freq", min: 80, max: 1200, step: 1, formatter: formatFrequency },
+      { path: "options.highFrequency", kind: "range", label: "Hi Freq", min: 1200, max: 8000, step: 1, formatter: formatFrequency },
+    ],
+  },
+  Gain: {
+    accent: "fx",
+    tag: "Effect",
+    options: { gain: 1 },
+    controls: [{ path: "options.gain", kind: "range", label: "Gain", min: 0, max: 2, step: 0.01, formatter: formatMultiplier }],
+  },
+  PanVol: {
+    accent: "fx",
+    tag: "Effect",
+    options: { pan: 0, volume: 0 },
+    controls: [
+      { path: "options.pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
+      { path: "options.volume", kind: "range", label: "Volume", min: -24, max: 12, step: 0.1, formatter: formatDb },
+    ],
+  },
+};
+
+export const COMPONENT_LIBRARY = {
   AmplitudeEnvelope: {
     accent: "env",
     tag: "Component",
@@ -344,50 +388,6 @@ export const COMPONENT_LIBRARY = {
       { path: "options.sustain", kind: "range", label: "Sustain", min: 0, max: 1, step: 0.01, formatter: formatPercent },
       { path: "options.release", kind: "range", label: "Release", min: 0.001, max: 4, step: 0.001, formatter: formatSeconds },
       { path: "options.gain", kind: "range", label: "Depth", min: 0, max: 100, step: 0.01, formatter: formatMultiplier },
-    ],
-  },
-  Compressor: {
-    accent: "component",
-    tag: "Component",
-    options: { threshold: -24, ratio: 3, attack: 0.01, release: 0.2, knee: 20 },
-    controls: [
-      { path: "options.threshold", kind: "range", label: "Thresh", min: -60, max: 0, step: 0.1, formatter: formatDb },
-      { path: "options.ratio", kind: "range", label: "Ratio", min: 1, max: 20, step: 0.1, formatter: formatPlain },
-      { path: "options.attack", kind: "range", label: "Attack", min: 0.001, max: 0.5, step: 0.001, formatter: formatSeconds },
-      { path: "options.release", kind: "range", label: "Release", min: 0.01, max: 1, step: 0.001, formatter: formatSeconds },
-    ],
-  },
-  Limiter: {
-    accent: "component",
-    tag: "Component",
-    options: { threshold: -5 },
-    controls: [{ path: "options.threshold", kind: "range", label: "Ceiling", min: -24, max: 0, step: 0.1, formatter: formatDb }],
-  },
-  EQ3: {
-    accent: "component",
-    tag: "Component",
-    options: { low: 0, mid: 0, high: 0, lowFrequency: 300, highFrequency: 2600 },
-    controls: [
-      { path: "options.low", kind: "range", label: "Low", min: -24, max: 24, step: 0.1, formatter: formatDb },
-      { path: "options.mid", kind: "range", label: "Mid", min: -24, max: 24, step: 0.1, formatter: formatDb },
-      { path: "options.high", kind: "range", label: "High", min: -24, max: 24, step: 0.1, formatter: formatDb },
-      { path: "options.lowFrequency", kind: "range", label: "Lo Freq", min: 80, max: 1200, step: 1, formatter: formatFrequency },
-      { path: "options.highFrequency", kind: "range", label: "Hi Freq", min: 1200, max: 8000, step: 1, formatter: formatFrequency },
-    ],
-  },
-  Gain: {
-    accent: "component",
-    tag: "Component",
-    options: { gain: 1 },
-    controls: [{ path: "options.gain", kind: "range", label: "Gain", min: 0, max: 2, step: 0.01, formatter: formatMultiplier }],
-  },
-  PanVol: {
-    accent: "component",
-    tag: "Component",
-    options: { pan: 0, volume: 0 },
-    controls: [
-      { path: "options.pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
-      { path: "options.volume", kind: "range", label: "Volume", min: -24, max: 12, step: 0.1, formatter: formatDb },
     ],
   },
 };

@@ -176,7 +176,7 @@
     {
       "id": "cmp-0021",
       "type": "Filter",
-      "category": "component",
+      "category": "effect",
       "enabled": true,
       "index": 21,
       "options": {
@@ -189,7 +189,7 @@
     {
       "id": "cmp-0017",
       "type": "Gain",
-      "category": "component",
+      "category": "effect",
       "enabled": true,
       "index": 17,
       "options": {
