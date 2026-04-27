@@ -684,7 +684,10 @@ export class ModulationManager {
           return;
         }
 
-        const sourceVoiceIndex = Number(mod.sourceVoiceIndex ?? 0);
+        // 对于 source-to-source 调制，sourceVoiceIndex 应该与 targetVoiceIndex 对齐
+        const sourceVoiceIndex = Number.isFinite(target.voiceIndex)
+          ? target.voiceIndex
+          : Number(mod.sourceVoiceIndex ?? 0);
         const targetIndex = targets.findIndex((t) => t.voiceIndex === voiceIndex);
 
         const created = this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, target.param, targetIndex, voiceIndex);
