@@ -12,10 +12,11 @@ import * as Tone from "tone";
  */
 export function createInputRuntime(module, chainModules, inputIndex) {
   let moduleState = deepClone(module);
-  const polyVoice = clamp(Number(moduleState.options?.polyVoice) || 8, 1, 8);
 
-  // Voice 状态数组
-  const voiceStates = Array.from({ length: polyVoice }, () => ({
+  const getPolyVoice = () => clamp(Number(moduleState.options?.polyVoice) || 8, 1, 8);
+
+  // Voice 状态数组（动态调整大小）
+  let voiceStates = Array.from({ length: getPolyVoice() }, () => ({
     note: null,
     startTime: 0,
     pendingRelease: false,
@@ -56,6 +57,8 @@ export function createInputRuntime(module, chainModules, inputIndex) {
    * 3. 窃取最老的活跃 voice
    */
   const findAvailableVoice = () => {
+    const polyVoice = getPolyVoice();
+
     // 1. 优先找空闲 voice
     for (let i = 0; i < polyVoice; i++) {
       if (!voiceStates[i].note && !voiceStates[i].pendingRelease) {
@@ -217,7 +220,7 @@ export function createInputRuntime(module, chainModules, inputIndex) {
      */
     releaseAllPending: () => {
       const released = [];
-      for (let i = 0; i < polyVoice; i++) {
+      for (let i = 0; i < getPolyVoice(); i++) {
         if (voiceStates[i].pendingRelease) {
           const note = voiceStates[i].note;
           releaseVoice(i);
@@ -234,7 +237,7 @@ export function createInputRuntime(module, chainModules, inputIndex) {
      */
     releaseAll: () => {
       const released = [];
-      for (let i = 0; i < polyVoice; i++) {
+      for (let i = 0; i < getPolyVoice(); i++) {
         if (voiceStates[i].note) {
           const note = voiceStates[i].note;
           releaseVoice(i);
@@ -248,8 +251,32 @@ export function createInputRuntime(module, chainModules, inputIndex) {
      * 应用模块状态更新
      */
     apply: (nextModule) => {
+      const prevPolyVoice = getPolyVoice();
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
+
+      const newPolyVoice = getPolyVoice();
+      if (newPolyVoice !== prevPolyVoice) {
+        // 调整 voiceStates 数组大小
+        if (newPolyVoice > prevPolyVoice) {
+          // 扩展：添加新的空 voice slot
+          for (let i = prevPolyVoice; i < newPolyVoice; i++) {
+            voiceStates.push({
+              note: null,
+              startTime: 0,
+              pendingRelease: false,
+            });
+          }
+        } else {
+          // 缩小：释放超出范围的活跃 voice
+          for (let i = newPolyVoice; i < prevPolyVoice; i++) {
+            if (voiceStates[i].note) {
+              releaseVoice(i);
+            }
+          }
+          voiceStates.length = newPolyVoice;
+        }
+      }
     },
 
     /**
