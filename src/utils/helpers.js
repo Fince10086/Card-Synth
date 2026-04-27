@@ -205,12 +205,6 @@ export function normalizeComponentModule(module) {
 export function normalizeAnyModule(module) {
   let category = module?.category || "component";
 
-  // Backward compatibility: modules that used to be in COMPONENT_LIBRARY
-  // but are now in EFFECT_LIBRARY should be treated as effect
-  if (category === "component" && EFFECT_LIBRARY[module?.type]) {
-    category = "effect";
-  }
-
   if (category === "source") {
     return normalizeSourceModule(module);
   }
