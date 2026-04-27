@@ -1,6 +1,7 @@
 {
   "global": { "volume": -8, "octave": 4, "velocity": 0.8, "velocityEnabled": true },
   "modules": [
+    { "type": "MIDI", "category": "input", "enabled": true, "options": { "transpose": 0, "octave": 0, "polyVoice": 8, "pedal": false } },
     { "type": "Oscillator", "category": "source", "enabled": true, "volume": -9, "pan": -0.12, "options": { "type": "sawtooth", "detune": -8 } },
     { "type": "PulseOscillator", "category": "source", "enabled": true, "volume": -14, "pan": 0.12, "options": { "width": 0.5, "detune": 6 } },
     { "type": "AmplitudeEnvelope", "category": "component", "enabled": true, "options": { "attack": 0.02, "decay": 0.18, "sustain": 0.82, "release": 0.65 } },

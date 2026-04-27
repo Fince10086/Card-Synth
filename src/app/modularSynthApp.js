@@ -313,8 +313,9 @@ export class ModularSynthApp {
     const options = getAddableModuleOptions();
 
     const groups = {
+      input: { title: "输入", items: [] },
       source: { title: "声源", items: [] },
-      component: { title: "组件", items: [] },
+      component: { title: "包络", items: [] },
       effect: { title: "效果器", items: [] },
     };
 

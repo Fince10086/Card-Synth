@@ -5,6 +5,7 @@
   --source: #2f9f95;
   --env: #c0a03e;
   --component: #6f8f4e;
+  --input: #6f8f4e;
   --fx: #ca5d48;
   --modulation: #3d7fb8;
   --disabled: #8a8a8a;
@@ -109,6 +110,10 @@ select {
 
 .module-card[data-accent="component"] {
   --accent: var(--component);
+}
+
+.module-card[data-accent="input"] {
+  --accent: var(--input);
 }
 
 .module-card[data-accent="fx"] {

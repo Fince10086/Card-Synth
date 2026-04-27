@@ -8,6 +8,7 @@ import {
   createSourceModule,
   createComponentModule,
   createEffectModule,
+  createInputModule,
 } from "../utils/helpers.js";
 
 const CHAIN_COUNT = 4;
@@ -17,6 +18,7 @@ const MACRO_EPSILON = 1e-6;
 
 function createStarterModules() {
   return [
+    createInputModule("MIDI"),
     createSourceModule("Oscillator"),
     createEffectModule("Filter"),
     createComponentModule("AmplitudeEnvelope"),

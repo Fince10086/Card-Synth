@@ -1,5 +1,5 @@
 import { NOTE_NAMES, KEYBOARD_LAYOUT, noteFromOffset } from "../core/keyboard.js";
-import { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY } from "../core/libraries.js";
+import { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY, INPUT_LIBRARY } from "../core/libraries.js";
 
 let moduleCounter = 1;
 
@@ -78,7 +78,7 @@ export function setByPath(object, path, value) {
 export { noteFromOffset };
 
 export { NOTE_NAMES, KEYBOARD_LAYOUT };
-export { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY };
+export { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY, INPUT_LIBRARY };
 
 export function createSourceModule(type = "Oscillator") {
   const definition = SOURCE_LIBRARY[type] || SOURCE_LIBRARY.Oscillator;
@@ -124,6 +124,18 @@ export function createComponentModule(type = "AmplitudeEnvelope") {
   };
 }
 
+export function createInputModule(type = "MIDI") {
+  const definition = INPUT_LIBRARY[type] || INPUT_LIBRARY.MIDI;
+  return {
+    id: createId("inp"),
+    type,
+    category: "input",
+    enabled: true,
+    index: moduleCounter - 1,
+    options: deepClone(definition.options),
+  };
+}
+
 export function createModule(category, type) {
   if (category === "source") {
     return createSourceModule(type);
@@ -131,11 +143,19 @@ export function createModule(category, type) {
   if (category === "effect") {
     return createEffectModule(type);
   }
+  if (category === "input") {
+    return createInputModule(type);
+  }
   return createComponentModule(type);
 }
 
 export function getAddableModuleOptions() {
   return [
+    ...Object.keys(INPUT_LIBRARY).map((type) => ({
+      value: `input:${type}`,
+      label: `Input / ${type}`,
+      category: "input",
+    })),
     ...Object.keys(SOURCE_LIBRARY).map((type) => ({
       value: `source:${type}`,
       label: `OSC / ${type}`,
@@ -202,14 +222,27 @@ export function normalizeComponentModule(module) {
   return normalizeModule(module, "component", (type) => createComponentModule(type || "AmplitudeEnvelope"));
 }
 
+export function normalizeInputModule(module) {
+  return normalizeModule(module, "input", (type) => createInputModule(type || "MIDI"));
+}
+
 export function normalizeAnyModule(module) {
   let category = module?.category || "component";
+
+  // Backward compatibility: modules that used to be in COMPONENT_LIBRARY
+  // but are now in EFFECT_LIBRARY should be treated as effect
+  if (category === "component" && EFFECT_LIBRARY[module?.type]) {
+    category = "effect";
+  }
 
   if (category === "source") {
     return normalizeSourceModule(module);
   }
   if (category === "effect") {
     return normalizeEffectModule(module);
+  }
+  if (category === "input") {
+    return normalizeInputModule(module);
   }
   return normalizeComponentModule(module);
 }
@@ -309,6 +342,9 @@ export function getModuleDefinition(module) {
   }
   if (module.category === "effect" || EFFECT_LIBRARY[module.type]) {
     return EFFECT_LIBRARY[module.type] || EFFECT_LIBRARY.Chorus;
+  }
+  if (module.category === "input" || INPUT_LIBRARY[module.type]) {
+    return INPUT_LIBRARY[module.type] || INPUT_LIBRARY.MIDI;
   }
   return COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.AmplitudeEnvelope;
 }

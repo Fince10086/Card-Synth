@@ -124,18 +124,11 @@ export function createSourceRuntime({
   /**
    * 获取音符的基础频率
    *
-   * 考虑八度偏移后的频率值。
-   *
    * @param {string} note - 音符名称
-   * @returns {number} 调整后的频率值
+   * @returns {number} 频率值
    */
   const getBaseFrequencyForNote = (note) => {
-    let frequency = getNoteFrequency(note);
-    const octave = Number(moduleState?.options?.octave) || 0;
-    if (octave !== 0) {
-      frequency *= Math.pow(2, octave);
-    }
-    return frequency;
+    return getNoteFrequency(note);
   };
 
   /**
@@ -850,11 +843,8 @@ export function createSourceRuntime({
             rampParam(voice.frequencyOffsetParam, getFrequencyOffset());
           }
           if (voice.node.frequency && voice.frequencyBaseSignal) {
-            if (!moduleState.midiOn) {
-              // 固定频率模式（调制或非调制）：实时更新
-              voice.frequencyBaseSignal.rampTo(getModulationFrequency(), 0.02);
-            } else if (moduleState.modulationMode && voice.note) {
-              // 调制模式 + MIDI On：跟踪音符
+            if (moduleState.modulationMode && voice.note) {
+              // 调制模式：跟踪当前绑定的音符频率
               voice.frequencyBaseSignal.rampTo(getBaseFrequencyForNote(voice.note), 0.02);
             }
           }
@@ -872,12 +862,13 @@ export function createSourceRuntime({
     /**
      * 触发音符攻击（开始播放）
      *
-     * 这是 MIDI 音符开始时的核心方法。
+     * 由 Input 模块统一分配 voiceIndex 后调用。
      *
-     * @param {string} note - 音符名称
+     * @param {Object} noteData - 音符数据 { type: 'midi'|'frequency', note, frequency, originalNote }
      * @param {number} velocity - 力度值（0-1）
+     * @param {number} voiceIndex - Input 分配的 voice 索引
      */
-    triggerAttack: (note, velocity, preferredVoiceIndex) => {
+    triggerAttack: (noteData, velocity, voiceIndex) => {
       if (!moduleState.enabled) {
         return -1;
       }
@@ -888,59 +879,47 @@ export function createSourceRuntime({
         allVoicesIdleTimeoutId = null;
       }
 
-      let voice, index;
+      const index = voiceIndex;
+      const voice = voices[index];
+      const now = Tone.now();
 
-      if (typeof preferredVoiceIndex === 'number' && preferredVoiceIndex >= 0 && preferredVoiceIndex < VOICE_COUNT) {
-        voice = voices[preferredVoiceIndex];
-        index = preferredVoiceIndex;
-        const now = Tone.now();
-
-        // 清除可能存在的 release 定时器
-        if (voice.disposeTimeoutId) {
-          clearTimeout(voice.disposeTimeoutId);
-          voice.disposeTimeoutId = null;
-        }
-
-        // 刷新 lifecycle，可能 RELEASING -> IDLE
-        refreshVoiceLifecycle(voice, now);
-
-        // 如果 voice 绑定的是另一个 note，先释放
-        if (voice.note && voice.note !== note) {
-          releaseVoice(voice, index, now);
-        }
-
-        // 确保 voice 已初始化
-        if (!voice.initialized) {
-          initVoice(index);
-        }
-
-        // 如果还在 releasing，重置状态以便重新 attack
-        if (voice.state === VOICE_STATE.RELEASING) {
-          voice.state = VOICE_STATE.IDLE;
-          voice.releaseEndTime = 0;
-          voice.idleSince = 0;
-          voice.extendedReleaseEndTime = 0;
-        }
-      } else {
-        const result = findAvailableVoice();
-        if (!result) {
-          return -1;
-        }
-        ({ voice, index } = result);
+      // 清除可能存在的 release 定时器
+      if (voice.disposeTimeoutId) {
+        clearTimeout(voice.disposeTimeoutId);
+        voice.disposeTimeoutId = null;
       }
 
-      const now = Tone.now();
+      // 刷新 lifecycle，可能 RELEASING -> IDLE
+      refreshVoiceLifecycle(voice, now);
+
+      // 如果 voice 绑定的是另一个 note，先释放
+      if (voice.note && voice.note !== noteData.originalNote) {
+        releaseVoice(voice, index, now);
+      }
+
+      // 确保 voice 已初始化
+      if (!voice.initialized) {
+        initVoice(index);
+      }
+
+      // 如果还在 releasing，重置状态以便重新 attack
+      if (voice.state === VOICE_STATE.RELEASING) {
+        voice.state = VOICE_STATE.IDLE;
+        voice.releaseEndTime = 0;
+        voice.idleSince = 0;
+        voice.extendedReleaseEndTime = 0;
+      }
 
       // 检查是否需要打断 extended release 的延迟
       const isInExtendedRelease = voice.state === VOICE_STATE.RELEASING
         && voice.extendedReleaseEndTime
         && now < voice.extendedReleaseEndTime;
 
-      if (voice.note && voice.note !== note) {
+      if (voice.note && voice.note !== noteData.originalNote) {
         releaseVoice(voice, index, now);
       }
 
-      voice.note = note;
+      voice.note = noteData.originalNote;
       voice.startTime = now;
       voice.state = VOICE_STATE.ACTIVE;
       voice.releaseEndTime = 0;
@@ -977,10 +956,9 @@ export function createSourceRuntime({
 
       if (definition.runtime === "pitchedSource") {
         if (sourceNode.frequency) {
-          const useMidiPitch = moduleState.midiOn !== false;
-          const nextFrequency = useMidiPitch
-            ? getBaseFrequencyForNote(note)
-            : getModulationFrequency();
+          const nextFrequency = noteData.type === "midi"
+            ? getBaseFrequencyForNote(noteData.note)
+            : noteData.frequency;
           voice.frequencyBaseSignal?.rampTo(nextFrequency, 0.02);
         }
       } else if (definition.runtime === "player") {
@@ -988,8 +966,8 @@ export function createSourceRuntime({
           releaseVoice(voice, index, now);
           return -1;
         }
-        if ("playbackRate" in sourceNode) {
-          sourceNode.playbackRate = getPitchRatio(note) * Number(moduleState.options.playbackRate || 1);
+        if (noteData.type === "midi" && "playbackRate" in sourceNode) {
+          sourceNode.playbackRate = getPitchRatio(noteData.note) * Number(moduleState.options.playbackRate || 1);
         }
         // 对于调制模式，如果 player 已经在运行，不要重新启动，保持调制波连续
         if (moduleState.modulationMode) {
@@ -1008,17 +986,15 @@ export function createSourceRuntime({
     /**
      * 触发音符释放（停止播放）
      *
-     * 这是 MIDI 音符结束时的核心方法。
-     *
-     * @param {string} note - 音符名称
+     * @param {string} note - 原始音符名称
+     * @param {number} voiceIndex - voice 索引
      */
-    triggerRelease: (note) => {
-      const result = findVoiceByNote(note);
-      if (!result) {
+    triggerRelease: (note, voiceIndex) => {
+      const voice = voices[voiceIndex];
+      if (!voice || voice.note !== note) {
         return;
       }
-      const { voice, index } = result;
-      releaseVoice(voice, index);
+      releaseVoice(voice, voiceIndex);
     },
 
     /**

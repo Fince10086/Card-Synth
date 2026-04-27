@@ -1,6 +1,7 @@
 {
   "global": { "volume": -11, "octave": 3, "velocity": 0.72, "velocityEnabled": true },
   "modules": [
+    { "type": "MIDI", "category": "input", "enabled": true, "options": { "transpose": 0, "octave": 0, "polyVoice": 8, "pedal": false } },
     { "type": "Oscillator", "category": "source", "enabled": true, "volume": -8, "pan": -0.22, "options": { "type": "triangle", "detune": 0 } },
     { "type": "Noise", "category": "source", "enabled": true, "volume": -18, "pan": 0.24, "options": { "type": "pink", "playbackRate": 0.86 } },
     { "type": "Filter", "category": "effect", "enabled": true, "options": { "type": "lowpass", "frequency": 1450, "Q": 0.92, "rolloff": -48 } },

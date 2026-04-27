@@ -1,4 +1,4 @@
-import { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY } from "../../core/libraries.js";
+import { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY, INPUT_LIBRARY } from "../../core/libraries.js";
 import {
   getModuleDefinition,
   getModuleAccent,
@@ -8,7 +8,7 @@ import {
   normalizeSourceModule,
   createModule,
 } from "../../utils/helpers.js";
-import { formatMultiplier } from "../../core/formatters.js";
+import { formatMultiplier, formatPlain } from "../../core/formatters.js";
 import { ENABLED as SOURCE_MONITOR_ENABLED } from "../../debug/sourceOutputMonitor.js";
 import {
   createSelectControl,
@@ -34,6 +34,9 @@ const MODULATION_DEPTH_CONTROL = {
  * - 调制模式：将 volume 替换为 Depth，隐藏 pan，条件性显示 octave/frequency
  */
 function getRenderableControls(module, controls) {
+  if (module.category === "input") {
+    return controls.filter((control) => !control.conditional || control.conditional(module));
+  }
   if (module.category !== "source") {
     return controls.filter((control) => !control.conditional || control.conditional(module));
   }
@@ -43,10 +46,6 @@ function getRenderableControls(module, controls) {
     .filter((control) => {
       // 调制模式下隐藏 pan
       if (module.modulationMode && control.path === "pan") return false;
-      // 条件性显示：octave 在 midiOn 时显示
-      if (control.path === "options.octave") return module.midiOn;
-      // 条件性显示：frequency 在 !midiOn 时显示
-      if (control.path === "options.frequency") return !module.midiOn;
       // 其他控件检查 conditional 函数
       if (control.conditional && !control.conditional(module)) return false;
       return true;
@@ -92,14 +91,9 @@ export function renderModuleCard(module, index, app) {
         replacement.volume = module.volume;
         replacement.pan = module.pan;
         replacement.modulationMode = module.modulationMode;
-        replacement.midiOn = module.midiOn;
         const sourceFrequencyOffset = Number(module?.options?.frequencyOffset);
         if (Number.isFinite(sourceFrequencyOffset)) {
           replacement.options.frequencyOffset = sourceFrequencyOffset;
-        }
-        const sourceFrequency = Number(module?.options?.frequency);
-        if (Number.isFinite(sourceFrequency) && sourceFrequency > 0) {
-          replacement.options.frequency = sourceFrequency;
         }
       }
       if (!app.isModulationSource(replacement)) {
@@ -155,10 +149,6 @@ export function renderModuleCard(module, index, app) {
       if (!module.modulationMode) {
         app.removeOutgoingModulations(module.id);
       }
-      // 切换模式时重置 frequency 为当前模式的默认值
-      if (!module.midiOn) {
-        module.options.frequency = module.modulationMode ? 1 : 440;
-      }
       app.markUnsaved();
       app.renderAll();
       app.engine.fullSync(app.state);
@@ -197,29 +187,6 @@ export function renderModuleCard(module, index, app) {
         }),
       );
     });
-  }
-
-  if (
-    module.category === "source" &&
-    (module.type === "Oscillator" || module.type === "PulseOscillator")
-  ) {
-    controls.append(
-      createToggleControl({
-        label: "MIDI",
-        accent: "modulation",
-        value: Boolean(module.midiOn),
-        onToggle: (nextValue) => {
-          module.midiOn = nextValue;
-          // 关闭 MIDI 时，根据当前模式设置默认 frequency
-          if (!nextValue) {
-            module.options.frequency = module.modulationMode ? 1 : 440;
-          }
-          app.markUnsaved();
-          app.renderAll();
-          app.engine.fullSync(app.state);
-        },
-      }),
-    );
   }
 
   getRenderableControls(module, definition.controls).forEach((control) => {
@@ -271,22 +238,12 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
     });
   }
 
-  // 动态调整 frequency 滑块范围：非调制模式下扩展为 20-20000Hz
-  let controlMin = control.min;
-  let controlMax = control.max;
-  let controlStep = control.step;
-  if (control.path === "options.frequency" && module.category === "source" && !module.modulationMode) {
-    controlMin = 20;
-    controlMax = 20000;
-    controlStep = 1;
-  }
-
   return createSliderControl({
     label: control.label,
     accent,
-    min: controlMin,
-    max: controlMax,
-    step: controlStep,
+    min: control.min,
+    max: control.max,
+    step: control.step,
     value,
     path: bindingPath,
     controlBindings: app.controlBindings,
@@ -374,6 +331,9 @@ export function getTitleOptions(category) {
   }
   if (category === "effect") {
     return Object.keys(EFFECT_LIBRARY).map((type) => ({ label: type, value: type }));
+  }
+  if (category === "input") {
+    return Object.keys(INPUT_LIBRARY).map((type) => ({ label: type, value: type }));
   }
   return Object.keys(COMPONENT_LIBRARY).map((type) => ({ label: type, value: type }));
 }

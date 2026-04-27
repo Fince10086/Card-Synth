@@ -8,6 +8,19 @@
   },
   "modules": [
     {
+      "id": "inp-0001",
+      "type": "MIDI",
+      "category": "input",
+      "enabled": true,
+      "index": 0,
+      "options": {
+        "transpose": 0,
+        "octave": 0,
+        "polyVoice": 8,
+        "pedal": false
+      }
+    },
+    {
       "id": "src-0020",
       "type": "Oscillator",
       "category": "source",
@@ -15,14 +28,11 @@
       "volume": -8,
       "pan": 0,
       "modulationMode": true,
-      "midiOn": false,
       "index": 20,
       "options": {
         "type": "sine",
         "detune": 0,
         "phase": 0,
-        "octave": 0,
-        "frequency": 1,
         "frequencyOffset": 1,
         "gain": 2.22
       }
@@ -35,14 +45,11 @@
       "volume": -14,
       "pan": 0.12,
       "modulationMode": true,
-      "midiOn": true,
       "index": 8,
       "options": {
         "type": "sine",
         "detune": 0,
         "phase": 0,
-        "octave": 0,
-        "frequency": 0.1,
         "frequencyOffset": 0.06,
         "gain": 14.46
       }
@@ -69,14 +76,11 @@
       "volume": -8,
       "pan": 0,
       "modulationMode": true,
-      "midiOn": false,
       "index": 21,
       "options": {
         "type": "sine",
         "detune": 0,
         "phase": 0,
-        "octave": 0,
-        "frequency": 0.46,
         "frequencyOffset": 1,
         "gain": 1
       }
@@ -89,14 +93,11 @@
       "volume": 0.2,
       "pan": -0.12,
       "modulationMode": false,
-      "midiOn": true,
       "index": 1,
       "options": {
         "type": "sine",
         "detune": 115,
         "phase": 0,
-        "octave": -2,
-        "frequency": 1,
         "frequencyOffset": 1.1
       }
     },
@@ -133,14 +134,11 @@
       "volume": -10.5,
       "pan": 0,
       "modulationMode": false,
-      "midiOn": true,
       "index": 10,
       "options": {
         "type": "sine",
         "detune": 115,
         "phase": 0,
-        "octave": -1,
-        "frequency": 1,
         "frequencyOffset": 1
       }
     },
@@ -152,7 +150,6 @@
       "volume": -39,
       "pan": 0,
       "modulationMode": false,
-      "midiOn": false,
       "index": 12,
       "options": {
         "type": "pink",

@@ -15,7 +15,7 @@
  * @param {Function} options.isSourceModule - 判断是否为音源模块
  * @param {Function} options.isAmpEnvModule - 判断是否为振幅包络模块
  */
-export function connectSignalChain({ modules, runtimeMap, masterVolume, isSourceModule, isAmpEnvModule }) {
+export function connectSignalChain({ modules, runtimeMap, masterVolume, isSourceModule, isAmpEnvModule, isInputModule }) {
   const ampEnvIndices = new Set();
   modules.forEach((module, index) => {
     if (isAmpEnvModule(module) && module.enabled) {
@@ -29,10 +29,15 @@ export function connectSignalChain({ modules, runtimeMap, masterVolume, isSource
       return;
     }
 
+    // Input 模块不参与音频信号链连接
+    if (isInputModule && isInputModule(module)) {
+      return;
+    }
+
     if (isSourceModule(module)) {
-      connectSourceModule({ modules, sourceIndex: index, runtime, ampEnvIndices, runtimeMap, masterVolume, isSourceModule });
+      connectSourceModule({ modules, sourceIndex: index, runtime, ampEnvIndices, runtimeMap, masterVolume, isSourceModule, isInputModule });
     } else {
-      connectNonSourceModule({ modules, moduleIndex: index, runtime, runtimeMap, masterVolume, isSourceModule });
+      connectNonSourceModule({ modules, moduleIndex: index, runtime, runtimeMap, masterVolume, isSourceModule, isInputModule });
     }
   });
 }
@@ -45,9 +50,13 @@ export function connectSignalChain({ modules, runtimeMap, masterVolume, isSource
  * @param {Function} isSourceModule - 判断是否为音源模块
  * @returns {number} 目标模块索引，未找到返回 -1
  */
-function findNextNonSourceIndex(modules, startIndex, isSourceModule) {
+function findNextNonSourceIndex(modules, startIndex, isSourceModule, isInputModule) {
   for (let i = startIndex + 1; i < modules.length; i++) {
     if (!isSourceModule(modules[i]) && modules[i].enabled) {
+      // 跳过 Input 模块，它们不参与音频路由
+      if (isInputModule && isInputModule(modules[i])) {
+        continue;
+      }
       return i;
     }
   }
@@ -66,7 +75,7 @@ function findNextNonSourceIndex(modules, startIndex, isSourceModule) {
  * @param {Object} params.masterVolume - 主音量节点
  * @param {Function} params.isSourceModule - 判断是否为音源模块
  */
-function connectSourceModule({ modules, sourceIndex, runtime, ampEnvIndices, runtimeMap, masterVolume, isSourceModule }) {
+function connectSourceModule({ modules, sourceIndex, runtime, ampEnvIndices, runtimeMap, masterVolume, isSourceModule, isInputModule }) {
   const sourceModule = modules[sourceIndex];
   if (sourceModule?.type === "Envelope") {
     return;
@@ -76,7 +85,7 @@ function connectSourceModule({ modules, sourceIndex, runtime, ampEnvIndices, run
     return;
   }
 
-  const targetIndex = findNextNonSourceIndex(modules, sourceIndex, isSourceModule);
+  const targetIndex = findNextNonSourceIndex(modules, sourceIndex, isSourceModule, isInputModule);
   const isFirstModuleAmpEnv = targetIndex >= 0 && ampEnvIndices.has(targetIndex);
 
   let hasAmpEnvAnywhere = false;
@@ -90,20 +99,25 @@ function connectSourceModule({ modules, sourceIndex, runtime, ampEnvIndices, run
   const needsExtendedRelease = hasAmpEnvAnywhere && !isFirstModuleAmpEnv;
   runtime.needsExtendedRelease = needsExtendedRelease;
 
-  runtime.hasAmpEnv = isFirstModuleAmpEnv;
+    runtime.hasAmpEnv = isFirstModuleAmpEnv;
 
-  if (isFirstModuleAmpEnv) {
-    const ampEnvModule = modules[targetIndex];
-    const ampEnvRuntime = runtimeMap.get(ampEnvModule.id);
-    runtime.ampEnvRuntime = ampEnvRuntime;
+    if (isFirstModuleAmpEnv) {
+      const ampEnvModule = modules[targetIndex];
+      const ampEnvRuntime = runtimeMap.get(ampEnvModule.id);
+      runtime.ampEnvRuntime = ampEnvRuntime;
 
-    runtime.voices.forEach((voice, i) => {
-      if (voice.initialized && ampEnvRuntime && ampEnvRuntime.voices && ampEnvRuntime.voices[i]) {
-        const outputNode = voice.panNode || voice.hiddenAmpEnv;
-        outputNode.connect(ampEnvRuntime.voices[i]);
+      // 标记 AmpEnv 为 per-voice 连接模式
+      if (ampEnvRuntime) {
+        ampEnvRuntime.hasPerVoiceConnection = true;
       }
-    });
-  } else {
+
+      runtime.voices.forEach((voice, i) => {
+        if (voice.initialized && ampEnvRuntime && ampEnvRuntime.voices && ampEnvRuntime.voices[i]) {
+          const outputNode = voice.panNode || voice.hiddenAmpEnv;
+          outputNode.connect(ampEnvRuntime.voices[i]);
+        }
+      });
+    } else {
     runtime.ampEnvRuntime = null;
 
     if (needsExtendedRelease) {
@@ -147,9 +161,9 @@ function connectSourceModule({ modules, sourceIndex, runtime, ampEnvIndices, run
  * @param {Object} params.masterVolume - 主音量节点
  * @param {Function} params.isSourceModule - 判断是否为音源模块
  */
-function connectNonSourceModule({ modules, moduleIndex, runtime, runtimeMap, masterVolume, isSourceModule }) {
+function connectNonSourceModule({ modules, moduleIndex, runtime, runtimeMap, masterVolume, isSourceModule, isInputModule }) {
   if (runtime.type === "AmplitudeEnvelope") {
-    const targetIndex = findNextNonSourceIndex(modules, moduleIndex, isSourceModule);
+    const targetIndex = findNextNonSourceIndex(modules, moduleIndex, isSourceModule, isInputModule);
 
     let targetNode;
     if (targetIndex >= 0) {
@@ -171,7 +185,7 @@ function connectNonSourceModule({ modules, moduleIndex, runtime, runtimeMap, mas
     return;
   }
 
-  const targetIndex = findNextNonSourceIndex(modules, moduleIndex, isSourceModule);
+  const targetIndex = findNextNonSourceIndex(modules, moduleIndex, isSourceModule, isInputModule);
 
   if (targetIndex >= 0) {
     const targetModule = modules[targetIndex];

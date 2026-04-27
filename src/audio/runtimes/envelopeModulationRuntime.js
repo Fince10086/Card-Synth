@@ -57,7 +57,32 @@ export function createEnvelopeModulationRuntime(module) {
     },
 
     /**
-     * 触发音符攻击
+     * 触发指定 voice 的攻击
+     *
+     * @param {number} voiceIndex - 声音索引
+     * @param {number} velocity - 力度值
+     */
+    triggerVoiceAttack: (voiceIndex, velocity) => {
+      if (!moduleState.enabled || voiceIndex < 0 || voiceIndex >= VOICE_COUNT) {
+        return;
+      }
+      voices[voiceIndex].triggerAttack(Tone.now(), velocity);
+    },
+
+    /**
+     * 触发指定 voice 的释放
+     *
+     * @param {number} voiceIndex - 声音索引
+     */
+    triggerVoiceRelease: (voiceIndex) => {
+      if (voiceIndex < 0 || voiceIndex >= VOICE_COUNT) {
+        return;
+      }
+      voices[voiceIndex].triggerRelease(Tone.now());
+    },
+
+    /**
+     * 触发音符攻击（旧接口，用于非 Input 控制场景）
      *
      * @param {string} note - 音符名称
      * @param {number} velocity - 力度值
@@ -71,7 +96,7 @@ export function createEnvelopeModulationRuntime(module) {
     },
 
     /**
-     * 触发音符释放
+     * 触发音符释放（旧接口，用于非 Input 控制场景）
      *
      * @param {string} note - 音符名称
      */
