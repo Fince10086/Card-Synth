@@ -13,6 +13,7 @@ import { ENABLED as SOURCE_MONITOR_ENABLED } from "../../debug/sourceOutputMonit
 import {
   createSelectControl,
   createToggleControl,
+  createSwitchControl,
   createSliderControl,
   createAudioImportControl,
 } from "../controls/index.js";
@@ -239,6 +240,20 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
       onToggle: (nextValue) => {
         const actualValue = isInverted ? !nextValue : nextValue;
         setByPath(module, path, actualValue);
+        app.markUnsaved();
+        onCommit();
+      },
+    });
+  }
+
+  if (control.kind === "switch") {
+    return createSwitchControl({
+      label: control.label,
+      accent,
+      options: control.options,
+      value,
+      onChange: (nextValue) => {
+        setByPath(module, path, nextValue);
         app.markUnsaved();
         onCommit();
       },

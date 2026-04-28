@@ -389,7 +389,10 @@ export const INPUT_LIBRARY = {
     controls: [
       { path: "options.transpose", kind: "range", label: "Transpose", min: -12, max: 12, step: 1, formatter: (value) => `${value > 0 ? "+" : ""}${value} st` },
       { path: "options.octave", kind: "range", label: "Octave", min: -4, max: 4, step: 1, formatter: (value) => `Oct ${value > 0 ? "+" : ""}${value}` },
-      { path: "options.mono", kind: "toggle", label: "Mode", onLabel: "Poly", offLabel: "Mono", inverted: true },
+      { path: "options.mono", kind: "switch", label: "Mode", options: [
+        { label: "Poly", value: false },
+        { label: "Mono", value: true },
+      ]},
       { path: "options.pedal", kind: "toggle", label: "Pedal" },
     ],
   },
@@ -399,7 +402,10 @@ export const INPUT_LIBRARY = {
     options: { frequency: 440, mono: false, pedal: false },
     controls: [
       { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 20000, step: 0.01, formatter: formatHertz },
-      { path: "options.mono", kind: "toggle", label: "Mode", onLabel: "Poly", offLabel: "Mono", inverted: true },
+      { path: "options.mono", kind: "switch", label: "Mode", options: [
+        { label: "Poly", value: false },
+        { label: "Mono", value: true },
+      ]},
       { path: "options.pedal", kind: "toggle", label: "Pedal" },
     ],
   },
