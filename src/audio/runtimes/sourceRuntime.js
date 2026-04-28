@@ -219,7 +219,6 @@ export function createSourceRuntime({
     state: VOICE_STATE.IDLE,
     releaseEndTime: 0,
     idleSince: 0,
-    extendedReleaseEndTime: 0,
     disposeTimeoutId: null,
   });
 
@@ -624,10 +623,8 @@ export function createSourceRuntime({
       const envRelease = getEnvReleaseTime(voiceIndex);
       voice.hiddenEnv.release = envRelease;
       voice.hiddenEnv.triggerRelease(now);
-      voice.extendedReleaseEndTime = 0;
     } else {
       voice.hiddenEnv.triggerRelease(now);
-      voice.extendedReleaseEndTime = 0;
     }
 
     // 对于调制模式下的 player，不停止播放，让调制波继续运行
@@ -667,22 +664,6 @@ export function createSourceRuntime({
   const findAvailableVoice = () => {
     const now = Tone.now();
     refreshAllVoiceLifecycles(now);
-    // 检查是否有且只有一个 voice 处于 extended release 状态（可打断）
-    if (runtime.needsExtendedRelease) {
-      const activeVoices = voices.filter((v) => v.initialized && v.note !== null);
-      const releasingVoices = voices.filter((v) =>
-        v.initialized &&
-        v.state === VOICE_STATE.RELEASING &&
-        v.extendedReleaseEndTime &&
-        now < v.extendedReleaseEndTime
-      );
-      // 只有当前没有活跃音符，且只有一个 voice 在 extended release 时，打断它
-      if (activeVoices.length === 0 && releasingVoices.length === 1) {
-        const voice = releasingVoices[0];
-        const index = voices.indexOf(voice);
-        return { voice, index };
-      }
-    }
 
     // 优先找已初始化且空闲的声音（复用资源）
     for (let i = 0; i < voices.length; i++) {
@@ -903,16 +884,6 @@ export function createSourceRuntime({
         voice.state = VOICE_STATE.IDLE;
         voice.releaseEndTime = 0;
         voice.idleSince = 0;
-        voice.extendedReleaseEndTime = 0;
-      }
-
-      // 检查是否需要打断 extended release 的延迟
-      const isInExtendedRelease = voice.state === VOICE_STATE.RELEASING
-        && voice.extendedReleaseEndTime
-        && now < voice.extendedReleaseEndTime;
-
-      if (voice.note && voice.note !== noteData.originalNote) {
-        releaseVoice(voice, index, now);
       }
 
       voice.note = noteData.originalNote;
@@ -920,7 +891,6 @@ export function createSourceRuntime({
       voice.state = VOICE_STATE.ACTIVE;
       voice.releaseEndTime = 0;
       voice.idleSince = 0;
-      voice.extendedReleaseEndTime = 0;
 
       console.log(`[Source ${moduleState.type}] Voice ${index} triggered`);
       console.log(`[Source ${moduleState.type}] Voice ${index} note/pitch:`, noteData.type === "midi" ? noteData.note : `${noteData.frequency}Hz`);
@@ -935,9 +905,6 @@ export function createSourceRuntime({
         // 调制模式下不调制 hiddenEnv，调制波自由运行
       } else if (runtime.hasEnv) {
         triggerEnvAttack(index, effectiveVelocity);
-      } else if (isInExtendedRelease) {
-        voice.hiddenEnv.triggerAttack(now, effectiveVelocity);
-        voice.extendedReleaseEndTime = 0;
       } else if (runtime.needsExtendedRelease && !isFirstAttack) {
         // 非第一个音：同步 hiddenEnv.attack 与 Env
         const envAttack = getEnvAttackTime(index);

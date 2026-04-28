@@ -57,6 +57,10 @@ function findNextNonSourceIndex(modules, startIndex, isSourceModule, isInputModu
       if (isInputModule && isInputModule(modules[i])) {
         continue;
       }
+      // 跳过调制模式的 Envelope，它们只输出调制信号，不参与音频路由
+      if (modules[i].type === "Envelope" && modules[i].modulationMode) {
+        continue;
+      }
       return i;
     }
   }

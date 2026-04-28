@@ -289,12 +289,20 @@ export function createInputRuntime(module, chainModules, inputIndex) {
           }
         } else {
           // 缩小：释放超出范围的活跃 voice
+          const released = [];
           for (let i = newPolyVoice; i < prevPolyVoice; i++) {
             if (voiceStates[i].note) {
+              const note = voiceStates[i].note;
               releaseVoice(i);
+              if (note) {
+                released.push({ note, voiceIndex: i });
+              }
             }
           }
           voiceStates.length = newPolyVoice;
+          if (released.length > 0) {
+            runtime.pendingReleasedNotes = (runtime.pendingReleasedNotes || []).concat(released);
+          }
         }
       }
     },

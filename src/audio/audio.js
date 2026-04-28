@@ -234,9 +234,6 @@ export class AudioEngine {
     if (this.isSourceModule(module)) {
       return this.createSourceRuntime(module, chainIndex);
     }
-    if (this.isInputModule(module)) {
-      return createInputRuntime(module, chainModules, moduleIndex);
-    }
     return createEffectRuntime(module);
   }
 
@@ -246,14 +243,10 @@ export class AudioEngine {
       getVelocityEnabled: () => Boolean(this.state?.global?.velocityEnabled),
       onAllVoicesIdle: () => this.rebuildSignalChains(),
       onVoiceDisposed: (voiceIndex) => {
-        setTimeout(() => {
-          this.app?.modulationManager?.disconnectVoiceModulations?.(chainIndex, module.id, voiceIndex);
-        }, 0);
+        this.app?.modulationManager?.disconnectVoiceModulations?.(chainIndex, module.id, voiceIndex);
       },
       onVoiceInitialized: (voiceIndex) => {
-        setTimeout(() => {
-          this.app?.modulationManager?.connectVoiceModulations?.(chainIndex, module.id, voiceIndex);
-        }, 0);
+        this.app?.modulationManager?.connectVoiceModulations?.(chainIndex, module.id, voiceIndex);
       },
     });
   }

@@ -125,6 +125,7 @@ export function createEnvelopeRuntime(module) {
       if (isModulation) {
         if (!moduleState.enabled) return;
         const index = modNoteTracker.allocate(note, Tone.now());
+        modVoices[index].triggerRelease(Tone.now());
         modVoices[index].triggerAttack(Tone.now(), velocity);
       } else {
         nodeNoteTracker.allocate(note, Tone.now());
