@@ -457,10 +457,9 @@ export function createSourceRuntime({
     if (moduleState.modulationMode) {
       return 0.01;
     }
-    // Extended release: Env release + hiddenEnv release
+    // Extended release: use Env release time (hiddenEnv synced with Env)
     if (runtime.needsExtendedRelease) {
-      const envRelease = getEnvReleaseTime(voiceIndex);
-      return envRelease + 0.005;
+      return getEnvReleaseTime(voiceIndex);
     }
     // Direct Env: use its release time
     if (runtime.hasEnv) {
@@ -617,14 +616,11 @@ export function createSourceRuntime({
     } else if (runtime.hasEnv) {
       triggerEnvRelease(voiceIndex);
       const envRelease = getEnvReleaseTime(voiceIndex);
-      voice.hiddenEnv.triggerRelease(now + envRelease);
-    } else if (runtime.needsExtendedRelease && isLastNote) {
-      // 最后一个音：延迟释放 hiddenEnv
-      const envRelease = getEnvReleaseTime(voiceIndex);
-      voice.hiddenEnv.triggerRelease(now + envRelease);
-      voice.extendedReleaseEndTime = now + envRelease;
-    } else if (runtime.needsExtendedRelease && !isLastNote) {
-      // 非最后一个音：同步 hiddenEnv.release 与 Env
+      // hiddenEnv 同步与 Env 一起开始 release
+      voice.hiddenEnv.release = envRelease;
+      voice.hiddenEnv.triggerRelease(now);
+    } else if (runtime.needsExtendedRelease) {
+      // 有 Envelope 在链中但不相邻：同步 hiddenEnv 与 Env 一起 release
       const envRelease = getEnvReleaseTime(voiceIndex);
       voice.hiddenEnv.release = envRelease;
       voice.hiddenEnv.triggerRelease(now);

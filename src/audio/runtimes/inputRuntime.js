@@ -163,7 +163,9 @@ export function createInputRuntime(module, chainModules, inputIndex) {
       }
 
       // 如果窃取了已有 voice，先释放它
+      let stolenNote = null;
       if (voiceStates[voiceIndex].note) {
+        stolenNote = voiceStates[voiceIndex].note;
         activeNotes.delete(voiceStates[voiceIndex].note);
       }
 
@@ -183,6 +185,7 @@ export function createInputRuntime(module, chainModules, inputIndex) {
         voiceIndex,
         noteData,
         isRetrigger: false,
+        stolenNote,
         controlledSources: controlled.sources,
         controlledEnvelopes: controlled.envelopes,
       };

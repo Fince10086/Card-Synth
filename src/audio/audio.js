@@ -395,11 +395,41 @@ export class AudioEngine {
           return;
         }
 
-        const { voiceIndex, noteData, isRetrigger, controlledSources, controlledEnvelopes } = result;
+        const { voiceIndex, noteData, isRetrigger, stolenNote, controlledSources, controlledEnvelopes } = result;
 
         // 延续音：不重新触发 Attack
         if (isRetrigger) {
           return;
+        }
+
+        // 如果发生了 voice stealing，先释放旧 note
+        if (stolenNote) {
+          const inputNote = stolenNote;
+          const inputVoiceIndex = voiceIndex;
+
+          // 通知 Source release
+          controlledSources.forEach((sourceId) => {
+            const sourceRuntime = runtimeMap.get(sourceId);
+            if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
+              sourceRuntime.triggerRelease(inputNote, inputVoiceIndex);
+            }
+          });
+
+          // 通知 Envelope release
+          controlledEnvelopes.forEach((envInfo) => {
+            const envRuntime = runtimeMap.get(envInfo.id);
+            if (!envRuntime) {
+              return;
+            }
+
+            if (envRuntime.modulationMode) {
+              envRuntime.triggerVoiceRelease(inputVoiceIndex);
+            } else if (envRuntime.hasPerVoiceConnection) {
+              envRuntime.triggerVoiceRelease(inputVoiceIndex);
+            } else {
+              envRuntime.triggerRelease(inputNote);
+            }
+          });
         }
 
         // 触发控制范围内的所有 Source
