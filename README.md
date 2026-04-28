@@ -47,17 +47,22 @@ npm run build
 
 ### 信号流区域 (Signal Flow)
 
-中央区域显示当前链的所有音频模块，信号从左到右流动，以下是一种可能的情况：
+中央区域显示当前链的所有音频模块，信号从左到右流动，模块可以放在任意位置：
 
 ```
-[源] → [组件] → [效果] → [输出]
+[输入] → [源] → [效果] → [输出]
 ```
 
-每个模块都可以位于任意位置，但Source模块不会接收先于它模块的输出，先于它的输出在遇到Source的时候会自动跳过它。以下是另一种同样可能的情况：
+以下是另一种同样可能的情况：
 
 ```
-[源] → [组件] → [源] → [效果] → [组件] → [源] → [输出]
+[输入] → [源] → [效果] → [源] → [输入] → [源] → [效果] → [输出]
 ```
+
+**模块连接规则**：
+- **Input** 模块不参与音频信号连接，只控制其后 Source 和 Envelope 的触发
+- **Source** 模块不会接收先于它的模块的输出（遇到 Source 时信号自动跳过）
+- **Effect** 放在 Source 之前不会对该 Source 生效
 
 ### 模块卡片
 
@@ -65,42 +70,53 @@ npm run build
 - **模块标题**: 显示模块类型名称
 - **启用开关**: 左上角切换模块是否参与音频处理
 - **参数控制**: 滑块、下拉菜单、开关等
-- **调制模式** (源模块): 切换后该模块可作为调制源
+- **调制模式** (源模块/包络模块): 切换后该模块可作为调制源
 
 ---
 
 ## 模块类型
 
-### 源模块 (Source)
+### 输入模块 (Input) [绿色]
+
+控制链中所有后续 Source 和 Envelope 的触发方式：
+
+| 模块 | 说明 | 关键参数 |
+|------|------|----------|
+| **MIDI** | MIDI/键盘输入控制 | Transpose(移调), Octave(八度), Poly Voice(复音数), Pedal(延音踏板) |
+| **Frequency** | 固定频率控制 | Mode(低/高频范围), Frequency(频率), Poly Voice, Pedal |
+
+每个链的开头默认有一个**隐藏的 MIDI 输入**（不占用模块位），如果没有显式添加 Input 模块，所有 Source 都会接收来自 MIDI/键盘的输入。
+
+### 源模块 (Source) [青色]
 
 产生原始音频信号的模块：
 
 | 模块 | 说明 | 关键参数 |
 |------|------|----------|
-| **Oscillator** | 基础振荡器 | Wave(波形), Detune(失谐), Octave(八度) |
+| **Oscillator** | 基础振荡器 | Wave(波形), Detune(失谐) |
 | **PulseOscillator** | 脉冲波振荡器 | Width(脉宽), Detune(失谐) |
 | **Noise** | 噪声发生器 | Color(颜色: White/Pink/Brown), Rate(速率) |
 | **Player** | 采样播放器 | Root(根音), Rate(播放速率), Loop(循环) |
 
-### 组件模块 (Component)
+### 包络模块 (Envelope)
 
-塑造和处理音频的中间模块：
+控制音量或作为调制源的包络模块：
+
+| 模式 | 说明 | 颜色 | 在信号链中 |
+|------|------|------|------------|
+| **非调制模式** (默认) | 振幅包络，控制音量 | 金色 | 处理音频 |
+| **调制模式** | 通用包络，输出调制信号 | 蓝色 | 不处理音频，通过调制连线控制其他参数 |
+
+### 效果模块 (Effect) [红色]
+
+为声音添加空间感和色彩，以及处理音频信号的模块：
 
 | 模块 | 说明 | 关键参数 |
 |------|------|----------|
 | **Filter** | 滤波器 | Type(类型), Frequency(频率), Q(共振) |
-| **AmplitudeEnvelope** | 振幅包络 | Attack, Decay, Sustain, Release |
-| **Envelope** | 通用包络 | 可作为调制源控制其他参数 |
 | **Compressor** | 压缩器 | Threshold, Ratio, Attack, Release |
 | **Gain** | 增益 | Gain(增益量) |
 | **EQ3** | 三段均衡 | Low, Mid, High |
-
-### 效果模块 (Effect)
-
-为声音添加空间感和色彩的模块：
-
-| 模块 | 说明 | 关键参数 |
-|------|------|----------|
 | **Chorus** | 合唱效果 | Frequency, Depth, Delay Time |
 | **Reverb** | 混响 | Decay(衰减), PreDelay(预延迟), Wet(干湿比) |
 | **AutoFilter** | 自动滤波 | Frequency, Depth, Base Frequency |
@@ -125,7 +141,7 @@ npm run build
 
 ### 重排模块
 
-按住模块卡片的标题栏拖动，可以改变模块在信号链中的顺序。注意：源模块总是在最前，效果模块总是在最后。
+按住模块卡片的标题栏拖动，可以改变模块在信号链中的顺序。模块可以放在任意位置。
 
 ### 启用/禁用模块
 
@@ -153,7 +169,7 @@ npm run build
 
 #### 支持的调制源
 
-- **Envelope**: 专用的包络模块，总是可以作为调制源。
+- **Envelope**: 开启 MOD 模式后的包络模块。
 - **Source 模块**: 开启 MOD 模式后的 Oscillator、Noise 等。
 
 #### 删除调制连接
@@ -215,8 +231,8 @@ npm run build
  A   S   D   F   G   H   J   K   L   ;   '
 ```
 
-- **Z / X**: 八度降低/升高
-- **C / V**: 力度降低/升高
+- **Z / X**: 八度降低/升高（仅影响电脑键盘和虚拟键盘的输入）
+- **C / V**: 力度降低/升高（仅影响电脑键盘和虚拟键盘的输入）
 - **N / M**: 切换到前一条/后一条链
 
 ### MIDI 键盘
@@ -225,6 +241,8 @@ npm run build
 2. 点击主面板的 **MIDI** 按钮。
 3. 从下拉菜单选择 MIDI 输入设备。
 4. 直接弹奏 MIDI 键盘即可控制合成器。
+
+**注意**：MIDI 键盘的输入不受 Z/X 键的八度控制影响，八度/移调由链中的 **MIDI Input 模块**控制。
 
 ---
 
@@ -242,11 +260,17 @@ npm run build
 ### 预设文件格式
 
 预设文件为 JSON 格式，包含：
-- `global`: 全局设置（音量、八度、力度）
-- `modules`: 模块列表及其参数
+- `global`: 全局设置（音量、力度）
 - `chains`: 多条链的状态
+  - `modules`: 模块列表及其参数
+  - `modulations`: 调制连接
 - `macro`: 宏控制绑定
-- `modulations`: 调制连接
+
+模块字段说明：
+- `category`: 模块类别 (`input`, `source`, `component`, `effect`)
+- `type`: 模块类型
+- `modulationMode`: 是否为调制模式（Source 和 Envelope 模块）
+- `options`: 模块参数
 
 ---
 
@@ -313,7 +337,16 @@ Chain IV ──┘
 src/
   app/           # 主应用逻辑
   audio/         # 音频引擎 (Tone.js)
-  core/          # 核心库、键盘映射、采样
+    runtimes/    # 模块运行时
+      sourceRuntime.js      # 源模块运行时
+      envelopeRuntime.js    # 统一包络运行时（振幅/调制双模式）
+      inputRuntime.js       # 输入模块运行时（统一分配 voice）
+      effectRuntime.js      # 效果模块运行时
+    chain/         # 信号链连接
+      signalChain.js        # 音频信号路由
+    voice/         # 声部管理
+      noteVoiceTracker.js   # 音符到声部映射
+  core/          # 核心库、键盘映射、采样、模块定义
   input/         # 输入管理 (键盘、MIDI)
   interactions/  # 交互系统 (调制、宏、手势、拖拽)
   preset/        # 预设管理
