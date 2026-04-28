@@ -7,7 +7,7 @@ import {
   INPUT_LIBRARY,
 } from "../utils/helpers.js";
 import { createSourceRuntime } from "./runtimes/sourceRuntime.js";
-import { createEnvelopeModulationRuntime } from "./runtimes/envelopeModulationRuntime.js";
+import { createEnvelopeRuntime } from "./runtimes/envelopeRuntime.js";
 import { createEffectRuntime } from "./runtimes/effectRuntime.js";
 import { createInputRuntime } from "./runtimes/inputRuntime.js";
 import { connectSignalChain } from "./chain/signalChain.js";
@@ -91,11 +91,11 @@ export class AudioEngine {
   }
 
   isSourceModule(module) {
-    return module.type === "Envelope" || module.category === "source" || SOURCE_LIBRARY[module.type] !== undefined;
+    return module.category === "source" || SOURCE_LIBRARY[module.type] !== undefined;
   }
 
   isAmpEnvModule(module) {
-    return module.type === "AmplitudeEnvelope";
+    return module.type === "Envelope" && module.modulationMode !== true;
   }
 
   isInputModule(module) {
@@ -168,7 +168,7 @@ export class AudioEngine {
 
       // 如果没有显式 Input 但链中有 Source 或 Envelope，创建隐藏 MIDI Input
       const hasSourcesOrEnvelopes = modules.some((m) =>
-        m.category === "source" || m.type === "AmplitudeEnvelope" || m.type === "Envelope"
+        m.category === "source" || m.type === "Envelope"
       );
 
       if (hasSourcesOrEnvelopes && inputIndices.length === 0) {
@@ -229,7 +229,7 @@ export class AudioEngine {
 
   createModuleRuntime(module, chainIndex, chainModules, moduleIndex) {
     if (module.type === "Envelope") {
-      return this.createEnvelopeModulationRuntime(module);
+      return createEnvelopeRuntime(module);
     }
     if (this.isSourceModule(module)) {
       return this.createSourceRuntime(module, chainIndex);
@@ -256,10 +256,6 @@ export class AudioEngine {
         }, 0);
       },
     });
-  }
-
-  createEnvelopeModulationRuntime(module) {
-    return createEnvelopeModulationRuntime(module);
   }
 
   /**
@@ -427,20 +423,12 @@ export class AudioEngine {
             return;
           }
 
-          if (envInfo.type === "AmplitudeEnvelope") {
-            // AmplitudeEnvelope：检查是否有 per-voice 连接
-            if (envRuntime.hasPerVoiceConnection) {
-              envRuntime.triggerVoiceAttack(voiceIndex, velocity);
-            } else {
-              envRuntime.triggerAttack(note, velocity);
-            }
-          } else if (envInfo.type === "Envelope") {
-            // 调制 Envelope：使用 voiceIndex
-            if (typeof envRuntime.triggerVoiceAttack === "function") {
-              envRuntime.triggerVoiceAttack(voiceIndex, velocity);
-            } else {
-              envRuntime.triggerAttack(note, velocity);
-            }
+          if (envRuntime.modulationMode) {
+            envRuntime.triggerVoiceAttack(voiceIndex, velocity);
+          } else if (envRuntime.hasPerVoiceConnection) {
+            envRuntime.triggerVoiceAttack(voiceIndex, velocity);
+          } else {
+            envRuntime.triggerAttack(note, velocity);
           }
         });
       });
@@ -488,19 +476,13 @@ export class AudioEngine {
             return;
           }
 
-          if (envInfo.type === "AmplitudeEnvelope") {
-            if (envRuntime.hasPerVoiceConnection) {
+            if (envRuntime.modulationMode) {
+              envRuntime.triggerVoiceRelease(voiceIndex);
+            } else if (envRuntime.hasPerVoiceConnection) {
               envRuntime.triggerVoiceRelease(voiceIndex);
             } else {
               envRuntime.triggerRelease(note);
             }
-          } else if (envInfo.type === "Envelope") {
-            if (typeof envRuntime.triggerVoiceRelease === "function") {
-              envRuntime.triggerVoiceRelease(voiceIndex);
-            } else {
-              envRuntime.triggerRelease(note);
-            }
-          }
         });
       });
     });
@@ -558,13 +540,10 @@ export class AudioEngine {
 
       // 释放所有未通过 Input 触发的 runtime（保险措施）
       runtimeMap.forEach((runtime, moduleId) => {
-        if (runtime.type === "AmplitudeEnvelope" && runtime.releaseAll) {
+        if (runtime.type === "Envelope" && runtime.releaseAll) {
           runtime.releaseAll();
         }
         if (runtime.category === "source" && runtime.releaseAll) {
-          runtime.releaseAll();
-        }
-        if (runtime.category === "modulation-envelope" && runtime.releaseAll) {
           runtime.releaseAll();
         }
       });

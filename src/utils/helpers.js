@@ -112,13 +112,14 @@ export function createEffectModule(type = "Chorus") {
   };
 }
 
-export function createComponentModule(type = "AmplitudeEnvelope") {
-  const definition = COMPONENT_LIBRARY[type] || COMPONENT_LIBRARY.AmplitudeEnvelope;
+export function createComponentModule(type = "Envelope") {
+  const definition = COMPONENT_LIBRARY[type] || COMPONENT_LIBRARY.Envelope;
   return {
     id: createId("cmp"),
     type,
     category: "component",
     enabled: true,
+    modulationMode: false,
     index: moduleCounter - 1,
     options: deepClone(definition.options),
   };
@@ -346,7 +347,7 @@ export function getModuleDefinition(module) {
   if (module.category === "input" || INPUT_LIBRARY[module.type]) {
     return INPUT_LIBRARY[module.type] || INPUT_LIBRARY.MIDI;
   }
-  return COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.AmplitudeEnvelope;
+  return COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.Envelope;
 }
 
 export function getModuleAccent(module) {

@@ -41,7 +41,7 @@ export function createInputRuntime(module, chainModules, inputIndex) {
       if (m.category === "source" || m.type === "Envelope") {
         sources.push(m.id);
       }
-      if (m.type === "AmplitudeEnvelope" || m.type === "Envelope") {
+      if (m.type === "Envelope") {
         envelopes.push({ id: m.id, type: m.type });
       }
     }

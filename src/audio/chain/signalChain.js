@@ -77,7 +77,7 @@ function findNextNonSourceIndex(modules, startIndex, isSourceModule, isInputModu
  */
 function connectSourceModule({ modules, sourceIndex, runtime, ampEnvIndices, runtimeMap, masterVolume, isSourceModule, isInputModule }) {
   const sourceModule = modules[sourceIndex];
-  if (sourceModule?.type === "Envelope") {
+  if (sourceModule?.type === "Envelope" && sourceModule?.modulationMode) {
     return;
   }
 
@@ -162,7 +162,11 @@ function connectSourceModule({ modules, sourceIndex, runtime, ampEnvIndices, run
  * @param {Function} params.isSourceModule - 判断是否为音源模块
  */
 function connectNonSourceModule({ modules, moduleIndex, runtime, runtimeMap, masterVolume, isSourceModule, isInputModule }) {
-  if (runtime.type === "AmplitudeEnvelope") {
+  if (runtime.type === "Envelope" && runtime.modulationMode) {
+    return;
+  }
+
+  if (runtime.type === "Envelope" && !runtime.modulationMode) {
     const targetIndex = findNextNonSourceIndex(modules, moduleIndex, isSourceModule, isInputModule);
 
     let targetNode;

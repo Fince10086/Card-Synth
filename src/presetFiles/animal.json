@@ -66,7 +66,8 @@
         "sustain": 0,
         "release": 0.65,
         "gain": 1
-      }
+      },
+      "modulationMode": true
     },
     {
       "id": "src-0021",
@@ -103,7 +104,7 @@
     },
     {
       "id": "cmp-0004",
-      "type": "AmplitudeEnvelope",
+      "type": "Envelope",
       "category": "component",
       "enabled": true,
       "index": 4,
@@ -112,7 +113,8 @@
         "decay": 0.18,
         "sustain": 0.82,
         "release": 0.65
-      }
+      },
+      "modulationMode": false
     },
     {
       "id": "fx-0007",
@@ -159,7 +161,7 @@
     },
     {
       "id": "cmp-0013",
-      "type": "AmplitudeEnvelope",
+      "type": "Envelope",
       "category": "component",
       "enabled": true,
       "index": 13,
@@ -168,7 +170,8 @@
         "decay": 0.001,
         "sustain": 0.82,
         "release": 0.65
-      }
+      },
+      "modulationMode": false
     },
     {
       "id": "cmp-0021",

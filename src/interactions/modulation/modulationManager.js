@@ -69,11 +69,11 @@ export class ModulationManager {
     if (!module) {
       return false;
     }
-    // Envelope类型的模块总是作为调制源
-    if (module.type === "Envelope") {
+    // Envelope 类型且开启 modulationMode 的模块作为调制源
+    if (module.type === "Envelope" && module.modulationMode) {
       return true;
     }
-    // 或者是source类别且开启了modulationMode的模块
+    // 或者是 source 类别且开启了 modulationMode 的模块
     return module.category === "source" && Boolean(module.modulationMode);
   }
 

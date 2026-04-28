@@ -74,7 +74,7 @@ export function renderModuleCard(module, index, app) {
   const modulationSource = app.isModulationSource(module);
   const accent = modulationSource ? "modulation" : getModuleAccent(module);
   const kicker = getModuleTag(module);
-  const canToggleModulation = module.category === "source";
+  const canToggleModulation = module.category === "source" || module.type === "Envelope";
   const canCreateCable = modulationSource;
 
   const card = createModuleCard({
@@ -87,10 +87,12 @@ export function renderModuleCard(module, index, app) {
       const replacement = createModule(module.category, value);
       replacement.id = module.id;
       replacement.enabled = module.enabled;
+      if (module.category === "source" || module.type === "Envelope") {
+        replacement.modulationMode = module.modulationMode;
+      }
       if (module.category === "source") {
         replacement.volume = module.volume;
         replacement.pan = module.pan;
-        replacement.modulationMode = module.modulationMode;
         const sourceFrequencyOffset = Number(module?.options?.frequencyOffset);
         if (Number.isFinite(sourceFrequencyOffset)) {
           replacement.options.frequencyOffset = sourceFrequencyOffset;
@@ -169,7 +171,7 @@ export function renderModuleCard(module, index, app) {
   controls.className = "module-grid";
 
   if (
-    ((module.category === "source" && module.modulationMode) || module.type === "Envelope")
+    ((module.category === "source" && module.modulationMode) || (module.type === "Envelope" && module.modulationMode))
     && !Number.isFinite(Number(module?.options?.gain))
   ) {
     setByPath(module, "options.gain", 1);
