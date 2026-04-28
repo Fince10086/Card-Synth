@@ -264,6 +264,12 @@ export function normalizeInputModule(module) {
     delete result.options.polyVoice;
   }
 
+  // Clean up legacy `mono` and `pedal` from Pitch options (now in Voices/Pedal modules)
+  if (result.type === "Pitch") {
+    delete result.options.mono;
+    delete result.options.pedal;
+  }
+
   return result;
 }
 

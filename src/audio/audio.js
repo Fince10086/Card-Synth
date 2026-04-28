@@ -91,13 +91,13 @@ export class AudioEngine {
     }
     rampParam(this.masterVolume.volume, globalState.volume);
 
-    // PolyVoice 变化时通知所有 Input runtime 调整 voice 数量
+    // PolyVoice 变化时通知所有 Pitch runtime 调整 voice 数量
     if (globalState.polyVoice !== prevPolyVoice) {
       this.chainRuntimes.forEach((runtimeMap) => {
         runtimeMap.forEach((runtime) => {
-          if (runtime.category === "input" && runtime.apply) {
+          if (runtime.type === "Pitch" && runtime.apply) {
             runtime.apply(runtime.moduleState);
-            this._flushInputPendingNotes(runtime, runtimeMap);
+            this._flushInputPendingNotes(runtime, runtimeMap, [], -1);
           }
         });
       });
@@ -318,9 +318,9 @@ export class AudioEngine {
     });
   }
 
-  _flushInputPendingNotes(runtime, runtimeMap) {
-    // Input 模块 polyVoice 缩小后，处理待释放的音符
-    if (runtime.category === "input" && runtime.pendingReleasedNotes?.length > 0) {
+  _flushInputPendingNotes(runtime, runtimeMap, chainModules, moduleIndex) {
+    // Pitch 模块 polyVoice 缩小后，处理待释放的音符
+    if (runtime.type === "Pitch" && runtime.pendingReleasedNotes?.length > 0) {
       const pendingNotes = runtime.pendingReleasedNotes;
       runtime.pendingReleasedNotes = []; // 清空队列
 
@@ -353,8 +353,8 @@ export class AudioEngine {
       });
     }
 
-    // Input 模块 transpose/octave 改变后，更新 Source 频率
-    if (runtime.category === "input" && runtime.pendingNoteUpdates?.length > 0) {
+    // Pitch 模块 transpose/octave 改变后，更新 Source 频率
+    if (runtime.type === "Pitch" && runtime.pendingNoteUpdates?.length > 0) {
       const pendingUpdates = runtime.pendingNoteUpdates;
       runtime.pendingNoteUpdates = []; // 清空队列
 
@@ -371,8 +371,8 @@ export class AudioEngine {
       });
     }
 
-    // Input 模块 frequency 改变后，更新 Source 频率
-    if (runtime.category === "input" && runtime.pendingFreqUpdates?.length > 0) {
+    // Pitch 模块 frequency 改变后，更新 Source 频率
+    if (runtime.type === "Pitch" && runtime.pendingFreqUpdates?.length > 0) {
       const pendingUpdates = runtime.pendingFreqUpdates;
       runtime.pendingFreqUpdates = []; // 清空队列
 
@@ -387,6 +387,52 @@ export class AudioEngine {
           }
         });
       });
+    }
+
+    // Pedal 模块 pedal off：释放同范围内 Pitch 的 pending notes
+    if (runtime.type === "Pedal" && runtime.pedalOff) {
+      runtime.pedalOff = false;
+
+      // 从当前 Pedal 向后查找，直到下一个 Pedal 或链尾
+      for (let i = moduleIndex + 1; i < chainModules.length; i++) {
+        const m = chainModules[i];
+        if (!m.enabled) continue;
+        if (m.type === "Pedal") break;
+
+        if (m.type === "Pitch") {
+          const pitchRuntime = runtimeMap.get(m.id);
+          if (pitchRuntime && pitchRuntime.releaseAllPending) {
+            const released = pitchRuntime.releaseAllPending();
+            released.forEach(({ note, voiceIndex }) => {
+              const controlled = pitchRuntime.getControlledModules();
+
+              // 通知 Source release
+              controlled.sources.forEach((sourceId) => {
+                const sourceRuntime = runtimeMap.get(sourceId);
+                if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
+                  sourceRuntime.triggerRelease(note, voiceIndex);
+                }
+              });
+
+              // 通知 Envelope release
+              controlled.envelopes.forEach((envInfo) => {
+                const envRuntime = runtimeMap.get(envInfo.id);
+                if (!envRuntime) {
+                  return;
+                }
+
+                if (envRuntime.modulationMode) {
+                  envRuntime.triggerVoiceRelease(voiceIndex);
+                } else if (envRuntime.hasPerVoiceConnection) {
+                  envRuntime.triggerVoiceRelease(voiceIndex);
+                } else {
+                  envRuntime.triggerRelease(note);
+                }
+              });
+            });
+          }
+        }
+      }
     }
   }
 
@@ -408,7 +454,7 @@ export class AudioEngine {
     const runtimeMap = this.getChainRuntimeMap(chainIndex);
     if (runtime && runtime.apply) {
       runtime.apply(modules[moduleIndex]);
-      this._flushInputPendingNotes(runtime, runtimeMap);
+      this._flushInputPendingNotes(runtime, runtimeMap, modules, moduleIndex);
     }
   }
 

@@ -384,8 +384,8 @@ export const COMPONENT_LIBRARY = {
 export const INPUT_LIBRARY = {
   Pitch: {
     accent: "input",
-    tag: "Input",
-    options: { mode: "midi", transpose: 0, octave: 0, frequency: 440, mono: false, pedal: false },
+    tag: "Pitch",
+    options: { mode: "midi", transpose: 0, octave: 0, frequency: 440 },
     controls: [
       { path: "options.mode", kind: "switch", label: "Source", options: [
         { label: "MIDI", value: "midi" },
@@ -394,10 +394,24 @@ export const INPUT_LIBRARY = {
       { path: "options.transpose", kind: "range", label: "Transpose", min: -12, max: 12, step: 1, conditional: (m) => m.options?.mode === "midi", formatter: (value) => `${value > 0 ? "+" : ""}${value} st` },
       { path: "options.octave", kind: "range", label: "Octave", min: -4, max: 4, step: 1, conditional: (m) => m.options?.mode === "midi", formatter: (value) => `Oct ${value > 0 ? "+" : ""}${value}` },
       { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 20000, step: 0.01, conditional: (m) => m.options?.mode === "frequency", formatter: formatHertz },
+    ],
+  },
+  Voices: {
+    accent: "input",
+    tag: "Voices",
+    options: { mono: false },
+    controls: [
       { path: "options.mono", kind: "switch", label: "Voices", options: [
         { label: "Poly", value: false },
         { label: "Mono", value: true },
       ]},
+    ],
+  },
+  Pedal: {
+    accent: "input",
+    tag: "Pedal",
+    options: { pedal: false },
+    controls: [
       { path: "options.pedal", kind: "toggle", label: "Pedal" },
     ],
   },

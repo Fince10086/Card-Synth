@@ -15,9 +15,7 @@
         "mode": "midi",
         "transpose": 0,
         "octave": 0,
-        "frequency": 440,
-        "mono": false,
-        "pedal": false
+        "frequency": 440
       }
     },
     {

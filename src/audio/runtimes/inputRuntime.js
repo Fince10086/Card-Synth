@@ -2,22 +2,45 @@ import { clamp, deepClone } from "../../utils/helpers.js";
 import * as Tone from "tone";
 
 /**
- * 创建输入模块运行时
- *
- * Input 模块是链中的控制器，负责：
- * - 统一分配 voice slot（取代各 Source 独立分配）
- * - 管理音符生命周期（延续音、pedal、声部窃取）
- * - 确定控制范围（当前位置到下一个 Input 之间的 Source 和 Envelope）
- * - 转换输入数据（MIDI: 应用 transpose/octave; Frequency: 输出固定频率）
+ * 创建 Pitch 输入模块运行时
+ * 负责音符触发、voice 分配、查找 Voices/Pedal 配置
  */
-export function createInputRuntime(module, chainModules, inputIndex, getGlobalPolyVoice = () => 8) {
+function createPitchRuntime(module, chainModules, inputIndex, getGlobalPolyVoice = () => 8) {
   let moduleState = deepClone(module);
 
+  // 在范围内查找 Voices 配置
+  const findVoicesModule = () => {
+    for (let i = inputIndex + 1; i < chainModules.length; i++) {
+      const m = chainModules[i];
+      if (!m.enabled) continue;
+      if (m.type === "Voices") return m;
+      if (m.type === "Pitch") break; // 同类型阻断
+    }
+    return null;
+  };
+
+  // 在范围内查找 Pedal 配置
+  const findPedalModule = () => {
+    for (let i = inputIndex + 1; i < chainModules.length; i++) {
+      const m = chainModules[i];
+      if (!m.enabled) continue;
+      if (m.type === "Pedal") return m;
+      if (m.type === "Pitch") break; // 同类型阻断
+    }
+    return null;
+  };
+
   const getPolyVoice = () => {
-    if (moduleState.options?.mono) {
+    const voicesModule = findVoicesModule();
+    if (voicesModule?.options?.mono) {
       return 1;
     }
     return clamp(getGlobalPolyVoice(), 2, 8);
+  };
+
+  const getPedal = () => {
+    const pedalModule = findPedalModule();
+    return Boolean(pedalModule?.options?.pedal);
   };
 
   // Voice 状态数组（动态调整大小）
@@ -31,8 +54,7 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
   const activeNotes = new Map();
 
   /**
-   * 确定此 Input 的控制范围
-   * 从 inputIndex+1 开始，到下一个 Input 之前
+   * 确定此 Pitch 的控制范围（到下一个 Pitch 之前）
    */
   const getControlledModules = () => {
     const sources = [];
@@ -41,7 +63,7 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
     for (let i = inputIndex + 1; i < chainModules.length; i++) {
       const m = chainModules[i];
       if (!m.enabled) continue;
-      if (m.category === "input") break; // 遇到下一个 Input，停止
+      if (m.type === "Pitch") break; // 同类型阻断
 
       if (m.category === "source" || m.type === "Envelope") {
         sources.push(m.id);
@@ -54,24 +76,15 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
     return { sources, envelopes };
   };
 
-  /**
-   * 查找可用 voice
-   * 策略：
-   * 1. 优先找已分配但空闲的 voice
-   * 2. 找未初始化的 voice（如果 polyVoice 减小，可能有一些未使用）
-   * 3. 窃取最老的活跃 voice
-   */
   const findAvailableVoice = () => {
     const polyVoice = getPolyVoice();
 
-    // 1. 优先找空闲 voice
     for (let i = 0; i < polyVoice; i++) {
       if (!voiceStates[i].note && !voiceStates[i].pendingRelease) {
         return i;
       }
     }
 
-    // 2. 窃取最老的活跃 voice（startTime 最早的）
     let oldestIndex = -1;
     let oldestTime = Infinity;
     for (let i = 0; i < polyVoice; i++) {
@@ -84,9 +97,6 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
     return oldestIndex;
   };
 
-  /**
-   * 释放指定 voice（内部使用）
-   */
   const releaseVoice = (voiceIndex) => {
     const state = voiceStates[voiceIndex];
     if (state.note) {
@@ -97,9 +107,6 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
     state.pendingRelease = false;
   };
 
-  /**
-   * 将 MIDI note 应用 transpose 和 octave
-   */
   const applyMidiTransforms = (note) => {
     const transpose = clamp(Number(moduleState.options?.transpose) || 0, -12, 12);
     const octave = clamp(Number(moduleState.options?.octave) || 0, -4, 4);
@@ -108,15 +115,11 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
       return note;
     }
 
-    // 转换为 MIDI note number，应用偏移，再转回 note name
     let midiNum = Tone.Frequency(note).toMidi();
     midiNum += transpose + (octave * 12);
     return Tone.Frequency(midiNum, "midi").toNote();
   };
 
-  /**
-   * 获取频率值（Frequency Input）
-   */
   const getFrequencyValue = () => {
     return clamp(Number(moduleState.options?.frequency) || 440, 0.1, 20000);
   };
@@ -125,21 +128,9 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
     type: module.type,
     category: "input",
     moduleState,
-
-    /**
-     * 获取控制范围内的模块 ID
-     */
     getControlledModules,
 
-    /**
-     * 触发音符 Attack
-     *
-     * @param {string} note - 音符名称
-     * @param {number} velocity - 力度值
-     * @returns {Object|null} { voiceIndex, noteData, isRetrigger, controlledSources, controlledEnvelopes }
-     */
     triggerAttack: (note, velocity) => {
-      // 检查延续音
       if (activeNotes.has(note)) {
         const voiceIndex = activeNotes.get(note);
         const noteData = moduleState.options?.mode === "midi"
@@ -155,13 +146,11 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
         };
       }
 
-      // 分配 voice
       const voiceIndex = findAvailableVoice();
       if (voiceIndex < 0) {
         return null;
       }
 
-      // 如果窃取了已有 voice，先释放它
       let stolenNote = null;
       if (voiceStates[voiceIndex].note) {
         stolenNote = voiceStates[voiceIndex].note;
@@ -173,7 +162,6 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
       voiceStates[voiceIndex].pendingRelease = false;
       activeNotes.set(note, voiceIndex);
 
-      // 生成 noteData
       const noteData = moduleState.options?.mode === "midi"
         ? { type: "midi", note: applyMidiTransforms(note), originalNote: note, velocity }
         : { type: "frequency", frequency: getFrequencyValue(), originalNote: note, velocity };
@@ -190,36 +178,35 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
       };
     },
 
-    /**
-     * 触发音符 Release
-     *
-     * @param {string} note - 音符名称
-     * @returns {Object|null} { released, voiceIndex }
-     */
     triggerRelease: (note) => {
       const voiceIndex = activeNotes.get(note);
       if (voiceIndex === undefined) {
         return null;
       }
 
-      const pedal = Boolean(moduleState.options?.pedal);
+      const pedal = getPedal();
 
       if (pedal) {
-        // Pedal on：标记 pending release，不实际释放
         voiceStates[voiceIndex].pendingRelease = true;
         return { released: false, voiceIndex };
       }
 
-      // Pedal off：立即释放
       releaseVoice(voiceIndex);
       return { released: true, voiceIndex };
     },
 
-    /**
-     * Pedal off 时释放所有 pending 的音符
-     *
-     * @returns {Array} 释放的 { note, voiceIndex } 列表
-     */
+    releaseAll: () => {
+      const released = [];
+      for (let i = 0; i < getPolyVoice(); i++) {
+        if (voiceStates[i].note) {
+          const note = voiceStates[i].note;
+          releaseVoice(i);
+          released.push({ note, voiceIndex: i });
+        }
+      }
+      return released;
+    },
+
     releaseAllPending: () => {
       const released = [];
       for (let i = 0; i < getPolyVoice(); i++) {
@@ -234,49 +221,14 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
       return released;
     },
 
-    /**
-     * 释放所有活跃音符（用于 silenceAll 或紧急停止）
-     */
-    releaseAll: () => {
-      const released = [];
-      for (let i = 0; i < getPolyVoice(); i++) {
-        if (voiceStates[i].note) {
-          const note = voiceStates[i].note;
-          releaseVoice(i);
-          released.push({ note, voiceIndex: i });
-        }
-      }
-      return released;
-    },
-
-    /**
-     * 应用模块状态更新
-     */
     apply: (nextModule) => {
       const prevPolyVoice = voiceStates.length;
-      const prevPedal = Boolean(moduleState.options?.pedal);
       const prevMode = moduleState.options?.mode || "midi";
       const prevTranspose = Number(moduleState.options?.transpose) || 0;
       const prevOctave = Number(moduleState.options?.octave) || 0;
       const prevFrequency = Number(moduleState.options?.frequency) || 440;
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
-
-      // Pedal 从 on 变为 off：释放所有 pending 的音符
-      const newPedal = Boolean(moduleState.options?.pedal);
-      if (prevPedal && !newPedal) {
-        const released = [];
-        for (let i = 0; i < getPolyVoice(); i++) {
-          if (voiceStates[i].pendingRelease) {
-            const note = voiceStates[i].note;
-            releaseVoice(i);
-            if (note) {
-              released.push({ note, voiceIndex: i });
-            }
-          }
-        }
-        runtime.pendingReleasedNotes = released;
-      }
 
       // Mode 改变：立即停止所有活跃 voice
       const newMode = moduleState.options?.mode || "midi";
@@ -296,7 +248,7 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
         }
       }
 
-      // Transpose 或 Octave 改变：通知 Source 更新活跃 note 的频率（仅 MIDI 模式）
+      // Transpose 或 Octave 改变（仅 MIDI 模式）
       if (newMode === "midi") {
         const newTranspose = Number(moduleState.options?.transpose) || 0;
         const newOctave = Number(moduleState.options?.octave) || 0;
@@ -318,7 +270,7 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
         }
       }
 
-      // Frequency 改变：通知 Source 更新活跃 voice 的频率（仅 Frequency 模式）
+      // Frequency 改变（仅 Frequency 模式）
       if (newMode === "frequency") {
         const newFrequency = Number(moduleState.options?.frequency) || 440;
         if (newFrequency !== prevFrequency) {
@@ -338,11 +290,10 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
         }
       }
 
+      // PolyVoice 变化时调整数组大小
       const newPolyVoice = getPolyVoice();
       if (newPolyVoice !== prevPolyVoice) {
-        // 调整 voiceStates 数组大小
         if (newPolyVoice > prevPolyVoice) {
-          // 扩展：添加新的空 voice slot
           for (let i = prevPolyVoice; i < newPolyVoice; i++) {
             voiceStates.push({
               note: null,
@@ -351,7 +302,6 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
             });
           }
         } else {
-          // 缩小：释放超出范围的活跃 voice
           const released = [];
           for (let i = newPolyVoice; i < prevPolyVoice; i++) {
             if (voiceStates[i].note) {
@@ -370,13 +320,90 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
       }
     },
 
-    /**
-     * 销毁运行时
-     */
     dispose: () => {
       activeNotes.clear();
     },
   };
 
   return runtime;
+}
+
+/**
+ * 创建 Voices 输入模块运行时
+ * 只提供 mono 配置，不处理音符
+ */
+function createVoicesRuntime(module) {
+  let moduleState = deepClone(module);
+
+  const runtime = {
+    type: module.type,
+    category: "input",
+    moduleState,
+
+    getControlledModules: () => ({ sources: [], envelopes: [] }),
+
+    triggerAttack: () => null,
+    triggerRelease: () => null,
+    releaseAll: () => [],
+    releaseAllPending: () => [],
+
+    apply: (nextModule) => {
+      moduleState = deepClone(nextModule);
+      runtime.moduleState = moduleState;
+    },
+
+    dispose: () => {},
+  };
+
+  return runtime;
+}
+
+/**
+ * 创建 Pedal 输入模块运行时
+ * 只提供 pedal 状态，不处理音符
+ */
+function createPedalRuntime(module) {
+  let moduleState = deepClone(module);
+
+  const runtime = {
+    type: module.type,
+    category: "input",
+    moduleState,
+
+    getControlledModules: () => ({ sources: [], envelopes: [] }),
+
+    triggerAttack: () => null,
+    triggerRelease: () => null,
+    releaseAll: () => [],
+    releaseAllPending: () => [],
+
+    apply: (nextModule) => {
+      const prevPedal = Boolean(moduleState.options?.pedal);
+      moduleState = deepClone(nextModule);
+      runtime.moduleState = moduleState;
+
+      // Pedal 从 on 变为 off：标记 pendingReleasedNotes
+      const newPedal = Boolean(moduleState.options?.pedal);
+      if (prevPedal && !newPedal) {
+        runtime.pedalOff = true;
+      }
+    },
+
+    dispose: () => {},
+  };
+
+  return runtime;
+}
+
+/**
+ * Input Runtime 工厂函数
+ */
+export function createInputRuntime(module, chainModules, inputIndex, getGlobalPolyVoice = () => 8) {
+  if (module.type === "Voices") {
+    return createVoicesRuntime(module);
+  }
+  if (module.type === "Pedal") {
+    return createPedalRuntime(module);
+  }
+  return createPitchRuntime(module, chainModules, inputIndex, getGlobalPolyVoice);
 }
