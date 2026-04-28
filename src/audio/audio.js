@@ -371,7 +371,7 @@ export class AudioEngine {
       });
     }
 
-    // Input 模块 frequency/mode 改变后，更新 Source 频率
+    // Input 模块 frequency 改变后，更新 Source 频率
     if (runtime.category === "input" && runtime.pendingFreqUpdates?.length > 0) {
       const pendingUpdates = runtime.pendingFreqUpdates;
       runtime.pendingFreqUpdates = []; // 清空队列

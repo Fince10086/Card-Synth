@@ -118,13 +118,7 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
    * 获取频率值（Frequency Input）
    */
   const getFrequencyValue = () => {
-    const mode = moduleState.options?.mode || "high";
-    const freq = Number(moduleState.options?.frequency) || 440;
-
-    if (mode === "low") {
-      return clamp(freq, 0.1, 100);
-    }
-    return clamp(freq, 20, 20000);
+    return clamp(Number(moduleState.options?.frequency) || 440, 0.1, 20000);
   };
 
   const runtime = {
@@ -264,7 +258,6 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
       const prevTranspose = Number(moduleState.options?.transpose) || 0;
       const prevOctave = Number(moduleState.options?.octave) || 0;
       const prevFrequency = Number(moduleState.options?.frequency) || 440;
-      const prevMode = moduleState.options?.mode || "high";
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
 
@@ -304,10 +297,9 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
         }
       }
 
-      // Frequency 或 Mode 改变：通知 Source 更新活跃 voice 的频率
+      // Frequency 改变：通知 Source 更新活跃 voice 的频率
       const newFrequency = Number(moduleState.options?.frequency) || 440;
-      const newMode = moduleState.options?.mode || "high";
-      if (newFrequency !== prevFrequency || newMode !== prevMode) {
+      if (newFrequency !== prevFrequency) {
         const freqUpdates = [];
         for (let i = 0; i < getPolyVoice(); i++) {
           const note = voiceStates[i].note;

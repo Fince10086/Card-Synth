@@ -396,12 +396,8 @@ export const INPUT_LIBRARY = {
   Frequency: {
     accent: "input",
     tag: "Input",
-    options: { mode: "high", frequency: 440, mono: false, pedal: false },
+    options: { frequency: 440, mono: false, pedal: false },
     controls: [
-      { path: "options.mode", kind: "toggle", label: "Range", options: [
-        { label: "Low", value: "low" },
-        { label: "High", value: "high" },
-      ]},
       { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 20000, step: 0.01, formatter: formatHertz },
       { path: "options.mono", kind: "toggle", label: "Mode", onLabel: "Poly", offLabel: "Mono", inverted: true },
       { path: "options.pedal", kind: "toggle", label: "Pedal" },
