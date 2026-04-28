@@ -4,7 +4,6 @@
   --muted: #726757;
   --source: #2f9f95;
   --env: #c0a03e;
-  --component: #6f8f4e;
   --input: #6f8f4e;
   --fx: #ca5d48;
   --modulation: #3d7fb8;
@@ -81,7 +80,6 @@ select {
   display: flex;
   flex: 0 1 246px;
   flex-direction: column;
-  width: min(100%, 246px);
   border-radius: 0;
   background: #ffffff;
   box-shadow: none;
@@ -89,11 +87,7 @@ select {
   outline: none;
 }
 
-.module-card:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--accent, var(--ink)) 50%, transparent);
-  outline-offset: 2px;
-}
-
+.module-card:focus-visible,
 .module-card.is-keyboard-active {
   outline: 3px solid color-mix(in srgb, var(--accent, var(--ink)) 50%, transparent);
   outline-offset: 2px;
@@ -106,10 +100,6 @@ select {
 
 .module-card[data-accent="env"] {
   --accent: var(--env);
-}
-
-.module-card[data-accent="component"] {
-  --accent: var(--component);
 }
 
 .module-card[data-accent="input"] {
@@ -131,7 +121,7 @@ select {
 .module-mod-toggle {
   position: absolute;
   left: 0px;
-  bottom: -0.5px;
+  bottom: 0px;
   border: 0;
   background: transparent;
   color: var(--accent);
@@ -209,7 +199,6 @@ select {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  width: min(100%, 246px);
   padding: 10px 10px 12px;
   border-radius: 0;
   background: #ffffff;
@@ -818,7 +807,8 @@ select {
   gap: 10px;
 }
 
-.global-subgrid {
+.global-subgrid,
+.global-cluster {
   display: flex;
   gap: 8px;
   flex-direction: column;
@@ -827,13 +817,6 @@ select {
 
 .global-subgrid .control {
   min-width: 0;
-}
-
-.global-cluster {
-  display: flex;
-  gap: 8px;
-  flex-direction: column;
-  align-items: stretch;
 }
 
 .meter-chip {
@@ -937,15 +920,12 @@ select {
 .white-key.active {
   background: #d0d0d0;
   border-color: #a0a0a0;
+  transform: translateY(2px);
 }
 
 .black-key.active {
   background: #555555;
   border-color: #444444;
-}
-
-.white-key.active,
-.black-key.active {
   transform: translateY(2px);
 }
 
@@ -1267,13 +1247,7 @@ select {
   transition: color 0.15s ease;
 }
 
-.output-level--high-positive { color: var(--danger); }
-.output-level--medium-positive { color: var(--warning); }
-.output-level--low-positive { color: var(--success); }
-.output-level--near-zero { color: var(--info); }
-.output-level--low-negative { color: var(--success); }
-.output-level--medium-negative { color: var(--warning); }
-.output-level--high-negative { color: var(--danger); }
+
 
 /* ==================== 工具类 ==================== */
 .is-hidden {
