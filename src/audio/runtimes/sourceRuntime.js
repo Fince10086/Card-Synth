@@ -213,6 +213,7 @@ export function createSourceRuntime({
     frequencyOffsetParam: null,
     frequencyMultiply: null,
     hiddenEnv: null,
+    analyser: null,
     initialized: false,
     note: null,
     startTime: 0,
@@ -300,8 +301,7 @@ export function createSourceRuntime({
     voice.volumeNode = volumeNode;
     voice.panNode = panNode;
     voice.hiddenEnv = hiddenEnv;
-    voice.analyser = new Tone.Analyser("waveform", 256);
-    voice.volumeNode.connect(voice.analyser);
+    // Analyser 懒加载：只在首次调用 getOutputValue 时创建
 
     // 为 pitchedSource 设置频率控制信号链
     if (definition.runtime === "pitchedSource" && node?.frequency) {
@@ -984,16 +984,22 @@ export function createSourceRuntime({
     getOutputValue: () => {
       let latestValue = 0;
       voices.forEach((voice) => {
-        if (voice.initialized && voice.analyser) {
-          try {
-            const waveform = voice.analyser.getValue();
-            if (waveform && waveform.length > 0) {
-              // 获取最近的样本值（保留正负号）
-              latestValue = waveform[waveform.length - 1];
-            }
-          } catch {
-            // ignore
+        if (!voice.initialized || !voice.volumeNode) return;
+
+        // 懒加载 analyser
+        if (!voice.analyser) {
+          voice.analyser = new Tone.Analyser("waveform", 256);
+          voice.volumeNode.connect(voice.analyser);
+        }
+
+        try {
+          const waveform = voice.analyser.getValue();
+          if (waveform && waveform.length > 0) {
+            // 获取最近的样本值（保留正负号）
+            latestValue = waveform[waveform.length - 1];
           }
+        } catch {
+          // ignore
         }
       });
       return latestValue;

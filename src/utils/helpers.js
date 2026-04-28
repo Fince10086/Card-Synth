@@ -14,11 +14,25 @@ export function resetModuleCounter() {
 }
 
 export function deepClone(value) {
-  if (value === undefined || value === null || typeof value !== "object") {
+  if (value === null || value === undefined || typeof value !== "object") {
     return value;
   }
-
-  return JSON.parse(JSON.stringify(value));
+  if (value instanceof Date) {
+    return new Date(value.getTime());
+  }
+  if (value instanceof RegExp) {
+    return new RegExp(value.source, value.flags);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => deepClone(item));
+  }
+  const result = {};
+  for (const key in value) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) {
+      result[key] = deepClone(value[key]);
+    }
+  }
+  return result;
 }
 
 export function isObject(value) {
