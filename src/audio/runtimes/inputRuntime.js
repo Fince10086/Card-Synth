@@ -256,6 +256,8 @@ export function createInputRuntime(module, chainModules, inputIndex) {
     apply: (nextModule) => {
       const prevPolyVoice = getPolyVoice();
       const prevPedal = Boolean(moduleState.options?.pedal);
+      const prevTranspose = Number(moduleState.options?.transpose) || 0;
+      const prevOctave = Number(moduleState.options?.octave) || 0;
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
 
@@ -273,6 +275,26 @@ export function createInputRuntime(module, chainModules, inputIndex) {
           }
         }
         runtime.pendingReleasedNotes = released;
+      }
+
+      // Transpose 或 Octave 改变：通知 Source 更新活跃 note 的频率
+      const newTranspose = Number(moduleState.options?.transpose) || 0;
+      const newOctave = Number(moduleState.options?.octave) || 0;
+      if (newTranspose !== prevTranspose || newOctave !== prevOctave) {
+        const noteUpdates = [];
+        for (let i = 0; i < getPolyVoice(); i++) {
+          const note = voiceStates[i].note;
+          if (note) {
+            noteUpdates.push({
+              note,
+              voiceIndex: i,
+              transformedNote: applyMidiTransforms(note),
+            });
+          }
+        }
+        if (noteUpdates.length > 0) {
+          runtime.pendingNoteUpdates = noteUpdates;
+        }
       }
 
       const newPolyVoice = getPolyVoice();

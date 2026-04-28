@@ -1006,6 +1006,21 @@ export function createSourceRuntime({
     },
 
     /**
+     * 更新指定 voice 的频率（用于 Input 的 transpose/octave 实时变化）
+     *
+     * @param {number} voiceIndex - voice 索引
+     * @param {string} note - 变换后的音符名称
+     */
+    updateVoiceFrequency: (voiceIndex, note) => {
+      const voice = voices[voiceIndex];
+      if (!voice || !voice.initialized) return;
+      if (definition.runtime === "pitchedSource" && voice.frequencyBaseSignal) {
+        const nextFrequency = Tone.Frequency(note).toFrequency();
+        voice.frequencyBaseSignal.rampTo(nextFrequency, 0.02);
+      }
+    },
+
+    /**
      * 销毁运行时
      *
      * 清理所有音频节点和资源。
