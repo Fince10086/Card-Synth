@@ -8,12 +8,14 @@
   },
   "modules": [
     {
-      "type": "MIDI",
+      "type": "Pitch",
       "category": "input",
       "enabled": true,
       "options": {
+        "mode": "midi",
         "transpose": 0,
         "octave": 0,
+        "frequency": 440,
         "mono": false,
         "pedal": false
       }

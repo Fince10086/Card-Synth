@@ -256,6 +256,8 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
         setByPath(module, path, nextValue);
         app.markUnsaved();
         onCommit();
+        // Switch 可能改变 conditional controls 的可见性，需要重新渲染
+        app.renderAll();
       },
     });
   }

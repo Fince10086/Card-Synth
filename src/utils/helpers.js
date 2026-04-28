@@ -139,8 +139,8 @@ export function createComponentModule(type = "Envelope") {
   };
 }
 
-export function createInputModule(type = "MIDI") {
-  const definition = INPUT_LIBRARY[type] || INPUT_LIBRARY.MIDI;
+export function createInputModule(type = "Pitch") {
+  const definition = INPUT_LIBRARY[type] || INPUT_LIBRARY.Pitch;
   return {
     id: createId("inp"),
     type,
@@ -238,12 +238,32 @@ export function normalizeComponentModule(module) {
 }
 
 export function normalizeInputModule(module) {
-  const result = normalizeModule(module, "input", (type) => createInputModule(type || "MIDI"));
+  const baseModule = { ...module };
+
+  // Migrate old type names to unified "Pitch"
+  if (baseModule.type === "MIDI") {
+    baseModule.type = "Pitch";
+    baseModule.options = baseModule.options || {};
+    baseModule.options.mode = "midi";
+  } else if (baseModule.type === "Frequency") {
+    baseModule.type = "Pitch";
+    baseModule.options = baseModule.options || {};
+    baseModule.options.mode = "frequency";
+  }
+
+  const result = normalizeModule(baseModule, "input", () => createInputModule("Pitch"));
+
+  // Ensure mode exists
+  if (!result.options?.mode) {
+    result.options.mode = "midi";
+  }
+
   // Migrate old `polyVoice` field to `mono` toggle
   if (result.options?.polyVoice !== undefined) {
     result.options.mono = Number(result.options.polyVoice) === 1;
     delete result.options.polyVoice;
   }
+
   return result;
 }
 

@@ -142,7 +142,7 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
       // 检查延续音
       if (activeNotes.has(note)) {
         const voiceIndex = activeNotes.get(note);
-        const noteData = moduleState.type === "MIDI"
+        const noteData = moduleState.options?.mode === "midi"
           ? { type: "midi", note: applyMidiTransforms(note), originalNote: note, velocity }
           : { type: "frequency", frequency: getFrequencyValue(), originalNote: note, velocity };
 
@@ -174,7 +174,7 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
       activeNotes.set(note, voiceIndex);
 
       // 生成 noteData
-      const noteData = moduleState.type === "MIDI"
+      const noteData = moduleState.options?.mode === "midi"
         ? { type: "midi", note: applyMidiTransforms(note), originalNote: note, velocity }
         : { type: "frequency", frequency: getFrequencyValue(), originalNote: note, velocity };
 
@@ -255,6 +255,7 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
     apply: (nextModule) => {
       const prevPolyVoice = voiceStates.length;
       const prevPedal = Boolean(moduleState.options?.pedal);
+      const prevMode = moduleState.options?.mode || "midi";
       const prevTranspose = Number(moduleState.options?.transpose) || 0;
       const prevOctave = Number(moduleState.options?.octave) || 0;
       const prevFrequency = Number(moduleState.options?.frequency) || 440;
@@ -277,41 +278,63 @@ export function createInputRuntime(module, chainModules, inputIndex, getGlobalPo
         runtime.pendingReleasedNotes = released;
       }
 
-      // Transpose 或 Octave 改变：通知 Source 更新活跃 note 的频率
-      const newTranspose = Number(moduleState.options?.transpose) || 0;
-      const newOctave = Number(moduleState.options?.octave) || 0;
-      if (newTranspose !== prevTranspose || newOctave !== prevOctave) {
-        const noteUpdates = [];
-        for (let i = 0; i < getPolyVoice(); i++) {
-          const note = voiceStates[i].note;
-          if (note) {
-            noteUpdates.push({
-              note,
-              voiceIndex: i,
-              transformedNote: applyMidiTransforms(note),
-            });
+      // Mode 改变：立即停止所有活跃 voice
+      const newMode = moduleState.options?.mode || "midi";
+      if (newMode !== prevMode) {
+        const released = [];
+        for (let i = 0; i < voiceStates.length; i++) {
+          if (voiceStates[i].note) {
+            const note = voiceStates[i].note;
+            releaseVoice(i);
+            if (note) {
+              released.push({ note, voiceIndex: i });
+            }
           }
         }
-        if (noteUpdates.length > 0) {
-          runtime.pendingNoteUpdates = noteUpdates;
+        if (released.length > 0) {
+          runtime.pendingReleasedNotes = (runtime.pendingReleasedNotes || []).concat(released);
         }
       }
 
-      // Frequency 改变：通知 Source 更新活跃 voice 的频率
-      const newFrequency = Number(moduleState.options?.frequency) || 440;
-      if (newFrequency !== prevFrequency) {
-        const freqUpdates = [];
-        for (let i = 0; i < getPolyVoice(); i++) {
-          const note = voiceStates[i].note;
-          if (note) {
-            freqUpdates.push({
-              voiceIndex: i,
-              frequency: getFrequencyValue(),
-            });
+      // Transpose 或 Octave 改变：通知 Source 更新活跃 note 的频率（仅 MIDI 模式）
+      if (newMode === "midi") {
+        const newTranspose = Number(moduleState.options?.transpose) || 0;
+        const newOctave = Number(moduleState.options?.octave) || 0;
+        if (newTranspose !== prevTranspose || newOctave !== prevOctave) {
+          const noteUpdates = [];
+          for (let i = 0; i < getPolyVoice(); i++) {
+            const note = voiceStates[i].note;
+            if (note) {
+              noteUpdates.push({
+                note,
+                voiceIndex: i,
+                transformedNote: applyMidiTransforms(note),
+              });
+            }
+          }
+          if (noteUpdates.length > 0) {
+            runtime.pendingNoteUpdates = noteUpdates;
           }
         }
-        if (freqUpdates.length > 0) {
-          runtime.pendingFreqUpdates = freqUpdates;
+      }
+
+      // Frequency 改变：通知 Source 更新活跃 voice 的频率（仅 Frequency 模式）
+      if (newMode === "frequency") {
+        const newFrequency = Number(moduleState.options?.frequency) || 440;
+        if (newFrequency !== prevFrequency) {
+          const freqUpdates = [];
+          for (let i = 0; i < getPolyVoice(); i++) {
+            const note = voiceStates[i].note;
+            if (note) {
+              freqUpdates.push({
+                voiceIndex: i,
+                frequency: getFrequencyValue(),
+              });
+            }
+          }
+          if (freqUpdates.length > 0) {
+            runtime.pendingFreqUpdates = freqUpdates;
+          }
         }
       }
 

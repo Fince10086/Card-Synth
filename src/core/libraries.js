@@ -382,27 +382,19 @@ export const COMPONENT_LIBRARY = {
 };
 
 export const INPUT_LIBRARY = {
-  MIDI: {
+  Pitch: {
     accent: "input",
     tag: "Input",
-    options: { transpose: 0, octave: 0, mono: false, pedal: false },
+    options: { mode: "midi", transpose: 0, octave: 0, frequency: 440, mono: false, pedal: false },
     controls: [
-      { path: "options.transpose", kind: "range", label: "Transpose", min: -12, max: 12, step: 1, formatter: (value) => `${value > 0 ? "+" : ""}${value} st` },
-      { path: "options.octave", kind: "range", label: "Octave", min: -4, max: 4, step: 1, formatter: (value) => `Oct ${value > 0 ? "+" : ""}${value}` },
-      { path: "options.mono", kind: "switch", label: "Mode", options: [
-        { label: "Poly", value: false },
-        { label: "Mono", value: true },
+      { path: "options.mode", kind: "switch", label: "Source", options: [
+        { label: "MIDI", value: "midi" },
+        { label: "Freq", value: "frequency" },
       ]},
-      { path: "options.pedal", kind: "toggle", label: "Pedal" },
-    ],
-  },
-  Frequency: {
-    accent: "input",
-    tag: "Input",
-    options: { frequency: 440, mono: false, pedal: false },
-    controls: [
-      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 20000, step: 0.01, formatter: formatHertz },
-      { path: "options.mono", kind: "switch", label: "Mode", options: [
+      { path: "options.transpose", kind: "range", label: "Transpose", min: -12, max: 12, step: 1, conditional: (m) => m.options?.mode === "midi", formatter: (value) => `${value > 0 ? "+" : ""}${value} st` },
+      { path: "options.octave", kind: "range", label: "Octave", min: -4, max: 4, step: 1, conditional: (m) => m.options?.mode === "midi", formatter: (value) => `Oct ${value > 0 ? "+" : ""}${value}` },
+      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 20000, step: 0.01, conditional: (m) => m.options?.mode === "frequency", formatter: formatHertz },
+      { path: "options.mono", kind: "switch", label: "Voices", options: [
         { label: "Poly", value: false },
         { label: "Mono", value: true },
       ]},

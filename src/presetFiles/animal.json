@@ -10,12 +10,14 @@
   "modules": [
     {
       "id": "inp-0165",
-      "type": "Frequency",
+      "type": "Pitch",
       "category": "input",
       "enabled": true,
       "index": 165,
       "options": {
-        "mode": false,
+        "mode": "frequency",
+        "transpose": 0,
+        "octave": 0,
         "frequency": 0.45507581562563265,
         "mono": false,
         "pedal": false
@@ -43,13 +45,15 @@
     },
     {
       "id": "inp-0001",
-      "type": "MIDI",
+      "type": "Pitch",
       "category": "input",
       "enabled": true,
       "index": 0,
       "options": {
+        "mode": "midi",
         "transpose": 0,
         "octave": 0,
+        "frequency": 440,
         "mono": false,
         "pedal": false
       }
@@ -76,13 +80,15 @@
     },
     {
       "id": "inp-0166",
-      "type": "MIDI",
+      "type": "Pitch",
       "category": "input",
       "enabled": true,
       "index": 166,
       "options": {
+        "mode": "midi",
         "transpose": 0,
         "octave": -2,
+        "frequency": 440,
         "mono": false,
         "pedal": false
       }
@@ -120,13 +126,15 @@
     },
     {
       "id": "inp-0167",
-      "type": "MIDI",
+      "type": "Pitch",
       "category": "input",
       "enabled": true,
       "index": 167,
       "options": {
+        "mode": "midi",
         "transpose": 0,
         "octave": -1,
+        "frequency": 440,
         "mono": false,
         "pedal": false
       }

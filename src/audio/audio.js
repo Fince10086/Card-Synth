@@ -193,10 +193,10 @@ export class AudioEngine {
         // 在链头创建隐藏 MIDI Input
         const hiddenMidiModule = {
           id: HIDDEN_MIDI_INPUT_ID,
-          type: "MIDI",
+          type: "Pitch",
           category: "input",
           enabled: true,
-          options: { transpose: 0, octave: 0, mono: false, pedal: false },
+          options: { mode: "midi", transpose: 0, octave: 0, frequency: 440, mono: false, pedal: false },
         };
         const hiddenInputRuntime = createInputRuntime(
           hiddenMidiModule,
@@ -219,10 +219,10 @@ export class AudioEngine {
         if (inputIndex === -1) {
           inputModule = {
             id: HIDDEN_MIDI_INPUT_ID,
-            type: "MIDI",
+            type: "Pitch",
             category: "input",
             enabled: true,
-            options: { transpose: 0, octave: 0, mono: false, pedal: false },
+            options: { mode: "midi", transpose: 0, octave: 0, frequency: 440, mono: false, pedal: false },
           };
           actualIndex = -1;
         } else {
