@@ -27,6 +27,7 @@ import {
 export function createSourceRuntime({
   module,
   getVelocityEnabled = () => true,
+  getIsMono = () => false,
   onAllVoicesIdle = null,
   onVoiceDisposed = null,
   onVoiceInitialized = null,
@@ -856,9 +857,15 @@ export function createSourceRuntime({
         allVoicesIdleTimeoutId = null;
       }
 
-      const index = voiceIndex;
+      const isMono = getIsMono();
+      const index = isMono ? 0 : voiceIndex;
       const voice = voices[index];
       const now = Tone.now();
+
+      // Mono 模式下，如果 voice 0 已经有其他 note，先释放
+      if (isMono && voice.note && voice.note !== noteData.originalNote) {
+        releaseVoice(voice, index, now);
+      }
 
       // 清除可能存在的 release 定时器
       if (voice.disposeTimeoutId) {
@@ -956,11 +963,13 @@ export function createSourceRuntime({
      * @param {number} voiceIndex - voice 索引
      */
     triggerRelease: (note, voiceIndex) => {
-      const voice = voices[voiceIndex];
+      const isMono = getIsMono();
+      const index = isMono ? 0 : voiceIndex;
+      const voice = voices[index];
       if (!voice || voice.note !== note) {
         return;
       }
-      releaseVoice(voice, voiceIndex);
+      releaseVoice(voice, index);
     },
 
     /**

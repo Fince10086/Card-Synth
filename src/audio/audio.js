@@ -14,6 +14,7 @@ import { createInputRuntime } from "./runtimes/inputRuntime.js";
 import { connectSignalChain } from "./chain/signalChain.js";
 
 const HIDDEN_MIDI_INPUT_ID = "__hidden_midi_input__";
+const HIDDEN_VOICES_ID = "__hidden_voices__";
 
 export class AudioEngine {
   constructor(app) {
@@ -91,11 +92,11 @@ export class AudioEngine {
     }
     rampParam(this.masterVolume.volume, globalState.volume);
 
-    // PolyVoice 变化时通知所有 Pitch runtime 调整 voice 数量
+    // PolyVoice 变化时通知所有 VoiceManager 调整 voice 数量
     if (globalState.polyVoice !== prevPolyVoice) {
       this.chainRuntimes.forEach((runtimeMap) => {
         runtimeMap.forEach((runtime) => {
-          if (runtime.type === "Pitch" && runtime.apply) {
+          if (runtime.isVoiceManager && runtime.apply) {
             runtime.apply(runtime.moduleState);
             this._flushInputPendingNotes(runtime, runtimeMap, [], -1);
           }
@@ -176,27 +177,39 @@ export class AudioEngine {
         runtimeMap.set(module.id, runtime);
       });
 
-      // 2. 创建 Input runtimes（包括隐藏的 MIDI Input，只处理启用的）
-      const inputIndices = [];
-      modules.forEach((module, index) => {
-        if (this.isInputModule(module) && module.enabled) {
-          inputIndices.push(index);
-        }
-      });
-
-      // 如果没有显式 Input 但链中有 Source 或 Envelope，创建隐藏 MIDI Input
+      // 2. 检查是否有显式 Voices 和 Pitch
+      const hasExplicitVoices = modules.some((m) => m.type === "Voices" && m.enabled);
+      const hasExplicitPitch = modules.some((m) => m.type === "Pitch" && m.enabled);
       const hasSourcesOrEnvelopes = modules.some((m) =>
         m.category === "source" || m.type === "Envelope"
       );
 
-      if (hasSourcesOrEnvelopes && inputIndices.length === 0) {
-        // 在链头创建隐藏 MIDI Input
+      // 如果没有显式 Voices 但链中有 Source 或 Envelope，创建隐藏 Voices
+      if (hasSourcesOrEnvelopes && !hasExplicitVoices) {
+        const hiddenVoicesModule = {
+          id: HIDDEN_VOICES_ID,
+          type: "Voices",
+          category: "input",
+          enabled: true,
+          options: { mono: false },
+        };
+        const hiddenVoicesRuntime = createInputRuntime(
+          hiddenVoicesModule,
+          modules,
+          -1,
+          () => clamp(Number(this.state?.global?.polyVoice) || 8, 2, 8),
+        );
+        runtimeMap.set(HIDDEN_VOICES_ID, hiddenVoicesRuntime);
+      }
+
+      // 如果没有显式 Pitch 但链中有 Source 或 Envelope，创建隐藏 Pitch（MIDI 模式）
+      if (hasSourcesOrEnvelopes && !hasExplicitPitch) {
         const hiddenMidiModule = {
           id: HIDDEN_MIDI_INPUT_ID,
           type: "Pitch",
           category: "input",
           enabled: true,
-          options: { mode: "midi", transpose: 0, octave: 0, frequency: 440, mono: false, pedal: false },
+          options: { mode: "midi", transpose: 0, octave: 0, frequency: 440 },
         };
         const hiddenInputRuntime = createInputRuntime(
           hiddenMidiModule,
@@ -207,36 +220,17 @@ export class AudioEngine {
         runtimeMap.set(HIDDEN_MIDI_INPUT_ID, hiddenInputRuntime);
       }
 
-      // 3. 为所有 Input 创建 runtime（显式和隐藏）
-      const allInputIndices = inputIndices.length > 0
-        ? inputIndices
-        : (hasSourcesOrEnvelopes ? [-1] : []);
-
-      allInputIndices.forEach((inputIndex) => {
-        let inputModule;
-        let actualIndex;
-
-        if (inputIndex === -1) {
-          inputModule = {
-            id: HIDDEN_MIDI_INPUT_ID,
-            type: "Pitch",
-            category: "input",
-            enabled: true,
-            options: { mode: "midi", transpose: 0, octave: 0, frequency: 440, mono: false, pedal: false },
-          };
-          actualIndex = -1;
-        } else {
-          inputModule = modules[inputIndex];
-          actualIndex = inputIndex;
+      // 3. 为所有显式 Input 创建 runtime
+      modules.forEach((module, index) => {
+        if (this.isInputModule(module) && module.enabled) {
+          const inputRuntime = createInputRuntime(
+            module,
+            modules,
+            index,
+            () => clamp(Number(this.state?.global?.polyVoice) || 8, 2, 8),
+          );
+          runtimeMap.set(module.id, inputRuntime);
         }
-
-        const inputRuntime = createInputRuntime(
-          inputModule,
-          modules,
-          actualIndex,
-          () => clamp(Number(this.state?.global?.polyVoice) || 8, 2, 8),
-        );
-        runtimeMap.set(inputModule.id, inputRuntime);
       });
 
       // 4. 连接信号链
@@ -266,9 +260,27 @@ export class AudioEngine {
   }
 
   createSourceRuntime(module, chainIndex) {
+    const chain = this.getChainState(chainIndex);
+    const modules = Array.isArray(chain?.modules) ? chain.modules : [];
+    const moduleIndex = modules.findIndex((m) => m.id === module.id);
+
+    const getIsMono = () => {
+      // 从当前 Source 向前查找最近的 Voices 配置
+      for (let i = moduleIndex - 1; i >= 0; i--) {
+        const m = modules[i];
+        if (!m.enabled) continue;
+        if (m.category === "source") break; // 被前一个 Source 阻断
+        if (m.type === "Voices") {
+          return Boolean(m.options?.mono);
+        }
+      }
+      return false; // 默认 Poly
+    };
+
     return createSourceRuntime({
       module,
       getVelocityEnabled: () => Boolean(this.state?.global?.velocityEnabled),
+      getIsMono,
       onAllVoicesIdle: () => this.rebuildSignalChains(),
       onVoiceDisposed: (voiceIndex) => {
         this.app?.modulationManager?.disconnectVoiceModulations?.(chainIndex, module.id, voiceIndex);
@@ -310,24 +322,38 @@ export class AudioEngine {
     return inputs;
   }
 
-  forEachRuntime(callback) {
-    this.chainRuntimes.forEach((runtimeMap, chainIndex) => {
-      runtimeMap.forEach((runtime, moduleId) => {
-        callback(runtime, chainIndex, moduleId);
-      });
-    });
+  /**
+   * 获取链的 VoiceManager（显式或隐藏）
+   */
+  getVoiceManager(runtimeMap) {
+    for (const [id, runtime] of runtimeMap) {
+      if (runtime.isVoiceManager) {
+        return runtime;
+      }
+    }
+    return null;
   }
 
-  _flushInputPendingNotes(runtime, runtimeMap, chainModules, moduleIndex) {
-    // Pitch 模块 polyVoice 缩小后，处理待释放的音符
-    if (runtime.type === "Pitch" && runtime.pendingReleasedNotes?.length > 0) {
-      const pendingNotes = runtime.pendingReleasedNotes;
-      runtime.pendingReleasedNotes = []; // 清空队列
+  /**
+   * 获取链的 Pedal 状态
+   */
+  getPedalState(runtimeMap) {
+    for (const [id, runtime] of runtimeMap) {
+      if (runtime.type === "Pedal" && runtime.moduleState?.options?.pedal) {
+        return true;
+      }
+    }
+    return false;
+  }
 
-      pendingNotes.forEach(({ note, voiceIndex }) => {
+  /**
+   * 通知所有 Pitch 范围内的 Source 和 Envelope 释放
+   */
+  notifySourcesAndEnvelopesRelease(note, voiceIndex, runtimeMap) {
+    runtimeMap.forEach((runtime) => {
+      if (runtime.type === "Pitch" && runtime.getControlledModules) {
         const controlled = runtime.getControlledModules();
 
-        // 通知 Source release
         controlled.sources.forEach((sourceId) => {
           const sourceRuntime = runtimeMap.get(sourceId);
           if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
@@ -335,7 +361,6 @@ export class AudioEngine {
           }
         });
 
-        // 通知 Envelope release
         controlled.envelopes.forEach((envInfo) => {
           const envRuntime = runtimeMap.get(envInfo.id);
           if (!envRuntime) {
@@ -350,88 +375,39 @@ export class AudioEngine {
             envRuntime.triggerRelease(note);
           }
         });
+      }
+    });
+  }
+
+  forEachRuntime(callback) {
+    this.chainRuntimes.forEach((runtimeMap, chainIndex) => {
+      runtimeMap.forEach((runtime, moduleId) => {
+        callback(runtime, chainIndex, moduleId);
+      });
+    });
+  }
+
+  _flushInputPendingNotes(runtime, runtimeMap, chainModules, moduleIndex) {
+    // VoiceManager 的 pendingReleasedNotes：polyVoice 缩小后处理
+    if (runtime.isVoiceManager && runtime.pendingReleasedNotes?.length > 0) {
+      const pendingNotes = runtime.pendingReleasedNotes;
+      runtime.pendingReleasedNotes = []; // 清空队列
+
+      pendingNotes.forEach(({ note, voiceIndex }) => {
+        this.notifySourcesAndEnvelopesRelease(note, voiceIndex, runtimeMap);
       });
     }
 
-    // Pitch 模块 transpose/octave 改变后，更新 Source 频率
-    if (runtime.type === "Pitch" && runtime.pendingNoteUpdates?.length > 0) {
-      const pendingUpdates = runtime.pendingNoteUpdates;
-      runtime.pendingNoteUpdates = []; // 清空队列
-
-      pendingUpdates.forEach(({ voiceIndex, transformedNote }) => {
-        const controlled = runtime.getControlledModules();
-
-        // 通知 Source 更新频率
-        controlled.sources.forEach((sourceId) => {
-          const sourceRuntime = runtimeMap.get(sourceId);
-          if (sourceRuntime && typeof sourceRuntime.updateVoiceFrequency === "function") {
-            sourceRuntime.updateVoiceFrequency(voiceIndex, transformedNote);
-          }
-        });
-      });
-    }
-
-    // Pitch 模块 frequency 改变后，更新 Source 频率
-    if (runtime.type === "Pitch" && runtime.pendingFreqUpdates?.length > 0) {
-      const pendingUpdates = runtime.pendingFreqUpdates;
-      runtime.pendingFreqUpdates = []; // 清空队列
-
-      pendingUpdates.forEach(({ voiceIndex, frequency }) => {
-        const controlled = runtime.getControlledModules();
-
-        // 通知 Source 更新频率
-        controlled.sources.forEach((sourceId) => {
-          const sourceRuntime = runtimeMap.get(sourceId);
-          if (sourceRuntime && typeof sourceRuntime.updateVoiceFrequency === "function") {
-            sourceRuntime.updateVoiceFrequency(voiceIndex, frequency);
-          }
-        });
-      });
-    }
-
-    // Pedal 模块 pedal off：释放同范围内 Pitch 的 pending notes
+    // Pedal 关闭：通知 VoiceManager 释放 pending notes，然后通知所有 Source 和 Envelope
     if (runtime.type === "Pedal" && runtime.pedalOff) {
       runtime.pedalOff = false;
 
-      // 从当前 Pedal 向后查找，直到下一个 Pedal 或链尾
-      for (let i = moduleIndex + 1; i < chainModules.length; i++) {
-        const m = chainModules[i];
-        if (!m.enabled) continue;
-        if (m.type === "Pedal") break;
-
-        if (m.type === "Pitch") {
-          const pitchRuntime = runtimeMap.get(m.id);
-          if (pitchRuntime && pitchRuntime.releaseAllPending) {
-            const released = pitchRuntime.releaseAllPending();
-            released.forEach(({ note, voiceIndex }) => {
-              const controlled = pitchRuntime.getControlledModules();
-
-              // 通知 Source release
-              controlled.sources.forEach((sourceId) => {
-                const sourceRuntime = runtimeMap.get(sourceId);
-                if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
-                  sourceRuntime.triggerRelease(note, voiceIndex);
-                }
-              });
-
-              // 通知 Envelope release
-              controlled.envelopes.forEach((envInfo) => {
-                const envRuntime = runtimeMap.get(envInfo.id);
-                if (!envRuntime) {
-                  return;
-                }
-
-                if (envRuntime.modulationMode) {
-                  envRuntime.triggerVoiceRelease(voiceIndex);
-                } else if (envRuntime.hasPerVoiceConnection) {
-                  envRuntime.triggerVoiceRelease(voiceIndex);
-                } else {
-                  envRuntime.triggerRelease(note);
-                }
-              });
-            });
-          }
-        }
+      const voiceManager = this.getVoiceManager(runtimeMap);
+      if (voiceManager) {
+        const released = voiceManager.releaseAllPending();
+        released.forEach(({ note, voiceIndex }) => {
+          this.notifySourcesAndEnvelopesRelease(note, voiceIndex, runtimeMap);
+        });
       }
     }
   }
@@ -492,51 +468,43 @@ export class AudioEngine {
         return;
       }
 
-      // 获取该链的所有 Input（包括隐藏），按位置排序
-      const inputs = this.getChainInputs(chainIndex, runtimeMap);
+      // 1. 获取 VoiceManager
+      const voiceManager = this.getVoiceManager(runtimeMap);
+      if (!voiceManager) {
+        return;
+      }
 
+      // 2. Voice 分配
+      const voiceResult = voiceManager.triggerAttack(note, velocity);
+      if (!voiceResult) {
+        return;
+      }
+
+      const { voiceIndex, isRetrigger, stolenNote } = voiceResult;
+
+      // 延续音：不重新触发 Attack
+      if (isRetrigger) {
+        return;
+      }
+
+      // 3. 处理 voice stealing
+      if (stolenNote) {
+        this.notifySourcesAndEnvelopesRelease(stolenNote, voiceIndex, runtimeMap);
+      }
+
+      // 4. 遍历所有 Pitch，触发其控制范围内的 Source 和 Envelope
+      const inputs = this.getChainInputs(chainIndex, runtimeMap);
       inputs.forEach((input) => {
-        const result = input.runtime.triggerAttack(note, velocity);
+        if (input.runtime.type !== "Pitch") {
+          return;
+        }
+
+        const result = input.runtime.triggerAttack(note, velocity, voiceIndex);
         if (!result) {
           return;
         }
 
-        const { voiceIndex, noteData, isRetrigger, stolenNote, controlledSources, controlledEnvelopes } = result;
-
-        // 延续音：不重新触发 Attack
-        if (isRetrigger) {
-          return;
-        }
-
-        // 如果发生了 voice stealing，先释放旧 note
-        if (stolenNote) {
-          const inputNote = stolenNote;
-          const inputVoiceIndex = voiceIndex;
-
-          // 通知 Source release
-          controlledSources.forEach((sourceId) => {
-            const sourceRuntime = runtimeMap.get(sourceId);
-            if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
-              sourceRuntime.triggerRelease(inputNote, inputVoiceIndex);
-            }
-          });
-
-          // 通知 Envelope release
-          controlledEnvelopes.forEach((envInfo) => {
-            const envRuntime = runtimeMap.get(envInfo.id);
-            if (!envRuntime) {
-              return;
-            }
-
-            if (envRuntime.modulationMode) {
-              envRuntime.triggerVoiceRelease(inputVoiceIndex);
-            } else if (envRuntime.hasPerVoiceConnection) {
-              envRuntime.triggerVoiceRelease(inputVoiceIndex);
-            } else {
-              envRuntime.triggerRelease(inputNote);
-            }
-          });
-        }
+        const { noteData, controlledSources, controlledEnvelopes } = result;
 
         // 触发控制范围内的所有 Source
         controlledSources.forEach((sourceId) => {
@@ -578,17 +546,29 @@ export class AudioEngine {
         return;
       }
 
-      const inputs = this.getChainInputs(chainIndex, runtimeMap);
+      // 1. 获取 VoiceManager 和 Pedal 状态
+      const voiceManager = this.getVoiceManager(runtimeMap);
+      if (!voiceManager) {
+        return;
+      }
 
+      const pedal = this.getPedalState(runtimeMap);
+
+      // 2. Voice 释放
+      const releaseResult = voiceManager.triggerRelease(note, pedal);
+      if (!releaseResult || !releaseResult.released) {
+        return;
+      }
+
+      const { voiceIndex } = releaseResult;
+
+      // 3. 遍历所有 Pitch，释放其控制范围内的 Source 和 Envelope
+      const inputs = this.getChainInputs(chainIndex, runtimeMap);
       inputs.forEach((input) => {
-        const releaseResult = input.runtime.triggerRelease(note);
-        if (!releaseResult || !releaseResult.released) {
+        if (input.runtime.type !== "Pitch") {
           return;
         }
 
-        const { voiceIndex } = releaseResult;
-
-        // 获取控制范围（因为 Input 可能在 release 后重新计算）
         const controlled = input.runtime.getControlledModules();
 
         // 通知 Source release
@@ -606,13 +586,13 @@ export class AudioEngine {
             return;
           }
 
-            if (envRuntime.modulationMode) {
-              envRuntime.triggerVoiceRelease(voiceIndex);
-            } else if (envRuntime.hasPerVoiceConnection) {
-              envRuntime.triggerVoiceRelease(voiceIndex);
-            } else {
-              envRuntime.triggerRelease(note);
-            }
+          if (envRuntime.modulationMode) {
+            envRuntime.triggerVoiceRelease(voiceIndex);
+          } else if (envRuntime.hasPerVoiceConnection) {
+            envRuntime.triggerVoiceRelease(voiceIndex);
+          } else {
+            envRuntime.triggerRelease(note);
+          }
         });
       });
     });
@@ -630,12 +610,23 @@ export class AudioEngine {
         return;
       }
 
-      const inputs = this.getChainInputs(chainIndex, runtimeMap);
+      // 1. 获取 VoiceManager
+      const voiceManager = this.getVoiceManager(runtimeMap);
+      if (!voiceManager) {
+        return;
+      }
 
-      // 先让 Input 释放所有 voice
-      inputs.forEach((input) => {
-        const released = input.runtime.releaseAll();
-        released.forEach(({ note, voiceIndex }) => {
+      // 2. VoiceManager 释放所有 voice
+      const released = voiceManager.releaseAll();
+
+      // 3. 遍历所有 Pitch，释放其控制范围内的 Source 和 Envelope
+      released.forEach(({ note, voiceIndex }) => {
+        const inputs = this.getChainInputs(chainIndex, runtimeMap);
+        inputs.forEach((input) => {
+          if (input.runtime.type !== "Pitch") {
+            return;
+          }
+
           const controlled = input.runtime.getControlledModules();
 
           controlled.sources.forEach((sourceId) => {
@@ -662,7 +653,7 @@ export class AudioEngine {
         });
       });
 
-      // 释放所有未通过 Input 触发的 runtime（保险措施）
+      // 4. 释放所有未通过 Input 触发的 runtime（保险措施）
       runtimeMap.forEach((runtime, moduleId) => {
         if (runtime.type === "Envelope" && runtime.releaseAll) {
           runtime.releaseAll();
