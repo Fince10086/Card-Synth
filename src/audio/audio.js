@@ -152,16 +152,20 @@ export class AudioEngine {
 
       const runtimeMap = new Map();
 
-      // 1. 创建所有显式模块的 runtime
+      // 1. 创建所有非 Input 显式模块的 runtime
+      // Input 在第 3 步单独处理，避免创建无效的 fallback runtime
       modules.forEach((module, index) => {
+        if (this.isInputModule(module)) {
+          return;
+        }
         const runtime = this.createModuleRuntime(module, chainIndex, modules, index);
         runtimeMap.set(module.id, runtime);
       });
 
-      // 2. 创建 Input runtimes（包括隐藏的 MIDI Input）
+      // 2. 创建 Input runtimes（包括隐藏的 MIDI Input，只处理启用的）
       const inputIndices = [];
       modules.forEach((module, index) => {
-        if (this.isInputModule(module)) {
+        if (this.isInputModule(module) && module.enabled) {
           inputIndices.push(index);
         }
       });
@@ -266,9 +270,9 @@ export class AudioEngine {
       inputs.push({ runtime: hiddenInput, index: -1, id: HIDDEN_MIDI_INPUT_ID });
     }
 
-    // 收集显式 Input
+    // 收集显式 Input（只包含启用的）
     modules.forEach((module, index) => {
-      if (this.isInputModule(module)) {
+      if (this.isInputModule(module) && module.enabled) {
         const runtime = runtimeMap.get(module.id);
         if (runtime) {
           inputs.push({ runtime, index, id: module.id });
