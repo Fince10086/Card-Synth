@@ -365,6 +365,25 @@ export class AudioEngine {
           });
         });
       }
+
+      // Input 模块 frequency/mode 改变后，更新 Source 频率
+      if (runtime.category === "input" && runtime.pendingFreqUpdates?.length > 0) {
+        const runtimeMap = this.getChainRuntimeMap(chainIndex);
+        const pendingUpdates = runtime.pendingFreqUpdates;
+        runtime.pendingFreqUpdates = []; // 清空队列
+
+        pendingUpdates.forEach(({ voiceIndex, frequency }) => {
+          const controlled = runtime.getControlledModules();
+
+          // 通知 Source 更新频率
+          controlled.sources.forEach((sourceId) => {
+            const sourceRuntime = runtimeMap.get(sourceId);
+            if (sourceRuntime && typeof sourceRuntime.updateVoiceFrequency === "function") {
+              sourceRuntime.updateVoiceFrequency(voiceIndex, frequency);
+            }
+          });
+        });
+      }
     }
   }
 

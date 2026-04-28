@@ -258,6 +258,8 @@ export function createInputRuntime(module, chainModules, inputIndex) {
       const prevPedal = Boolean(moduleState.options?.pedal);
       const prevTranspose = Number(moduleState.options?.transpose) || 0;
       const prevOctave = Number(moduleState.options?.octave) || 0;
+      const prevFrequency = Number(moduleState.options?.frequency) || 440;
+      const prevMode = moduleState.options?.mode || "high";
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
 
@@ -294,6 +296,25 @@ export function createInputRuntime(module, chainModules, inputIndex) {
         }
         if (noteUpdates.length > 0) {
           runtime.pendingNoteUpdates = noteUpdates;
+        }
+      }
+
+      // Frequency 或 Mode 改变：通知 Source 更新活跃 voice 的频率
+      const newFrequency = Number(moduleState.options?.frequency) || 440;
+      const newMode = moduleState.options?.mode || "high";
+      if (newFrequency !== prevFrequency || newMode !== prevMode) {
+        const freqUpdates = [];
+        for (let i = 0; i < getPolyVoice(); i++) {
+          const note = voiceStates[i].note;
+          if (note) {
+            freqUpdates.push({
+              voiceIndex: i,
+              frequency: getFrequencyValue(),
+            });
+          }
+        }
+        if (freqUpdates.length > 0) {
+          runtime.pendingFreqUpdates = freqUpdates;
         }
       }
 
