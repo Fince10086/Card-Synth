@@ -228,12 +228,17 @@ export function renderModuleControl(module, control, onCommit, accent, bindingPa
   }
 
   if (control.kind === "toggle") {
+    const isInverted = control.inverted === true;
+    const displayValue = isInverted ? !Boolean(value) : Boolean(value);
     return createToggleControl({
       label: control.label,
       accent,
-      value: Boolean(value),
+      value: displayValue,
+      onLabel: control.onLabel,
+      offLabel: control.offLabel,
       onToggle: (nextValue) => {
-        setByPath(module, path, nextValue);
+        const actualValue = isInverted ? !nextValue : nextValue;
+        setByPath(module, path, actualValue);
         app.markUnsaved();
         onCommit();
       },

@@ -1,4 +1,4 @@
-export function createToggleControl({ label, value, onToggle, accent }) {
+export function createToggleControl({ label, value, onToggle, accent, onLabel = "On", offLabel = "Off" }) {
   const wrapper = document.createElement("div");
   wrapper.className = "control";
 
@@ -16,7 +16,7 @@ export function createToggleControl({ label, value, onToggle, accent }) {
 
   const syncState = (nextValue) => {
     button.classList.toggle("is-on", nextValue);
-    button.textContent = nextValue ? "On" : "Off";
+    button.textContent = nextValue ? onLabel : offLabel;
   };
 
   syncState(Boolean(value));

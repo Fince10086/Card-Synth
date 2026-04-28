@@ -631,6 +631,11 @@ export class ModularSynthApp {
           this.markUnsaved();
           this.engine.updateGlobal(this.state.global);
         },
+        onPolyVoiceChange: (value) => {
+          this.state.global.polyVoice = clamp(Number(value), 2, 8);
+          this.markUnsaved();
+          this.engine.updateGlobal(this.state.global);
+        },
         onMacroPointPointerDown: (event, chainIndex, padElement) => {
           this.macroManager.startPointDrag({ event, chainIndex, padElement });
         },

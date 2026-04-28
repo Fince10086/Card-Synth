@@ -12,7 +12,7 @@ import {
 } from "../utils/helpers.js";
 
 const CHAIN_COUNT = 4;
-const DEFAULT_GLOBAL = { volume: -8, octave: 4, velocity: 0.8, velocityEnabled: true };
+const DEFAULT_GLOBAL = { volume: -8, octave: 4, velocity: 0.8, velocityEnabled: true, polyVoice: 8 };
 const MACRO_POINT_DEFAULT = Object.freeze({ x: 0.5, y: 0.5 });
 const MACRO_EPSILON = 1e-6;
 
@@ -32,6 +32,7 @@ function normalizeGlobalState(global = {}) {
   merged.velocity = clamp(Number(merged.velocity || 0.8), 0.1, 1);
   merged.volume = clamp(Number(merged.volume || -8), -36, 6);
   merged.velocityEnabled = merged.velocityEnabled !== false;
+  merged.polyVoice = clamp(Number(merged.polyVoice ?? 8), 2, 8);
   return merged;
 }
 

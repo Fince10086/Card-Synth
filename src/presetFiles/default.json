@@ -3,7 +3,8 @@
     "volume": -8,
     "octave": 4,
     "velocity": 0.8,
-    "velocityEnabled": true
+    "velocityEnabled": true,
+    "polyVoice": 8
   },
   "modules": [
     {
@@ -13,7 +14,7 @@
       "options": {
         "transpose": 0,
         "octave": 0,
-        "polyVoice": 8,
+        "mono": false,
         "pedal": false
       }
     },

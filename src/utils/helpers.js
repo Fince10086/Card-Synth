@@ -238,7 +238,13 @@ export function normalizeComponentModule(module) {
 }
 
 export function normalizeInputModule(module) {
-  return normalizeModule(module, "input", (type) => createInputModule(type || "MIDI"));
+  const result = normalizeModule(module, "input", (type) => createInputModule(type || "MIDI"));
+  // Migrate old `polyVoice` field to `mono` toggle
+  if (result.options?.polyVoice !== undefined) {
+    result.options.mono = Number(result.options.polyVoice) === 1;
+    delete result.options.polyVoice;
+  }
+  return result;
 }
 
 export function normalizeAnyModule(module) {

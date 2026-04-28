@@ -3,6 +3,7 @@ import {
   deepClone,
   safeSet,
   rampParam,
+  clamp,
   SOURCE_LIBRARY,
   INPUT_LIBRARY,
 } from "../utils/helpers.js";
@@ -83,11 +84,24 @@ export class AudioEngine {
   }
 
   updateGlobal(globalState) {
+    const prevPolyVoice = this.state?.global?.polyVoice;
     this.state.global = deepClone(globalState);
     if (!this.ready) {
       return;
     }
     rampParam(this.masterVolume.volume, globalState.volume);
+
+    // PolyVoice 变化时通知所有 Input runtime 调整 voice 数量
+    if (globalState.polyVoice !== prevPolyVoice) {
+      this.chainRuntimes.forEach((runtimeMap) => {
+        runtimeMap.forEach((runtime) => {
+          if (runtime.category === "input" && runtime.apply) {
+            runtime.apply(runtime.moduleState);
+            this._flushInputPendingNotes(runtime, runtimeMap);
+          }
+        });
+      });
+    }
   }
 
   isSourceModule(module) {
@@ -182,9 +196,14 @@ export class AudioEngine {
           type: "MIDI",
           category: "input",
           enabled: true,
-          options: { transpose: 0, octave: 0, polyVoice: 8, pedal: false },
+          options: { transpose: 0, octave: 0, mono: false, pedal: false },
         };
-        const hiddenInputRuntime = createInputRuntime(hiddenMidiModule, modules, -1);
+        const hiddenInputRuntime = createInputRuntime(
+          hiddenMidiModule,
+          modules,
+          -1,
+          () => clamp(Number(this.state?.global?.polyVoice) || 8, 2, 8),
+        );
         runtimeMap.set(HIDDEN_MIDI_INPUT_ID, hiddenInputRuntime);
       }
 
@@ -203,7 +222,7 @@ export class AudioEngine {
             type: "MIDI",
             category: "input",
             enabled: true,
-            options: { transpose: 0, octave: 0, polyVoice: 8, pedal: false },
+            options: { transpose: 0, octave: 0, mono: false, pedal: false },
           };
           actualIndex = -1;
         } else {
@@ -211,7 +230,12 @@ export class AudioEngine {
           actualIndex = inputIndex;
         }
 
-        const inputRuntime = createInputRuntime(inputModule, modules, actualIndex);
+        const inputRuntime = createInputRuntime(
+          inputModule,
+          modules,
+          actualIndex,
+          () => clamp(Number(this.state?.global?.polyVoice) || 8, 2, 8),
+        );
         runtimeMap.set(inputModule.id, inputRuntime);
       });
 
@@ -294,6 +318,78 @@ export class AudioEngine {
     });
   }
 
+  _flushInputPendingNotes(runtime, runtimeMap) {
+    // Input 模块 polyVoice 缩小后，处理待释放的音符
+    if (runtime.category === "input" && runtime.pendingReleasedNotes?.length > 0) {
+      const pendingNotes = runtime.pendingReleasedNotes;
+      runtime.pendingReleasedNotes = []; // 清空队列
+
+      pendingNotes.forEach(({ note, voiceIndex }) => {
+        const controlled = runtime.getControlledModules();
+
+        // 通知 Source release
+        controlled.sources.forEach((sourceId) => {
+          const sourceRuntime = runtimeMap.get(sourceId);
+          if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
+            sourceRuntime.triggerRelease(note, voiceIndex);
+          }
+        });
+
+        // 通知 Envelope release
+        controlled.envelopes.forEach((envInfo) => {
+          const envRuntime = runtimeMap.get(envInfo.id);
+          if (!envRuntime) {
+            return;
+          }
+
+          if (envRuntime.modulationMode) {
+            envRuntime.triggerVoiceRelease(voiceIndex);
+          } else if (envRuntime.hasPerVoiceConnection) {
+            envRuntime.triggerVoiceRelease(voiceIndex);
+          } else {
+            envRuntime.triggerRelease(note);
+          }
+        });
+      });
+    }
+
+    // Input 模块 transpose/octave 改变后，更新 Source 频率
+    if (runtime.category === "input" && runtime.pendingNoteUpdates?.length > 0) {
+      const pendingUpdates = runtime.pendingNoteUpdates;
+      runtime.pendingNoteUpdates = []; // 清空队列
+
+      pendingUpdates.forEach(({ voiceIndex, transformedNote }) => {
+        const controlled = runtime.getControlledModules();
+
+        // 通知 Source 更新频率
+        controlled.sources.forEach((sourceId) => {
+          const sourceRuntime = runtimeMap.get(sourceId);
+          if (sourceRuntime && typeof sourceRuntime.updateVoiceFrequency === "function") {
+            sourceRuntime.updateVoiceFrequency(voiceIndex, transformedNote);
+          }
+        });
+      });
+    }
+
+    // Input 模块 frequency/mode 改变后，更新 Source 频率
+    if (runtime.category === "input" && runtime.pendingFreqUpdates?.length > 0) {
+      const pendingUpdates = runtime.pendingFreqUpdates;
+      runtime.pendingFreqUpdates = []; // 清空队列
+
+      pendingUpdates.forEach(({ voiceIndex, frequency }) => {
+        const controlled = runtime.getControlledModules();
+
+        // 通知 Source 更新频率
+        controlled.sources.forEach((sourceId) => {
+          const sourceRuntime = runtimeMap.get(sourceId);
+          if (sourceRuntime && typeof sourceRuntime.updateVoiceFrequency === "function") {
+            sourceRuntime.updateVoiceFrequency(voiceIndex, frequency);
+          }
+        });
+      });
+    }
+  }
+
   updateModule(moduleId, updates, chainIndex = this.app?.getSelectedChainIndex?.() ?? 0) {
     const chain = this.getChainState(chainIndex);
     const modules = Array.isArray(chain.modules) ? chain.modules : [];
@@ -309,81 +405,10 @@ export class AudioEngine {
     }
 
     const runtime = this.getModuleRuntime(chainIndex, moduleId);
+    const runtimeMap = this.getChainRuntimeMap(chainIndex);
     if (runtime && runtime.apply) {
       runtime.apply(modules[moduleIndex]);
-
-      // Input 模块 pedal off 后，处理待释放的音符
-      if (runtime.category === "input" && runtime.pendingReleasedNotes?.length > 0) {
-        const runtimeMap = this.getChainRuntimeMap(chainIndex);
-        const pendingNotes = runtime.pendingReleasedNotes;
-        runtime.pendingReleasedNotes = []; // 清空队列
-
-        pendingNotes.forEach(({ note, voiceIndex }) => {
-          const controlled = runtime.getControlledModules();
-
-          // 通知 Source release
-          controlled.sources.forEach((sourceId) => {
-            const sourceRuntime = runtimeMap.get(sourceId);
-            if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
-              sourceRuntime.triggerRelease(note, voiceIndex);
-            }
-          });
-
-          // 通知 Envelope release
-          controlled.envelopes.forEach((envInfo) => {
-            const envRuntime = runtimeMap.get(envInfo.id);
-            if (!envRuntime) {
-              return;
-            }
-
-            if (envRuntime.modulationMode) {
-              envRuntime.triggerVoiceRelease(voiceIndex);
-            } else if (envRuntime.hasPerVoiceConnection) {
-              envRuntime.triggerVoiceRelease(voiceIndex);
-            } else {
-              envRuntime.triggerRelease(note);
-            }
-          });
-        });
-      }
-
-      // Input 模块 transpose/octave 改变后，更新 Source 频率
-      if (runtime.category === "input" && runtime.pendingNoteUpdates?.length > 0) {
-        const runtimeMap = this.getChainRuntimeMap(chainIndex);
-        const pendingUpdates = runtime.pendingNoteUpdates;
-        runtime.pendingNoteUpdates = []; // 清空队列
-
-        pendingUpdates.forEach(({ voiceIndex, transformedNote }) => {
-          const controlled = runtime.getControlledModules();
-
-          // 通知 Source 更新频率
-          controlled.sources.forEach((sourceId) => {
-            const sourceRuntime = runtimeMap.get(sourceId);
-            if (sourceRuntime && typeof sourceRuntime.updateVoiceFrequency === "function") {
-              sourceRuntime.updateVoiceFrequency(voiceIndex, transformedNote);
-            }
-          });
-        });
-      }
-
-      // Input 模块 frequency/mode 改变后，更新 Source 频率
-      if (runtime.category === "input" && runtime.pendingFreqUpdates?.length > 0) {
-        const runtimeMap = this.getChainRuntimeMap(chainIndex);
-        const pendingUpdates = runtime.pendingFreqUpdates;
-        runtime.pendingFreqUpdates = []; // 清空队列
-
-        pendingUpdates.forEach(({ voiceIndex, frequency }) => {
-          const controlled = runtime.getControlledModules();
-
-          // 通知 Source 更新频率
-          controlled.sources.forEach((sourceId) => {
-            const sourceRuntime = runtimeMap.get(sourceId);
-            if (sourceRuntime && typeof sourceRuntime.updateVoiceFrequency === "function") {
-              sourceRuntime.updateVoiceFrequency(voiceIndex, frequency);
-            }
-          });
-        });
-      }
+      this._flushInputPendingNotes(runtime, runtimeMap);
     }
   }
 

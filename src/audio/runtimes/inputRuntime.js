@@ -10,10 +10,15 @@ import * as Tone from "tone";
  * - 确定控制范围（当前位置到下一个 Input 之间的 Source 和 Envelope）
  * - 转换输入数据（MIDI: 应用 transpose/octave; Frequency: 输出固定频率）
  */
-export function createInputRuntime(module, chainModules, inputIndex) {
+export function createInputRuntime(module, chainModules, inputIndex, getGlobalPolyVoice = () => 8) {
   let moduleState = deepClone(module);
 
-  const getPolyVoice = () => clamp(Number(moduleState.options?.polyVoice) || 8, 1, 8);
+  const getPolyVoice = () => {
+    if (moduleState.options?.mono) {
+      return 1;
+    }
+    return clamp(getGlobalPolyVoice(), 2, 8);
+  };
 
   // Voice 状态数组（动态调整大小）
   let voiceStates = Array.from({ length: getPolyVoice() }, () => ({
@@ -254,7 +259,7 @@ export function createInputRuntime(module, chainModules, inputIndex) {
      * 应用模块状态更新
      */
     apply: (nextModule) => {
-      const prevPolyVoice = getPolyVoice();
+      const prevPolyVoice = voiceStates.length;
       const prevPedal = Boolean(moduleState.options?.pedal);
       const prevTranspose = Number(moduleState.options?.transpose) || 0;
       const prevOctave = Number(moduleState.options?.octave) || 0;

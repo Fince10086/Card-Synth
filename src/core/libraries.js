@@ -385,25 +385,25 @@ export const INPUT_LIBRARY = {
   MIDI: {
     accent: "input",
     tag: "Input",
-    options: { transpose: 0, octave: 0, polyVoice: 8, pedal: false },
+    options: { transpose: 0, octave: 0, mono: false, pedal: false },
     controls: [
       { path: "options.transpose", kind: "range", label: "Transpose", min: -12, max: 12, step: 1, formatter: (value) => `${value > 0 ? "+" : ""}${value} st` },
       { path: "options.octave", kind: "range", label: "Octave", min: -4, max: 4, step: 1, formatter: (value) => `Oct ${value > 0 ? "+" : ""}${value}` },
-      { path: "options.polyVoice", kind: "range", label: "Poly Voice", min: 1, max: 8, step: 1 },
+      { path: "options.mono", kind: "toggle", label: "Mode", onLabel: "Poly", offLabel: "Mono", inverted: true },
       { path: "options.pedal", kind: "toggle", label: "Pedal" },
     ],
   },
   Frequency: {
     accent: "input",
     tag: "Input",
-    options: { mode: "high", frequency: 440, polyVoice: 8, pedal: false },
+    options: { mode: "high", frequency: 440, mono: false, pedal: false },
     controls: [
       { path: "options.mode", kind: "toggle", label: "Range", options: [
         { label: "Low", value: "low" },
         { label: "High", value: "high" },
       ]},
       { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 20000, step: 0.01, formatter: formatHertz },
-      { path: "options.polyVoice", kind: "range", label: "Poly Voice", min: 1, max: 8, step: 1 },
+      { path: "options.mono", kind: "toggle", label: "Mode", onLabel: "Poly", offLabel: "Mono", inverted: true },
       { path: "options.pedal", kind: "toggle", label: "Pedal" },
     ],
   },

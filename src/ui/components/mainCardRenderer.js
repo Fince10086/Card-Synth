@@ -26,6 +26,7 @@ export function renderMainCard({
   onMacroAxisPointerDown,
   onGestureClick,
   onDeleteUserPreset,
+  onPolyVoiceChange,
 }) {
   const card = createModuleCard({
     accent: "indigo",
@@ -176,6 +177,22 @@ export function renderMainCard({
       onInput: (value) => {
         if (onMasterVolumeChange) {
           onMasterVolumeChange(value);
+        }
+      },
+    })
+  );
+
+  controls.append(
+    createSliderControl({
+      label: "Poly Voices",
+      min: 2,
+      max: 8,
+      step: 1,
+      value: state.global.polyVoice,
+      formatter: (value) => `${value} voices`,
+      onInput: (value) => {
+        if (onPolyVoiceChange) {
+          onPolyVoiceChange(value);
         }
       },
     })
