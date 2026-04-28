@@ -21,7 +21,7 @@ function createStarterModules() {
     createInputModule("MIDI"),
     createSourceModule("Oscillator"),
     createEffectModule("Filter"),
-    createComponentModule("AmplitudeEnvelope"),
+    createComponentModule("Envelope"),
     createEffectModule("Chorus"),
   ];
 }

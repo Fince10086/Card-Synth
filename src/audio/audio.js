@@ -94,7 +94,7 @@ export class AudioEngine {
     return module.category === "source" || SOURCE_LIBRARY[module.type] !== undefined;
   }
 
-  isAmpEnvModule(module) {
+  isEnvModule(module) {
     return module.type === "Envelope" && module.modulationMode !== true;
   }
 
@@ -217,7 +217,7 @@ export class AudioEngine {
         runtimeMap,
         masterVolume: this.masterVolume,
         isSourceModule: (m) => this.isSourceModule(m),
-        isAmpEnvModule: (m) => this.isAmpEnvModule(m),
+        isEnvModule: (m) => this.isEnvModule(m),
         isInputModule: (m) => this.isInputModule(m),
       });
 
@@ -339,18 +339,12 @@ export class AudioEngine {
               return;
             }
 
-            if (envInfo.type === "AmplitudeEnvelope") {
-              if (envRuntime.hasPerVoiceConnection) {
-                envRuntime.triggerVoiceRelease(voiceIndex);
-              } else {
-                envRuntime.triggerRelease(note);
-              }
-            } else if (envInfo.type === "Envelope") {
-              if (typeof envRuntime.triggerVoiceRelease === "function") {
-                envRuntime.triggerVoiceRelease(voiceIndex);
-              } else {
-                envRuntime.triggerRelease(note);
-              }
+            if (envRuntime.modulationMode) {
+              envRuntime.triggerVoiceRelease(voiceIndex);
+            } else if (envRuntime.hasPerVoiceConnection) {
+              envRuntime.triggerVoiceRelease(voiceIndex);
+            } else {
+              envRuntime.triggerRelease(note);
             }
           });
         });
@@ -521,18 +515,12 @@ export class AudioEngine {
               return;
             }
 
-            if (envInfo.type === "AmplitudeEnvelope") {
-              if (envRuntime.hasPerVoiceConnection) {
-                envRuntime.triggerVoiceRelease(voiceIndex);
-              } else {
-                envRuntime.triggerRelease(note);
-              }
-            } else if (envInfo.type === "Envelope") {
-              if (typeof envRuntime.triggerVoiceRelease === "function") {
-                envRuntime.triggerVoiceRelease(voiceIndex);
-              } else {
-                envRuntime.triggerRelease(note);
-              }
+            if (envRuntime.modulationMode) {
+              envRuntime.triggerVoiceRelease(voiceIndex);
+            } else if (envRuntime.hasPerVoiceConnection) {
+              envRuntime.triggerVoiceRelease(voiceIndex);
+            } else {
+              envRuntime.triggerRelease(note);
             }
           });
         });

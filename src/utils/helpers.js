@@ -220,7 +220,7 @@ export function normalizeEffectModule(module) {
 }
 
 export function normalizeComponentModule(module) {
-  return normalizeModule(module, "component", (type) => createComponentModule(type || "AmplitudeEnvelope"));
+  return normalizeModule(module, "component", (type) => createComponentModule(type || "Envelope"));
 }
 
 export function normalizeInputModule(module) {

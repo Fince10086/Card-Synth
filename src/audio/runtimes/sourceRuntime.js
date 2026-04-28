@@ -212,7 +212,7 @@ export function createSourceRuntime({
     frequencyBaseSignal: null,
     frequencyOffsetParam: null,
     frequencyMultiply: null,
-    hiddenAmpEnv: null,
+    hiddenEnv: null,
     initialized: false,
     note: null,
     startTime: 0,
@@ -279,7 +279,7 @@ export function createSourceRuntime({
     const isModulationMode = moduleState.modulationMode;
     let panNode = null;
 
-    const hiddenAmpEnv = new Tone.AmplitudeEnvelope({
+    const hiddenEnv = new Tone.AmplitudeEnvelope({
       attack: 0.005,
       decay: 0.01,
       sustain: 1,
@@ -287,12 +287,12 @@ export function createSourceRuntime({
     });
 
     if (isModulationMode) {
-      // 调制模式下，不连接 hiddenAmpEnv，让信号直接通过
-      // hiddenAmpEnv 仅作为占位符存在
+      // 调制模式下，不连接 hiddenEnv，让信号直接通过
+      // hiddenEnv 仅作为占位符存在
     } else {
       panNode = new Tone.Panner(module.pan);
       volumeNode.connect(panNode);
-      panNode.connect(hiddenAmpEnv);
+      panNode.connect(hiddenEnv);
     }
 
     const node = createSourceNode(volumeNode);
@@ -300,7 +300,7 @@ export function createSourceRuntime({
     voice.node = node;
     voice.volumeNode = volumeNode;
     voice.panNode = panNode;
-    voice.hiddenAmpEnv = hiddenAmpEnv;
+    voice.hiddenEnv = hiddenEnv;
     voice.analyser = new Tone.Analyser("waveform", 256);
     voice.volumeNode.connect(voice.analyser);
 
@@ -320,15 +320,15 @@ export function createSourceRuntime({
 
     voice.initialized = true;
 
-    // 如果 ampEnvRuntime 已设置（由 audioEngine 设置），建立连接
-    // 注意：调制模式下不建立音频信号链连接，因为 hiddenAmpEnv 未被使用
+    // 如果 envRuntime 已设置（由 audioEngine 设置），建立连接
+    // 注意：调制模式下不建立音频信号链连接，因为 hiddenEnv 未被使用
     if (!isModulationMode) {
-      if (runtime.hasAmpEnv && runtime.ampEnvRuntime?.voices?.[index]) {
-        const outputNode = voice.panNode || voice.hiddenAmpEnv;
-        outputNode.connect(runtime.ampEnvRuntime.voices[index]);
-      } else if (!runtime.hasAmpEnv && runtime.targetNode && voice.hiddenAmpEnv) {
-        // 没有 AmpEnv，直接连接到 targetNode
-        voice.hiddenAmpEnv.connect(runtime.targetNode);
+      if (runtime.hasEnv && runtime.envRuntime?.voices?.[index]) {
+        const outputNode = voice.panNode || voice.hiddenEnv;
+        outputNode.connect(runtime.envRuntime.voices[index]);
+      } else if (!runtime.hasEnv && runtime.targetNode && voice.hiddenEnv) {
+        // 没有 Env，直接连接到 targetNode
+        voice.hiddenEnv.connect(runtime.targetNode);
       }
     }
 
@@ -401,7 +401,7 @@ export function createSourceRuntime({
       voice.frequencyOffsetParam,
       voice.frequencyBaseSignal,
       voice.node,
-      voice.hiddenAmpEnv,
+      voice.hiddenEnv,
       voice.panNode,
       voice.volumeNode,
       voice.analyser,
@@ -419,7 +419,7 @@ export function createSourceRuntime({
     voice.frequencyBaseSignal = null;
     voice.frequencyOffsetParam = null;
     voice.frequencyMultiply = null;
-    voice.hiddenAmpEnv = null;
+    voice.hiddenEnv = null;
     voice.analyser = null;
   };
 
@@ -446,25 +446,25 @@ export function createSourceRuntime({
    * - 调制模式下的声音槽保留
    * - 外部振幅包络的释放时间
    * - 隐藏包络的释放时间
-   * - needsExtendedRelease 情况下，AmpEnv release + hiddenAmpEnv release
+   * - needsExtendedRelease 情况下，Env release + hiddenEnv release
    *
    * @param {Object} voice - 声音对象
    * @param {number} voiceIndex - 声音索引
    * @returns {number} 释放持续时间（秒）
    */
   const getVoiceReleaseDuration = (voice, voiceIndex) => {
-    // 调制模式：使用较短的释放时间，因为 hiddenAmpEnv 没有被触发 Release
+    // 调制模式：使用较短的释放时间，因为 hiddenEnv 没有被触发 Release
     if (moduleState.modulationMode) {
       return 0.01;
     }
-    // Extended release: AmpEnv release + hiddenAmpEnv release
+    // Extended release: Env release + hiddenEnv release
     if (runtime.needsExtendedRelease) {
-      const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
-      return ampEnvRelease + 0.005;
+      const envRelease = getEnvReleaseTime(voiceIndex);
+      return envRelease + 0.005;
     }
-    // Direct AmpEnv: use its release time
-    if (runtime.hasAmpEnv) {
-      return getAmpEnvReleaseTime(voiceIndex);
+    // Direct Env: use its release time
+    if (runtime.hasEnv) {
+      return getEnvReleaseTime(voiceIndex);
     }
     // Default: 10ms
     return 0.01;
@@ -560,30 +560,30 @@ export function createSourceRuntime({
   };
 
   /**
-   * 获取 AmpEnv 的 release 时间
+   * 获取 Env 的 release 时间
    *
-   * 优先使用直接连接的 AmpEnv，否则使用链中的 AmpEnv。
+   * 优先使用直接连接的 Env，否则使用链中的 Env。
    *
    * @param {number} voiceIndex - 声音索引
    * @returns {number} release 时间（秒）
    */
-  const getAmpEnvReleaseTime = (voiceIndex) => {
-    const ampEnvRuntime = runtime.ampEnvRuntime || runtime.chainedAmpEnvRuntime;
-    const ampEnvVoice = ampEnvRuntime?.voices?.[voiceIndex];
-    const release = Number(ampEnvVoice?.release);
+  const getEnvReleaseTime = (voiceIndex) => {
+    const envRuntime = runtime.envRuntime || runtime.chainedEnvRuntime;
+    const envVoice = envRuntime?.voices?.[voiceIndex];
+    const release = Number(envVoice?.release);
     return Number.isFinite(release) && release >= 0 ? release : 0.01;
   };
 
   /**
-   * 获取 AmpEnv 的 attack 时间
+   * 获取 Env 的 attack 时间
    *
    * @param {number} voiceIndex - 声音索引
    * @returns {number} attack 时间（秒）
    */
-  const getAmpEnvAttackTime = (voiceIndex) => {
-    const ampEnvRuntime = runtime.ampEnvRuntime || runtime.chainedAmpEnvRuntime;
-    const ampEnvVoice = ampEnvRuntime?.voices?.[voiceIndex];
-    const attack = Number(ampEnvVoice?.attack);
+  const getEnvAttackTime = (voiceIndex) => {
+    const envRuntime = runtime.envRuntime || runtime.chainedEnvRuntime;
+    const envVoice = envRuntime?.voices?.[voiceIndex];
+    const attack = Number(envVoice?.attack);
     return Number.isFinite(attack) && attack >= 0 ? attack : 0.01;
   };
 
@@ -607,40 +607,40 @@ export function createSourceRuntime({
 
     voice.note = null;
 
-    // 对于调制模式下的 Source，跳过 hiddenAmpEnv 的 Release
+    // 对于调制模式下的 Source，跳过 hiddenEnv 的 Release
     // 让调制波继续运行，保持相位连续性
     const isModulationMode = moduleState.modulationMode;
 
     if (isModulationMode) {
-      // 调制模式下，不调制 hiddenAmpEnv，调制波继续运行
+      // 调制模式下，不调制 hiddenEnv，调制波继续运行
       // 但仍然需要调度 voice 的释放以进行资源清理
-    } else if (runtime.hasAmpEnv) {
-      triggerAmpEnvRelease(voiceIndex);
-      const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
-      voice.hiddenAmpEnv.triggerRelease(now + ampEnvRelease);
+    } else if (runtime.hasEnv) {
+      triggerEnvRelease(voiceIndex);
+      const envRelease = getEnvReleaseTime(voiceIndex);
+      voice.hiddenEnv.triggerRelease(now + envRelease);
     } else if (runtime.needsExtendedRelease && isLastNote) {
-      // 最后一个音：延迟释放 hiddenAmpEnv
-      const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
-      voice.hiddenAmpEnv.triggerRelease(now + ampEnvRelease);
-      voice.extendedReleaseEndTime = now + ampEnvRelease;
+      // 最后一个音：延迟释放 hiddenEnv
+      const envRelease = getEnvReleaseTime(voiceIndex);
+      voice.hiddenEnv.triggerRelease(now + envRelease);
+      voice.extendedReleaseEndTime = now + envRelease;
     } else if (runtime.needsExtendedRelease && !isLastNote) {
-      // 非最后一个音：同步 hiddenAmpEnv.release 与 AmpEnv
-      const ampEnvRelease = getAmpEnvReleaseTime(voiceIndex);
-      voice.hiddenAmpEnv.release = ampEnvRelease;
-      voice.hiddenAmpEnv.triggerRelease(now);
+      // 非最后一个音：同步 hiddenEnv.release 与 Env
+      const envRelease = getEnvReleaseTime(voiceIndex);
+      voice.hiddenEnv.release = envRelease;
+      voice.hiddenEnv.triggerRelease(now);
       voice.extendedReleaseEndTime = 0;
     } else {
-      voice.hiddenAmpEnv.triggerRelease(now);
+      voice.hiddenEnv.triggerRelease(now);
       voice.extendedReleaseEndTime = 0;
     }
 
     // 对于调制模式下的 player，不停止播放，让调制波继续运行
-    // 对于有 AmpEnv 的情况，也不立即 stop，让 AmpEnv 的 release 正常生效
+    // 对于有 Env 的情况，也不立即 stop，让 Env 的 release 正常生效
     // Player 会在 refreshVoiceLifecycle（RELEASING->IDLE）时被 stop
     if (definition.runtime === "player" && !moduleState.modulationMode) {
       if (voice.node) {
-        // 只有没有 AmpEnv 时才立即 stop；有 AmpEnv 时延迟到 release 结束
-        if (!runtime.hasAmpEnv && !runtime.needsExtendedRelease) {
+        // 只有没有 Env 时才立即 stop；有 Env 时延迟到 release 结束
+        if (!runtime.hasEnv && !runtime.needsExtendedRelease) {
           try {
             voice.node.stop(now);
           } catch {}
@@ -753,25 +753,25 @@ export function createSourceRuntime({
    * @param {number} voiceIndex - 声音索引
    * @param {number} velocity - 力度值
    */
-  const triggerAmpEnvAttack = (voiceIndex, velocity) => {
-    const ampEnv = runtime.ampEnvRuntime;
-    if (!ampEnv || typeof ampEnv.triggerVoiceAttack !== "function") {
+  const triggerEnvAttack = (voiceIndex, velocity) => {
+    const env = runtime.envRuntime;
+    if (!env || typeof env.triggerVoiceAttack !== "function") {
       return;
     }
-    ampEnv.triggerVoiceAttack(voiceIndex, velocity);
+    env.triggerVoiceAttack(voiceIndex, velocity);
   };
 
   /**
-   * 触发振幅包络的释放阶段
+   * 触发包络的释放阶段
    *
    * @param {number} voiceIndex - 声音索引
    */
-  const triggerAmpEnvRelease = (voiceIndex) => {
-    const ampEnv = runtime.ampEnvRuntime;
-    if (!ampEnv || typeof ampEnv.triggerVoiceRelease !== "function") {
+  const triggerEnvRelease = (voiceIndex) => {
+    const env = runtime.envRuntime;
+    if (!env || typeof env.triggerVoiceRelease !== "function") {
       return;
     }
-    ampEnv.triggerVoiceRelease(voiceIndex);
+    env.triggerVoiceRelease(voiceIndex);
   };
 
   // 运行时对象，提供对外的 API 接口
@@ -781,8 +781,8 @@ export function createSourceRuntime({
     voices,
     definition,
     moduleState,
-    hasAmpEnv: false,
-    ampEnvRuntime: null,
+    hasEnv: false,
+    envRuntime: null,
     needsExtendedRelease: false,
     preserveVoiceSlotsForSourceTargets: false,
 
@@ -934,21 +934,21 @@ export function createSourceRuntime({
       // 检查是否为第一个音（没有其他活跃音符）
       const isFirstAttack = voices.filter((v, i) => i !== index && v.initialized && v.note !== null).length === 0;
 
-      // 对于调制模式，跳过 hiddenAmpEnv 的触发，保持调制波连续运行
+      // 对于调制模式，跳过 hiddenEnv 的触发，保持调制波连续运行
       if (moduleState.modulationMode) {
-        // 调制模式下不调制 hiddenAmpEnv，调制波自由运行
-      } else if (runtime.hasAmpEnv) {
-        triggerAmpEnvAttack(index, effectiveVelocity);
+        // 调制模式下不调制 hiddenEnv，调制波自由运行
+      } else if (runtime.hasEnv) {
+        triggerEnvAttack(index, effectiveVelocity);
       } else if (isInExtendedRelease) {
-        voice.hiddenAmpEnv.triggerAttack(now, effectiveVelocity);
+        voice.hiddenEnv.triggerAttack(now, effectiveVelocity);
         voice.extendedReleaseEndTime = 0;
       } else if (runtime.needsExtendedRelease && !isFirstAttack) {
-        // 非第一个音：同步 hiddenAmpEnv.attack 与 AmpEnv
-        const ampEnvAttack = getAmpEnvAttackTime(index);
-        voice.hiddenAmpEnv.attack = ampEnvAttack;
-        voice.hiddenAmpEnv.triggerAttack(now, effectiveVelocity);
+        // 非第一个音：同步 hiddenEnv.attack 与 Env
+        const envAttack = getEnvAttackTime(index);
+        voice.hiddenEnv.attack = envAttack;
+        voice.hiddenEnv.triggerAttack(now, effectiveVelocity);
       } else {
-        voice.hiddenAmpEnv.triggerAttack(now, effectiveVelocity);
+        voice.hiddenEnv.triggerAttack(now, effectiveVelocity);
       }
 
       const sourceNode = ensureVoiceNode(index);
