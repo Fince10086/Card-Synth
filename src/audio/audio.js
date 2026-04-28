@@ -318,6 +318,47 @@ export class AudioEngine {
     const runtime = this.getModuleRuntime(chainIndex, moduleId);
     if (runtime && runtime.apply) {
       runtime.apply(modules[moduleIndex]);
+
+      // Input 模块 pedal off 后，处理待释放的音符
+      if (runtime.category === "input" && runtime.pendingReleasedNotes?.length > 0) {
+        const runtimeMap = this.getChainRuntimeMap(chainIndex);
+        const pendingNotes = runtime.pendingReleasedNotes;
+        runtime.pendingReleasedNotes = []; // 清空队列
+
+        pendingNotes.forEach(({ note, voiceIndex }) => {
+          const controlled = runtime.getControlledModules();
+
+          // 通知 Source release
+          controlled.sources.forEach((sourceId) => {
+            const sourceRuntime = runtimeMap.get(sourceId);
+            if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
+              sourceRuntime.triggerRelease(note, voiceIndex);
+            }
+          });
+
+          // 通知 Envelope release
+          controlled.envelopes.forEach((envInfo) => {
+            const envRuntime = runtimeMap.get(envInfo.id);
+            if (!envRuntime) {
+              return;
+            }
+
+            if (envInfo.type === "AmplitudeEnvelope") {
+              if (envRuntime.hasPerVoiceConnection) {
+                envRuntime.triggerVoiceRelease(voiceIndex);
+              } else {
+                envRuntime.triggerRelease(note);
+              }
+            } else if (envInfo.type === "Envelope") {
+              if (typeof envRuntime.triggerVoiceRelease === "function") {
+                envRuntime.triggerVoiceRelease(voiceIndex);
+              } else {
+                envRuntime.triggerRelease(note);
+              }
+            }
+          });
+        });
+      }
     }
   }
 

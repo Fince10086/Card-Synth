@@ -926,6 +926,9 @@ export function createSourceRuntime({
       voice.idleSince = 0;
       voice.extendedReleaseEndTime = 0;
 
+      console.log(`[Source ${moduleState.type}] Voice ${index} triggered`);
+      console.log(`[Source ${moduleState.type}] Voice ${index} note/pitch:`, noteData.type === "midi" ? noteData.note : `${noteData.frequency}Hz`);
+
       const effectiveVelocity = (!getVelocityEnabled() || moduleState.modulationMode) ? 1 : velocity;
 
       // 检查是否为第一个音（没有其他活跃音符）

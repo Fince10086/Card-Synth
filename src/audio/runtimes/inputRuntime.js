@@ -252,8 +252,25 @@ export function createInputRuntime(module, chainModules, inputIndex) {
      */
     apply: (nextModule) => {
       const prevPolyVoice = getPolyVoice();
+      const prevPedal = Boolean(moduleState.options?.pedal);
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
+
+      // Pedal 从 on 变为 off：释放所有 pending 的音符
+      const newPedal = Boolean(moduleState.options?.pedal);
+      if (prevPedal && !newPedal) {
+        const released = [];
+        for (let i = 0; i < getPolyVoice(); i++) {
+          if (voiceStates[i].pendingRelease) {
+            const note = voiceStates[i].note;
+            releaseVoice(i);
+            if (note) {
+              released.push({ note, voiceIndex: i });
+            }
+          }
+        }
+        runtime.pendingReleasedNotes = released;
+      }
 
       const newPolyVoice = getPolyVoice();
       if (newPolyVoice !== prevPolyVoice) {
