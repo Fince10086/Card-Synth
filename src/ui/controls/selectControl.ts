@@ -1,4 +1,21 @@
-export function createSelectControl({ label, options, value, onChange }) {
+/**
+ * Select control component
+ */
+
+export interface SelectOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+export interface SelectControlOptions {
+  label: string;
+  options: SelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+}
+
+export function createSelectControl({ label, options, value, onChange }: SelectControlOptions): HTMLElement {
   const wrapper = document.createElement("label");
   wrapper.className = "control";
 
@@ -22,7 +39,7 @@ export function createSelectControl({ label, options, value, onChange }) {
   });
   select.value = value;
   select.addEventListener("change", (event) => {
-    onChange(event.target.value);
+    onChange((event.target as HTMLSelectElement).value);
     select.blur();
   });
 

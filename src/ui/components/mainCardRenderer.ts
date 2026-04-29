@@ -1,6 +1,76 @@
-import { createSelectControl, createSliderControl, createToggleControl } from "../controls/index.js";
-import { formatDb } from "../../core/formatters.js";
-import { createModuleCard } from "./moduleCard.js";
+import { createSelectControl } from "../controls/selectControl";
+import { createSliderControl } from "../controls/sliderControl";
+import { createToggleControl } from "../controls/toggleControl";
+import { formatDb } from "../../core/formatters";
+import { createModuleCard, type ModuleCardElement } from "./moduleCard";
+import type { ChainState, Preset } from "../../types";
+
+interface MacroPoint {
+  chainIndex: number;
+  visible: boolean;
+  selected: boolean;
+  x: number;
+  y: number;
+  color: string;
+}
+
+interface MacroViewModel {
+  selectedChainEnabled: boolean;
+  points: MacroPoint[];
+}
+
+interface PresetEntry extends Preset {
+  name?: string;
+}
+
+interface RenderMainCardOptions {
+  selectedPresetId: string | null;
+  hasUnsavedChanges: boolean;
+  builtinPresets: Record<string, PresetEntry>;
+  userPresets: Record<string, PresetEntry>;
+  state: Preset;
+  selectedChainIndex: number;
+  chains: ChainState[];
+  macro: MacroViewModel;
+  audioBooted: boolean;
+  onPresetChange?: (value: string) => void;
+  onChainIndexClick?: (chainIndex: number, isSelected: boolean) => void;
+  onImportClick?: () => void;
+  onExportCurrentClick?: () => void;
+  onExportAllClick?: () => void;
+  onResetClick?: () => void;
+  onRandomClick?: () => void;
+  onMidiClick?: () => void;
+  onMasterVolumeChange?: (value: number) => void;
+  onVelocityEnabledChange?: (value: boolean) => void;
+  onMacroPointPointerDown?: (event: PointerEvent, chainIndex: number, padElement: HTMLElement) => void;
+  onMacroAxisPointerDown?: (event: PointerEvent, axis: string) => void;
+  onGestureClick?: () => void;
+  onDeleteUserPreset?: (id: string) => void;
+  onPolyVoiceChange?: (value: number) => void;
+}
+
+interface UpdateMainCardOptions {
+  selectedChainIndex: number;
+  chains: ChainState[];
+  onChainIndexClick?: (chainIndex: number, isSelected: boolean) => void;
+  macro: MacroViewModel;
+  onMacroPointPointerDown?: (event: PointerEvent, chainIndex: number, padElement: HTMLElement) => void;
+  onMacroAxisPointerDown?: (event: PointerEvent, axis: string) => void;
+}
+
+interface RenderMainCardContentOptions {
+  updatePresetSelect?: () => void;
+  updateMasterReadout?: (value: number) => void;
+  updateMidiStatus?: () => void;
+  volume: number;
+}
+
+interface DynamicElements {
+  keyboard: HTMLElement | null;
+  oscilloscope: HTMLCanvasElement | null;
+  scopeContext: CanvasRenderingContext2D | null;
+}
 
 export function renderMainCard({
   selectedPresetId,
@@ -27,7 +97,7 @@ export function renderMainCard({
   onGestureClick,
   onDeleteUserPreset,
   onPolyVoiceChange,
-}) {
+}: RenderMainCardOptions): ModuleCardElement {
   const card = createModuleCard({
     accent: "indigo",
     title: "Main",
@@ -78,8 +148,8 @@ export function renderMainCard({
   const controls = document.createElement("div");
   controls.className = "module-grid";
 
-  function buildPresetOptions(entries, groupLabel) {
-    const options = [];
+  function buildPresetOptions(entries: Record<string, PresetEntry>, groupLabel: string) {
+    const options: { value: string; label: string; disabled?: boolean }[] = [];
     const items = Object.entries(entries || {});
     if (items.length > 0) {
       options.push({ value: "", label: groupLabel, disabled: true });
@@ -255,7 +325,7 @@ export function renderMainCard({
   axisRow.className = "macro-axis-row";
 
   const selectedChainEnabled = Boolean(macro?.selectedChainEnabled);
-  const makeAxisButton = (axis, text) => {
+  const makeAxisButton = (axis: string, text: string) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "macro-axis-handle";
@@ -312,14 +382,14 @@ export function renderMainCard({
   return card;
 }
 
-export function updateMainCard(card, {
+export function updateMainCard(card: ModuleCardElement | null, {
   selectedChainIndex,
   chains,
   onChainIndexClick,
   macro,
   onMacroPointPointerDown,
   onMacroAxisPointerDown,
-}) {
+}: UpdateMainCardOptions): void {
   if (!card) return;
 
   // 更新 chain badges
@@ -334,7 +404,7 @@ export function updateMainCard(card, {
       badge.classList.toggle("is-disabled", !chain.enabled);
 
       // 替换点击事件以更新闭包
-      const newBadge = badge.cloneNode(true);
+      const newBadge = badge.cloneNode(true) as HTMLElement;
       newBadge.setAttribute("tabindex", "-1");
       newBadge.addEventListener("click", () => {
         onChainIndexClick?.(index, isSelected);
@@ -364,7 +434,7 @@ export function updateMainCard(card, {
       macroPoint.setAttribute("aria-label", `Macro Chain ${point.chainIndex + 1}`);
 
       macroPoint.addEventListener("pointerdown", (event) => {
-        onMacroPointPointerDown?.(event, point.chainIndex, macroPad);
+        onMacroPointPointerDown?.(event, point.chainIndex, macroPad as HTMLElement);
       });
 
       macroPad.append(macroPoint);
@@ -375,7 +445,7 @@ export function updateMainCard(card, {
   const selectedChainEnabled = Boolean(macro?.selectedChainEnabled);
   const axisHandles = card.querySelectorAll(".macro-axis-handle");
   axisHandles.forEach((handle) => {
-    handle.disabled = !selectedChainEnabled;
+    (handle as HTMLButtonElement).disabled = !selectedChainEnabled;
   });
 }
 
@@ -384,16 +454,18 @@ export function renderMainCardContent({
   updateMasterReadout,
   updateMidiStatus,
   volume,
-}) {
+}: RenderMainCardContentOptions): void {
   updatePresetSelect?.();
   updateMasterReadout?.(volume);
   updateMidiStatus?.();
 }
 
-export function cacheDynamicElements() {
-  const elements = {};
-  elements.keyboard = document.getElementById("virtualKeyboard");
-  elements.oscilloscope = document.getElementById("oscilloscope");
+export function cacheDynamicElements(): DynamicElements {
+  const elements: DynamicElements = {
+    keyboard: document.getElementById("virtualKeyboard"),
+    oscilloscope: document.getElementById("oscilloscope") as HTMLCanvasElement | null,
+    scopeContext: null,
+  };
   elements.scopeContext = elements.oscilloscope?.getContext("2d") || null;
 
   return elements;

@@ -1,36 +1,35 @@
 /**
- * EdgeScrollManager - 拖动边缘自动滚动管理器
- * 当拖动操作靠近视口边缘时，自动滚动页面
+ * EdgeScrollManager - auto-scroll during drag operations
  */
+
 export class EdgeScrollManager {
+  isScrolling: boolean;
+  scrollSpeed: number;
+  animationFrame: number;
+  edgeThreshold: number;
+  maxScrollSpeed: number;
+
   constructor() {
     this.isScrolling = false;
     this.scrollSpeed = 0;
     this.animationFrame = 0;
-    this.edgeThreshold = 80; // 边缘触发阈值（像素）
-    this.maxScrollSpeed = 15; // 最大滚动速度
+    this.edgeThreshold = 80;
+    this.maxScrollSpeed = 15;
   }
 
-  /**
-   * 根据指针位置更新滚动
-   * @param {PointerEvent} event - 指针事件
-   */
-  update(event) {
+  update(event: PointerEvent): void {
     const viewportHeight = window.innerHeight;
     const clientY = event.clientY;
 
-    // 计算距离顶部和底部的距离
     const distanceFromTop = clientY;
     const distanceFromBottom = viewportHeight - clientY;
 
     let targetSpeed = 0;
 
     if (distanceFromTop < this.edgeThreshold) {
-      // 靠近顶部，向上滚动（负值）
       const ratio = 1 - distanceFromTop / this.edgeThreshold;
       targetSpeed = -this.maxScrollSpeed * ratio;
     } else if (distanceFromBottom < this.edgeThreshold) {
-      // 靠近底部，向下滚动（正值）
       const ratio = 1 - distanceFromBottom / this.edgeThreshold;
       targetSpeed = this.maxScrollSpeed * ratio;
     }
@@ -46,10 +45,7 @@ export class EdgeScrollManager {
     }
   }
 
-  /**
-   * 开始滚动动画
-   */
-  startScrolling() {
+  startScrolling(): void {
     const scroll = () => {
       if (!this.isScrolling) return;
       window.scrollBy(0, this.scrollSpeed);
@@ -58,10 +54,7 @@ export class EdgeScrollManager {
     this.animationFrame = requestAnimationFrame(scroll);
   }
 
-  /**
-   * 停止滚动
-   */
-  stopScrolling() {
+  stopScrolling(): void {
     this.isScrolling = false;
     this.scrollSpeed = 0;
     if (this.animationFrame) {

@@ -1,4 +1,23 @@
-export function createTitleSelect({ accent, title, value, options, onChange }) {
+export interface TitleSelectOption {
+  value: string;
+  label: string;
+}
+
+export interface CreateTitleSelectOptions {
+  accent: string;
+  title: string;
+  value: string;
+  options: TitleSelectOption[];
+  onChange: (value: string) => void;
+}
+
+export function createTitleSelect({
+  accent,
+  title,
+  value,
+  options,
+  onChange,
+}: CreateTitleSelectOptions): HTMLLabelElement {
   const wrap = document.createElement("label");
   wrap.className = "module-title-select";
 
@@ -13,9 +32,43 @@ export function createTitleSelect({ accent, title, value, options, onChange }) {
   });
   select.value = value;
   select.setAttribute("aria-label", title);
-  select.addEventListener("change", (event) => onChange(event.target.value));
+  select.addEventListener("change", (event) =>
+    onChange((event.target as HTMLSelectElement).value)
+  );
   wrap.append(select);
   return wrap;
+}
+
+export interface ModuleCardElement extends HTMLElement {
+  outputLevelDisplay?: HTMLElement;
+}
+
+export interface CreateModuleCardOptions {
+  accent: string;
+  kicker?: string;
+  title: string;
+  titleOptions?: TitleSelectOption[] | null;
+  onTitleChange?: ((value: string) => void) | null;
+  onRemove?: (() => void) | null;
+  removable?: boolean;
+  moduleRef?: string | null;
+  enabled?: boolean;
+  onToggleEnabled?: (() => void) | null;
+  index?: number | null;
+  modulationEnabled?: boolean;
+  showModulationToggle?: boolean;
+  onToggleModulation?: (() => void) | null;
+  showModulationAnchor?: boolean;
+  onModulationAnchorPointerDown?: ((event: PointerEvent) => void) | null;
+  isMainCard?: boolean;
+  initModuleDrag?:
+    | ((
+        event: PointerEvent,
+        card: HTMLElement,
+        moduleIndex: number
+      ) => void)
+    | null;
+  showOutputLevel?: boolean;
 }
 
 export function createModuleCard({
@@ -38,7 +91,7 @@ export function createModuleCard({
   isMainCard = false,
   initModuleDrag = null,
   showOutputLevel = false,
-}) {
+}: CreateModuleCardOptions): ModuleCardElement {
   if (isMainCard) {
     accent = "indigo";
     title = "Main";
@@ -47,11 +100,14 @@ export function createModuleCard({
     onRemove = null;
   }
 
-  const card = document.createElement("section");
+  const card = document.createElement("section") as ModuleCardElement;
   card.className = "module-card";
   card.setAttribute("tabindex", "0");
   card.setAttribute("role", "region");
-  card.setAttribute("aria-label", isMainCard ? "Main controls" : `${title} module`);
+  card.setAttribute(
+    "aria-label",
+    isMainCard ? "Main controls" : `${title} module`
+  );
   if (!enabled) {
     card.classList.add("disabled");
   }
@@ -85,8 +141,16 @@ export function createModuleCard({
     head.append(indexBadge);
   }
 
-  if ((titleOptions && onTitleChange) && !isMainCard) {
-    head.append(createTitleSelect({ accent, title, options: titleOptions, value: title, onChange: onTitleChange }));
+  if (titleOptions && onTitleChange && !isMainCard) {
+    head.append(
+      createTitleSelect({
+        accent,
+        title,
+        options: titleOptions,
+        value: title,
+        onChange: onTitleChange,
+      })
+    );
   } else {
     const titleWrap = document.createElement("div");
     titleWrap.className = isMainCard ? "module-title" : "";
@@ -108,7 +172,7 @@ export function createModuleCard({
   }
 
   // Debug: 输出电平显示（仅 Source 模块）
-  let outputLevelDisplay = null;
+  let outputLevelDisplay: HTMLElement | null = null;
   if (showOutputLevel) {
     outputLevelDisplay = document.createElement("span");
     outputLevelDisplay.className = "module-output-level";
@@ -122,11 +186,17 @@ export function createModuleCard({
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = `module-mod-toggle ${modulationEnabled ? "is-on" : ""}`;
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const svg = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
     svg.setAttribute("width", "24");
     svg.setAttribute("height", "24");
     svg.setAttribute("viewBox", "0 0 24 24");
-    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    const use = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "use"
+    );
     use.setAttribute("href", "/icons.svg#mod-toggle");
     svg.appendChild(use);
     toggle.appendChild(svg);

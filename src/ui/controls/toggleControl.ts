@@ -1,4 +1,24 @@
-export function createToggleControl({ label, value, onToggle, accent, onLabel = "On", offLabel = "Off" }) {
+/**
+ * Toggle control component
+ */
+
+export interface ToggleControlOptions {
+  label: string;
+  value: boolean;
+  onToggle: (value: boolean) => void;
+  accent: string;
+  onLabel?: string;
+  offLabel?: string;
+}
+
+export function createToggleControl({
+  label,
+  value,
+  onToggle,
+  accent,
+  onLabel = "On",
+  offLabel = "Off",
+}: ToggleControlOptions): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.className = "control";
 
@@ -14,7 +34,7 @@ export function createToggleControl({ label, value, onToggle, accent, onLabel = 
   button.setAttribute("tabindex", "-1");
   button.style.setProperty("--accent", `var(--${accent})`);
 
-  const syncState = (nextValue) => {
+  const syncState = (nextValue: boolean) => {
     button.classList.toggle("is-on", nextValue);
     button.textContent = nextValue ? onLabel : offLabel;
   };
@@ -24,7 +44,7 @@ export function createToggleControl({ label, value, onToggle, accent, onLabel = 
     const nextValue = !button.classList.contains("is-on");
     syncState(nextValue);
     onToggle(nextValue);
-    event.target.blur();
+    (event.target as HTMLElement).blur();
   });
 
   wrapper.append(controlLabel, button);

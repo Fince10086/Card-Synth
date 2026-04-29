@@ -1,7 +1,70 @@
 import * as Tone from "tone";
-import { getByPath, getModuleDefinition } from "../../utils/helpers.js";
-import { MODULATION_BLACKLIST } from "./modulationBlacklist.js";
-import { EdgeScrollManager } from "../edgeScrollManager.js";
+import { getByPath, getModuleDefinition } from "../../utils/helpers";
+import { MODULATION_BLACKLIST } from "./modulationBlacklist";
+import { EdgeScrollManager } from "../edgeScrollManager";
+import type {
+  ModuleConfig,
+  ModulationConnection,
+  ModuleDefinition,
+} from "../../types";
+import type { ModularSynthApp } from "../../app/modularSynthApp";
+import type { SourceVoice, SourceRuntime } from "../../audio/runtimes/sourceRuntime";
+
+interface ChainModulation extends ModulationConnection {
+  sourceVoiceIndex: number | string;
+  radius?: number;
+}
+
+interface ModulationTargetParam {
+  param: unknown;
+  voiceIndex: number | null;
+}
+
+interface ModulationRuntime {
+  id: string;
+  chainIndex: number;
+  modulationId: string;
+  sourceVoiceIndex: number;
+  targetParamPath: string;
+  targetParam: unknown;
+  targetModuleId: string;
+  targetVoiceIndex: number | null;
+  sourceOutput: AudioNode | null;
+  audioHalf: Tone.Multiply | null;
+  audioOffset: Tone.Add | null;
+  scale: Tone.Scale;
+}
+
+interface CableVisualState {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+}
+
+interface InitRangePayload {
+  modulationId: string;
+  radius: number;
+  currentSliderValue: number;
+  paramMin: number;
+  paramMax: number;
+}
+
+interface SourceTargetProfile {
+  hasSourceTargets: boolean;
+  hasNonSourceTargets: boolean;
+}
+
+interface CommitModulationTargetParams {
+  sourceModuleId: string;
+  targetModuleId: string;
+  targetParamPath: string;
+  updateConnectionId?: string;
+}
+
+interface StartModulationDragParams {
+  event: PointerEvent;
+  sourceModuleId: string;
+  updateConnectionId?: string;
+}
 
 /**
  * ModulationManager - 调制连接管理器
@@ -10,51 +73,60 @@ import { EdgeScrollManager } from "../edgeScrollManager.js";
  * 管理调制运行时和音频连接
  */
 export class ModulationManager {
+  app: ModularSynthApp;
+
+  modulationDrag: {
+    active: boolean;
+    pointerId: number;
+    sourceModuleId: string;
+    updateConnectionId: string;
+    startX: number;
+    startY: number;
+    x: number;
+    y: number;
+  };
+
+  modulationSvg: SVGSVGElement | null;
+  cableVisuals: Map<string, CableVisualState>;
+  modulationFrame: number;
+  modulationRuntimes: ModulationRuntime[];
+  isConnectingModulations: boolean;
+  cableElements: Map<string, SVGElement>;
+  edgeScroll: EdgeScrollManager;
+
+  private _lastSvgSize: string | undefined;
+
   /**
    * 构造函数
-   * @param {Object} app - 应用实例
+   * @param app - 应用实例
    */
-  constructor(app) {
+  constructor(app: ModularSynthApp) {
     this.app = app;
-    
-    // 调制拖拽状态
+
     this.modulationDrag = {
-      active: false,         // 是否正在拖拽
-      pointerId: 0,          // 指针ID
-      sourceModuleId: "",    // 源模块ID
-      updateConnectionId: "",// 正在更新的连接ID
-      startX: 0,             // 起始X坐标
-      startY: 0,             // 起始Y坐标
-      x: 0,                  // 当前X坐标
-      y: 0,                  // 当前Y坐标
+      active: false,
+      pointerId: 0,
+      sourceModuleId: "",
+      updateConnectionId: "",
+      startX: 0,
+      startY: 0,
+      x: 0,
+      y: 0,
     };
-    
-    // SVG元素用于渲染调制连接线
+
     this.modulationSvg = null;
-    
-    // 存储连接线的视觉状态，用于平滑动画
     this.cableVisuals = new Map();
-    
-    // requestAnimationFrame的帧ID
     this.modulationFrame = 0;
-    
-    // 调制运行时，存储音频连接和缩放器
     this.modulationRuntimes = [];
-
-    // 防止递归连接调制的标志
     this.isConnectingModulations = false;
-
-    // SVG 元素缓存，避免每帧重建
     this.cableElements = new Map();
-
-    // 边缘滚动管理器
     this.edgeScroll = new EdgeScrollManager();
   }
 
   /**
    * 绑定全局事件监听器
    */
-  bindEvents() {
+  bindEvents(): void {
     document.addEventListener("pointermove", (event) => this.handleModulationPointerMove(event));
     document.addEventListener("pointerup", (event) => this.handleModulationPointerUp(event));
     document.addEventListener("pointercancel", () => this.cancelModulationDrag());
@@ -62,38 +134,40 @@ export class ModulationManager {
 
   /**
    * 判断一个模块是否可以作为调制源
-   * @param {Object} module - 模块对象
-   * @returns {boolean} 是否为有效的调制源
+   * @param module - 模块对象
+   * @returns 是否为有效的调制源
    */
-  isModulationSource(module) {
+  isModulationSource(module: ModuleConfig | undefined | null): boolean {
     if (!module) {
       return false;
     }
-    // Envelope 类型且开启 modulationMode 的模块作为调制源
     if (module.type === "Envelope" && module.modulationMode) {
       return true;
     }
-    // 或者是 source 类别且开启了 modulationMode 的模块
     return module.category === "source" && Boolean(module.modulationMode);
   }
 
-  getModules(chainIndex = this.app.getSelectedChainIndex()) {
+  getModules(chainIndex: number = this.app.getSelectedChainIndex()): ModuleConfig[] {
     return this.app.getChain(chainIndex).modules;
   }
 
   /**
    * 获取目标参数的 min/max 范围
-   * @param {string} targetModuleId - 目标模块ID
-   * @param {string} targetParamPath - 目标参数路径
-   * @param {number} chainIndex - 链索引
-   * @returns {{min: number, max: number}} 参数范围
+   * @param targetModuleId - 目标模块ID
+   * @param targetParamPath - 目标参数路径
+   * @param chainIndex - 链索引
+   * @returns 参数范围
    */
-  getParamRange(targetModuleId, targetParamPath, chainIndex = this.app.getSelectedChainIndex()) {
+  getParamRange(
+    targetModuleId: string,
+    targetParamPath: string,
+    chainIndex: number = this.app.getSelectedChainIndex(),
+  ): { min: number; max: number } {
     const targetModule = this.getModules(chainIndex).find((m) => m.id === targetModuleId);
     if (!targetModule) {
       return { min: -Infinity, max: Infinity };
     }
-    const definition = getModuleDefinition(targetModule);
+    const definition = getModuleDefinition(targetModule) as ModuleDefinition | undefined;
     const controls = definition?.controls || [];
     const control = controls.find((c) => c.path === targetParamPath);
     if (control && typeof control.min === "number" && typeof control.max === "number") {
@@ -104,36 +178,40 @@ export class ModulationManager {
 
   /**
    * 获取指定链的调制连接
-   * @returns {Array} 调制连接数组
+   * @returns 调制连接数组
    */
-  getModulations(chainIndex = this.app.getSelectedChainIndex()) {
+  getModulations(chainIndex: number = this.app.getSelectedChainIndex()): ChainModulation[] {
     const chain = this.app.getChain(chainIndex);
     if (!Array.isArray(chain.modulations)) {
       chain.modulations = [];
     }
-    return chain.modulations;
+    return chain.modulations as ChainModulation[];
   }
 
-  setModulations(nextModulations, chainIndex = this.app.getSelectedChainIndex()) {
+  setModulations(nextModulations: ChainModulation[], chainIndex: number = this.app.getSelectedChainIndex()): void {
     this.app.getChain(chainIndex).modulations = Array.isArray(nextModulations) ? nextModulations : [];
   }
 
   /**
    * 获取指定模块作为源的所有输出调制连接
-   * @param {string} sourceModuleId - 源模块ID
-   * @returns {Array} 输出调制连接数组
+   * @param sourceModuleId - 源模块ID
+   * @returns 输出调制连接数组
    */
-  getOutgoingModulations(sourceModuleId, chainIndex = this.app.getSelectedChainIndex()) {
+  getOutgoingModulations(sourceModuleId: string, chainIndex: number = this.app.getSelectedChainIndex()): ChainModulation[] {
     return this.getModulations(chainIndex).filter((item) => item.sourceModuleId === sourceModuleId);
   }
 
   /**
    * 根据目标模块和参数路径查找调制连接
-   * @param {string} targetModuleId - 目标模块ID
-   * @param {string} targetParamPath - 目标参数路径
-   * @returns {Object|null} 找到的调制连接或null
+   * @param targetModuleId - 目标模块ID
+   * @param targetParamPath - 目标参数路径
+   * @returns 找到的调制连接或null
    */
-  getModulationByTarget(targetModuleId, targetParamPath, chainIndex = this.app.getSelectedChainIndex()) {
+  getModulationByTarget(
+    targetModuleId: string,
+    targetParamPath: string,
+    chainIndex: number = this.app.getSelectedChainIndex(),
+  ): ChainModulation | null {
     return (
       this.getModulations(chainIndex).find(
         (item) => item.targetModuleId === targetModuleId && item.targetParamPath === targetParamPath,
@@ -143,20 +221,22 @@ export class ModulationManager {
 
   /**
    * 根据连接ID查找调制连接
-   * @param {string} connectionId - 连接ID
-   * @returns {Object|null} 找到的调制连接或null
+   * @param connectionId - 连接ID
+   * @returns 找到的调制连接或null
    */
-  getModulationById(connectionId, chainIndex = this.app.getSelectedChainIndex()) {
+  getModulationById(connectionId: string, chainIndex: number = this.app.getSelectedChainIndex()): ChainModulation | null {
     return this.getModulations(chainIndex).find((item) => item.id === connectionId) || null;
   }
 
   /**
    * 获取下一个可用的调制声道索引（0-7）
-   * @param {string} sourceModuleId - 源模块ID
-   * @returns {number} 可用的声道索引，无可用则返回-1
+   * @param sourceModuleId - 源模块ID
+   * @returns 可用的声道索引，无可用则返回-1
    */
-  getNextModulationVoiceIndex(sourceModuleId, chainIndex = this.app.getSelectedChainIndex()) {
-    const used = new Set(this.getOutgoingModulations(sourceModuleId, chainIndex).map((item) => Number(item.sourceVoiceIndex)));
+  getNextModulationVoiceIndex(sourceModuleId: string, chainIndex: number = this.app.getSelectedChainIndex()): number {
+    const used = new Set(
+      this.getOutgoingModulations(sourceModuleId, chainIndex).map((item) => Number(item.sourceVoiceIndex)),
+    );
     for (let i = 0; i < 8; i += 1) {
       if (!used.has(i)) {
         return i;
@@ -167,12 +247,9 @@ export class ModulationManager {
 
   /**
    * 开始调制连接拖拽
-   * @param {Object} params - 参数对象
-   * @param {PointerEvent} params.event - 指针事件
-   * @param {string} params.sourceModuleId - 源模块ID
-   * @param {string} params.updateConnectionId - 要更新的连接ID（可选）
+   * @param params - 参数对象
    */
-  startModulationDrag({ event, sourceModuleId, updateConnectionId = "" }) {
+  startModulationDrag({ event, sourceModuleId, updateConnectionId = "" }: StartModulationDragParams): void {
     event.preventDefault();
     this.modulationDrag = {
       active: true,
@@ -189,29 +266,26 @@ export class ModulationManager {
 
   /**
    * 处理调制拖拽过程中的指针移动事件
-   * @param {PointerEvent} event - 指针移动事件
+   * @param event - 指针移动事件
    */
-  handleModulationPointerMove(event) {
+  handleModulationPointerMove(event: PointerEvent): void {
     if (!this.modulationDrag.active) {
       return;
     }
     this.modulationDrag.x = event.clientX;
     this.modulationDrag.y = event.clientY;
 
-    // 边缘滚动
     this.edgeScroll.update(event);
 
-    // 清除之前的悬停样式
     this._clearHoverStyles();
-    
-    // 检查是否悬停在有效的滑块控件上
+
     const targetEl = document.elementFromPoint(event.clientX, event.clientY);
-    const slider = targetEl?.closest(".control.control-slider[data-module-id][data-param-path]");
+    const slider = targetEl?.closest(".control.control-slider[data-module-id][data-param-path]") as HTMLElement | null;
     if (slider) {
       const mainCard = slider.closest(".module-card[data-main-card='true']");
       const paramPath = slider.dataset.paramPath;
-      const isBlacklisted = MODULATION_BLACKLIST.includes(paramPath);
-      
+      const isBlacklisted = paramPath ? MODULATION_BLACKLIST.includes(paramPath) : false;
+
       if (!mainCard && !isBlacklisted) {
         slider.classList.add("mod-target-hover");
       }
@@ -222,21 +296,19 @@ export class ModulationManager {
 
   /**
    * 处理调制拖拽结束时的指针抬起事件
-   * @param {PointerEvent} event - 指针抬起事件
+   * @param event - 指针抬起事件
    */
-  handleModulationPointerUp(event) {
+  handleModulationPointerUp(event: PointerEvent): void {
     if (!this.modulationDrag.active) {
       return;
     }
 
-    // 停止边缘滚动
     this.edgeScroll.stopScrolling();
 
     const drag = { ...this.modulationDrag };
     const targetEl = document.elementFromPoint(event.clientX, event.clientY);
-    const targetControl = targetEl?.closest(".control.control-slider[data-module-id][data-param-path]");
+    const targetControl = targetEl?.closest(".control.control-slider[data-module-id][data-param-path]") as HTMLElement | null;
 
-    // 检查目标是否是主卡（主卡参数不能被调制）
     if (targetControl) {
       const mainCard = targetControl.closest(".module-card[data-main-card='true']");
       if (mainCard) {
@@ -247,7 +319,7 @@ export class ModulationManager {
       }
 
       const paramPath = targetControl.dataset.paramPath;
-      if (MODULATION_BLACKLIST.includes(paramPath)) {
+      if (paramPath && MODULATION_BLACKLIST.includes(paramPath)) {
         this._clearHoverStyles();
         this.app.setStatus(`Parameter "${paramPath}" cannot be modulated.`, "error");
         this.cancelModulationDrag();
@@ -255,12 +327,9 @@ export class ModulationManager {
       }
     }
 
-    // 清除所有悬停样式
     this._clearHoverStyles();
 
-    // 如果没有找到有效的目标控件
     if (!targetControl) {
-      // 如果是在更新现有连接，则删除该连接
       if (drag.updateConnectionId) {
         this.removeModulationById(drag.updateConnectionId);
         this.app.engine.fullSync(this.app.state);
@@ -270,34 +339,38 @@ export class ModulationManager {
       return;
     }
 
-    // 提交新的调制连接
     const targetModuleId = targetControl.dataset.moduleId;
     const targetParamPath = targetControl.dataset.paramPath;
-    this.commitModulationTarget({
-      sourceModuleId: drag.sourceModuleId,
-      targetModuleId,
-      targetParamPath,
-      updateConnectionId: drag.updateConnectionId,
-    });
+    if (targetModuleId && targetParamPath) {
+      this.commitModulationTarget({
+        sourceModuleId: drag.sourceModuleId,
+        targetModuleId,
+        targetParamPath,
+        updateConnectionId: drag.updateConnectionId,
+      });
+    }
     this.cancelModulationDrag();
   }
 
   /**
    * 提交并创建/更新调制连接
-   * @param {Object} params - 参数对象
-   * @param {string} params.sourceModuleId - 源模块ID
-   * @param {string} params.targetModuleId - 目标模块ID
-   * @param {string} params.targetParamPath - 目标参数路径
-   * @param {string} params.updateConnectionId - 要更新的连接ID（可选）
+   * @param params - 参数对象
    */
-  commitModulationTarget({ sourceModuleId, targetModuleId, targetParamPath, updateConnectionId = "" }) {
+  commitModulationTarget({
+    sourceModuleId,
+    targetModuleId,
+    targetParamPath,
+    updateConnectionId = "",
+  }: CommitModulationTargetParams): void {
     if (!sourceModuleId || !targetModuleId || !targetParamPath || sourceModuleId === targetModuleId) {
       return;
     }
 
     const chainIndex = this.app.getSelectedChainIndex();
 
-    const targetModuleCard = document.querySelector(`.module-card[data-module-id="${targetModuleId}"][data-main-card='true']`);
+    const targetModuleCard = document.querySelector(
+      `.module-card[data-module-id="${targetModuleId}"][data-main-card='true']`,
+    );
     if (targetModuleCard) {
       this.app.setStatus("Main Card parameters cannot be modulated.", "error");
       return;
@@ -347,7 +420,7 @@ export class ModulationManager {
         targetModuleId,
         targetParamPath,
         radius: undefined,
-      });
+      } as ChainModulation);
     }
 
     this.app.markUnsaved();
@@ -358,7 +431,7 @@ export class ModulationManager {
   /**
    * 清除所有调制目标悬停样式
    */
-  _clearHoverStyles() {
+  _clearHoverStyles(): void {
     document.querySelectorAll(".control.mod-target-hover").forEach((node) => {
       node.classList.remove("mod-target-hover");
     });
@@ -366,38 +439,38 @@ export class ModulationManager {
 
   /**
    * 根据ID删除调制连接
-   * @param {string} connectionId - 连接ID
+   * @param connectionId - 连接ID
    */
-  removeModulationById(connectionId) {
+  removeModulationById(connectionId: string): void {
     this.setModulations(this.getModulations().filter((item) => item.id !== connectionId));
     this.app.markUnsaved();
   }
 
   /**
    * 删除指定模块的所有输出调制连接
-   * @param {string} sourceModuleId - 源模块ID
+   * @param sourceModuleId - 源模块ID
    */
-  removeOutgoingModulations(sourceModuleId) {
+  removeOutgoingModulations(sourceModuleId: string): void {
     this.setModulations(this.getModulations().filter((item) => item.sourceModuleId !== sourceModuleId));
     this.app.markUnsaved();
   }
 
   /**
    * 删除与指定模块相关的所有调制连接（作为源或目标）
-   * @param {string} moduleId - 模块ID
+   * @param moduleId - 模块ID
    */
-  removeModuleModulations(moduleId) {
-    this.setModulations(this.getModulations().filter(
-      (item) => item.sourceModuleId !== moduleId && item.targetModuleId !== moduleId,
-    ));
+  removeModuleModulations(moduleId: string): void {
+    this.setModulations(
+      this.getModulations().filter((item) => item.sourceModuleId !== moduleId && item.targetModuleId !== moduleId),
+    );
     this.app.markUnsaved();
   }
 
   /**
    * 初始化所有调制范围
-   * @param {Array} ranges - 调制范围配置数组
+   * @param ranges - 调制范围配置数组
    */
-  initAllModulationRanges(ranges) {
+  initAllModulationRanges(ranges: InitRangePayload[] | unknown): void {
     if (!Array.isArray(ranges)) {
       return;
     }
@@ -409,15 +482,14 @@ export class ModulationManager {
 
   /**
    * 应用调制范围：从调制对象读取参数并更新音频层
-   * 提取重复逻辑，供 connectChainModulations 和 connectVoiceModulations 使用
-   * @param {Object} mod - 调制对象
-   * @param {number} chainIndex - 链索引
+   * @param mod - 调制对象
+   * @param chainIndex - 链索引
    */
-  _applyModulationRange(mod, chainIndex = this.app.getSelectedChainIndex()) {
+  _applyModulationRange(mod: ChainModulation, chainIndex: number = this.app.getSelectedChainIndex()): void {
     const targetModule = this.getModules(chainIndex).find((m) => m.id === mod.targetModuleId);
     let centerValue = 0.5;
     if (targetModule) {
-      const currentSliderValue = getByPath(targetModule, mod.targetParamPath);
+      const currentSliderValue = getByPath(targetModule as Record<string, unknown>, mod.targetParamPath);
       if (typeof currentSliderValue === "number" && Number.isFinite(currentSliderValue)) {
         centerValue = currentSliderValue;
       }
@@ -429,14 +501,21 @@ export class ModulationManager {
 
   /**
    * 更新调制范围
-   * @param {string} modulationId - 调制ID
-   * @param {number} centerValue - 中心值
-   * @param {number} radius - 范围半径
-   * @param {number} paramMin - 参数最小值（用于钳制）
-   * @param {number} paramMax - 参数最大值（用于钳制）
-   * @param {number} chainIndex - 链索引
+   * @param modulationId - 调制ID
+   * @param centerValue - 中心值
+   * @param radius - 范围半径
+   * @param paramMin - 参数最小值（用于钳制）
+   * @param paramMax - 参数最大值（用于钳制）
+   * @param chainIndex - 链索引
    */
-  updateModulationRange(modulationId, centerValue, radius, chainIndex = this.app.getSelectedChainIndex(), paramMin = -Infinity, paramMax = Infinity) {
+  updateModulationRange(
+    modulationId: string,
+    centerValue: number,
+    radius: number,
+    chainIndex: number = this.app.getSelectedChainIndex(),
+    paramMin: number = -Infinity,
+    paramMax: number = Infinity,
+  ): void {
     const items = this.modulationRuntimes.filter(
       (item) => item.modulationId === modulationId && item.chainIndex === chainIndex,
     );
@@ -444,28 +523,26 @@ export class ModulationManager {
       return;
     }
 
-    // 判断调制源是否为 Envelope（单向 0~1）
     const modulation = this.getModulationById(modulationId, chainIndex);
-    const sourceModule = modulation ? this.getModules(chainIndex).find((m) => m.id === modulation.sourceModuleId) : null;
+    const sourceModule = modulation
+      ? this.getModules(chainIndex).find((m) => m.id === modulation.sourceModuleId)
+      : null;
     const isEnvelopeSource = sourceModule?.type === "Envelope";
 
     items.forEach(({ scale, targetParamPath }) => {
-      let minVal, maxVal;
+      let minVal: number;
+      let maxVal: number;
 
       if (isEnvelopeSource) {
-        // Envelope 源：只调制正半边（centerValue 到 centerValue + |radius|）
         minVal = centerValue;
         maxVal = centerValue + Math.abs(radius);
-        // 钳制到参数范围
         minVal = Math.max(paramMin, Math.min(paramMax, minVal));
         maxVal = Math.max(paramMin, Math.min(paramMax, maxVal));
       } else {
-        // 普通源：完整双向调制（centerValue ± radius）
         minVal = Math.max(paramMin, Math.min(paramMax, centerValue - radius));
         maxVal = Math.max(paramMin, Math.min(paramMax, centerValue + radius));
       }
 
-      // 确保 min <= max
       const finalMin = Math.min(minVal, maxVal);
       const finalMax = Math.max(minVal, maxVal);
 
@@ -485,12 +562,11 @@ export class ModulationManager {
   /**
    * 连接调制
    */
-  connectModulations() {
+  connectModulations(): void {
     this.connectAllModulations();
   }
 
-  connectAllModulations() {
-    // 防止递归调用：如果正在连接调制，直接返回
+  connectAllModulations(): void {
     if (this.isConnectingModulations) {
       console.log("[ModulationManager] connectAllModulations already in progress, skipping...");
       return;
@@ -508,7 +584,7 @@ export class ModulationManager {
     this.isConnectingModulations = false;
   }
 
-  resetSourceVoiceAlignmentHints() {
+  resetSourceVoiceAlignmentHints(): void {
     const chainCount = this.app.getChainCount();
     for (let chainIndex = 0; chainIndex < chainCount; chainIndex += 1) {
       const runtimeMap = this.app.engine.getChainRuntimeMap(chainIndex);
@@ -516,14 +592,15 @@ export class ModulationManager {
         continue;
       }
       runtimeMap.forEach((runtime) => {
-        if (runtime?.category === "source") {
-          runtime.preserveVoiceSlotsForSourceTargets = false;
+        const r = runtime as Record<string, unknown>;
+        if (r?.category === "source") {
+          r.preserveVoiceSlotsForSourceTargets = false;
         }
       });
     }
   }
 
-  connectChainModulations(chainIndex) {
+  connectChainModulations(chainIndex: number): void {
     const chain = this.app.getChain(chainIndex);
     if (!chain.enabled) {
       return;
@@ -534,7 +611,7 @@ export class ModulationManager {
       return;
     }
 
-    const sourceTargetProfile = new Map();
+    const sourceTargetProfile = new Map<string, SourceTargetProfile>();
 
     modulations.forEach((mod) => {
       const targets = this.getModulationTargetParams(mod, chainIndex);
@@ -543,7 +620,10 @@ export class ModulationManager {
       }
 
       const hasSourceVoiceTargets = targets.some(({ voiceIndex }) => Number.isFinite(voiceIndex));
-      const profile = sourceTargetProfile.get(mod.sourceModuleId) || { hasSourceTargets: false, hasNonSourceTargets: false };
+      const profile: SourceTargetProfile = sourceTargetProfile.get(mod.sourceModuleId) || {
+        hasSourceTargets: false,
+        hasNonSourceTargets: false,
+      };
       if (hasSourceVoiceTargets) {
         profile.hasSourceTargets = true;
       } else {
@@ -552,45 +632,49 @@ export class ModulationManager {
       sourceTargetProfile.set(mod.sourceModuleId, profile);
 
       targets.forEach(({ param, voiceIndex }, targetIndex) => {
-        // Mono source 只有一个 voice，调制所有 target voice
-        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId);
+        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId) as unknown as SourceRuntime | null;
         const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
         const sourceVoiceIndex = isSourceMono
           ? 0
-          : (Number.isFinite(voiceIndex) ? voiceIndex : Number(mod.sourceVoiceIndex ?? 0));
+          : Number.isFinite(voiceIndex as number)
+            ? (voiceIndex as number)
+            : Number(mod.sourceVoiceIndex ?? 0);
 
         this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, param, targetIndex, voiceIndex);
       });
 
-      // 立即应用当前滑块值作为调制范围中心
       this._applyModulationRange(mod, chainIndex);
     });
 
     sourceTargetProfile.forEach((profile, sourceModuleId) => {
-      const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, sourceModuleId);
+      const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, sourceModuleId) as unknown as SourceRuntime | null;
       if (!sourceRuntime || sourceRuntime.category !== "source") {
         return;
       }
-      const moduleState = sourceRuntime.moduleState || {};
+      const moduleState = (sourceRuntime.moduleState || {}) as Record<string, unknown>;
       sourceRuntime.preserveVoiceSlotsForSourceTargets = Boolean(
-        profile.hasSourceTargets
-        && !profile.hasNonSourceTargets
-        && moduleState.modulationMode
-        && moduleState.midiOn,
+        profile.hasSourceTargets && !profile.hasNonSourceTargets && moduleState.modulationMode && moduleState.midiOn,
       );
     });
   }
 
   /**
    * 创建单个调制连接
-   * 提取自 connectChainModulations，用于复用
    */
-  _createModulationConnection(mod, chainIndex, sourceVoiceIndex, param, targetIndex, targetVoiceIndex) {
+  _createModulationConnection(
+    mod: ChainModulation,
+    chainIndex: number,
+    sourceVoiceIndex: number,
+    param: unknown,
+    targetIndex: number,
+    targetVoiceIndex: number | null,
+  ): boolean {
     const existingRuntime = this.modulationRuntimes.find(
-      (r) => r.chainIndex === chainIndex
-        && r.modulationId === mod.id
-        && r.sourceVoiceIndex === sourceVoiceIndex
-        && r.targetParam === param
+      (r) =>
+        r.chainIndex === chainIndex &&
+        r.modulationId === mod.id &&
+        r.sourceVoiceIndex === sourceVoiceIndex &&
+        r.targetParam === param,
     );
     if (existingRuntime) {
       return false;
@@ -601,7 +685,6 @@ export class ModulationManager {
       return false;
     }
 
-    // 判断是否为 Envelope 源（单向 0~1）
     const sourceModule = this.getModules(chainIndex).find((m) => m.id === mod.sourceModuleId);
     const isEnvelopeSource = sourceModule?.type === "Envelope";
 
@@ -611,17 +694,16 @@ export class ModulationManager {
     const scale = new Tone.Scale();
 
     if (isEnvelopeSource) {
-      // Envelope 源：直接连接，不经过 Multiply(0.5) 和 Add(0.5)
-      sourceOutput.connect(scale);
+      (sourceOutput as any).connect(scale);
     } else if (isFrequencyParam) {
-      sourceOutput.connect(audioOffset);
+      (sourceOutput as any).connect(audioOffset);
       audioOffset.connect(scale);
     } else {
-      sourceOutput.connect(audioHalf);
+      (sourceOutput as any).connect(audioHalf);
       audioHalf.connect(audioOffset);
       audioOffset.connect(scale);
     }
-    scale.connect(param);
+    scale.connect(param as any);
 
     this.modulationRuntimes.push({
       id: `${chainIndex}-${mod.id}-${sourceVoiceIndex}-${targetIndex}`,
@@ -645,7 +727,7 @@ export class ModulationManager {
    * 连接指定 voice 的调制（增量更新）
    * 只建立涉及该 voice 作为 source 或 target 的调制连接，避免全量重建
    */
-  connectVoiceModulations(chainIndex, moduleId, voiceIndex) {
+  connectVoiceModulations(chainIndex: number, moduleId: string, voiceIndex: number): void {
     const chain = this.app.getChain(chainIndex);
     if (!chain?.enabled) {
       return;
@@ -659,24 +741,29 @@ export class ModulationManager {
     let connectedCount = 0;
 
     modulations.forEach((mod) => {
-      // 情况1：该 voice 是调制源
       if (mod.sourceModuleId === moduleId) {
         const targets = this.getModulationTargetParams(mod, chainIndex);
-        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId);
+        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId) as unknown as SourceRuntime | null;
         const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
 
         targets.forEach(({ param, voiceIndex: targetVoiceIndex }, targetIndex) => {
-          const expectedSourceVoiceIndex = Number.isFinite(targetVoiceIndex)
+          const expectedSourceVoiceIndex = Number.isFinite(targetVoiceIndex as number)
             ? targetVoiceIndex
             : Number(mod.sourceVoiceIndex ?? 0);
 
-          // Mono source 只有一个 voice，调制所有 target voice
           if (!isSourceMono && expectedSourceVoiceIndex !== voiceIndex) {
             return;
           }
 
           const sourceVoiceIndex = isSourceMono ? 0 : expectedSourceVoiceIndex;
-          const created = this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, param, targetIndex, targetVoiceIndex);
+          const created = this._createModulationConnection(
+            mod,
+            chainIndex,
+            sourceVoiceIndex,
+            param,
+            targetIndex,
+            targetVoiceIndex,
+          );
           if (created) {
             connectedCount++;
             this._applyModulationRange(mod, chainIndex);
@@ -684,7 +771,6 @@ export class ModulationManager {
         });
       }
 
-      // 情况2：该 voice 是调制目标
       if (mod.targetModuleId === moduleId) {
         const targets = this.getModulationTargetParams(mod, chainIndex);
         const target = targets.find((t) => t.voiceIndex === voiceIndex);
@@ -692,17 +778,24 @@ export class ModulationManager {
           return;
         }
 
-        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId);
+        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId) as unknown as SourceRuntime | null;
         const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
 
-        // 对于 source-to-source 调制，sourceVoiceIndex 与 targetVoiceIndex 对齐
-        // Mono source 固定使用 voice 0
         const sourceVoiceIndex = isSourceMono
           ? 0
-          : (Number.isFinite(target.voiceIndex) ? target.voiceIndex : Number(mod.sourceVoiceIndex ?? 0));
+          : Number.isFinite(target.voiceIndex as number)
+            ? target.voiceIndex
+            : Number(mod.sourceVoiceIndex ?? 0);
         const targetIndex = targets.findIndex((t) => t.voiceIndex === voiceIndex);
 
-        const created = this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, target.param, targetIndex, voiceIndex);
+        const created = this._createModulationConnection(
+          mod,
+          chainIndex,
+          sourceVoiceIndex,
+          target.param,
+          targetIndex,
+          voiceIndex,
+        );
         if (created) {
           connectedCount++;
           this._applyModulationRange(mod, chainIndex);
@@ -715,24 +808,23 @@ export class ModulationManager {
    * 断开指定 voice 的调制连接（增量清理）
    * 只清理涉及该 voice 作为 source 或 target 的调制连接
    */
-  disconnectVoiceModulations(chainIndex, moduleId, voiceIndex) {
-    const toRemove = [];
+  disconnectVoiceModulations(chainIndex: number, moduleId: string, voiceIndex: number): void {
+    const toRemove: number[] = [];
 
     this.modulationRuntimes.forEach((runtime, index) => {
       if (runtime.chainIndex !== chainIndex) {
         return;
       }
 
-      // 检查该调制是否属于当前 module
       const mod = this.getModulations(chainIndex).find((m) => m.id === runtime.modulationId);
       if (!mod) return;
 
-      // Mono source 的 voice 0 dispose 时，断开所有该 source 的连接
-      const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId);
+      const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId) as unknown as SourceRuntime | null;
       const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
 
-      const isSourceMatch = (runtime.sourceVoiceIndex === voiceIndex || (isSourceMono && voiceIndex === 0))
-        && mod.sourceModuleId === moduleId;
+      const isSourceMatch =
+        (runtime.sourceVoiceIndex === voiceIndex || (isSourceMono && voiceIndex === 0)) &&
+        mod.sourceModuleId === moduleId;
 
       const isTargetMatch = runtime.targetVoiceIndex === voiceIndex && runtime.targetModuleId === moduleId;
 
@@ -742,19 +834,18 @@ export class ModulationManager {
 
       toRemove.push(index);
 
-      // 断开连接
       if (runtime.sourceOutput && runtime.audioHalf) {
         try {
-          runtime.sourceOutput.disconnect(runtime.audioHalf);
-        } catch (e) {
+          (runtime.sourceOutput as any).disconnect(runtime.audioHalf);
+        } catch {
           // ignore
         }
       }
 
       if (runtime.scale && runtime.targetParam) {
         try {
-          runtime.scale.disconnect(runtime.targetParam);
-        } catch (e) {
+          runtime.scale.disconnect(runtime.targetParam as any);
+        } catch {
           // ignore
         }
       }
@@ -770,36 +861,35 @@ export class ModulationManager {
       }
     });
 
-    // 从后往前删除，避免索引变化
-    toRemove.sort((a, b) => b - a).forEach((index) => {
-      this.modulationRuntimes.splice(index, 1);
-    });
+    toRemove
+      .sort((a, b) => b - a)
+      .forEach((index) => {
+        this.modulationRuntimes.splice(index, 1);
+      });
   }
 
   /**
    * 清除调制运行时
    * 手动断开所有音频连接，然后 dispose 节点
    */
-  clearModulationRuntimes() {
+  clearModulationRuntimes(): void {
     this.modulationRuntimes.forEach((item) => {
-      // 手动断开 sourceOutput 的连接（可能是 audioHalf 或 scale）
       if (item.sourceOutput) {
         try {
           if (item.audioHalf) {
-            item.sourceOutput.disconnect(item.audioHalf);
+            (item.sourceOutput as any).disconnect(item.audioHalf);
           } else if (item.scale) {
-            item.sourceOutput.disconnect(item.scale);
+            (item.sourceOutput as any).disconnect(item.scale);
           }
-        } catch (e) {
+        } catch {
           // 连接可能已断开，忽略错误
         }
       }
 
-      // 手动断开 scale 到目标参数的连接，防止残留连接导致调制值叠加
       if (item.scale && item.targetParam) {
         try {
-          item.scale.disconnect(item.targetParam);
-        } catch (e) {
+          item.scale.disconnect(item.targetParam as any);
+        } catch {
           // 连接可能已断开，忽略错误
         }
       }
@@ -819,11 +909,15 @@ export class ModulationManager {
 
   /**
    * 获取调制源输出
-   * @param {Object} modulation - 调制对象
-   * @returns {Object|null} 调制源输出节点
+   * @param modulation - 调制对象
+   * @returns 调制源输出节点
    */
-  getModulationSourceOutput(modulation, sourceVoiceIndex = 0, chainIndex = this.app.getSelectedChainIndex()) {
-    const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, modulation.sourceModuleId);
+  getModulationSourceOutput(
+    modulation: ChainModulation,
+    sourceVoiceIndex: number = 0,
+    chainIndex: number = this.app.getSelectedChainIndex(),
+  ): AudioNode | null {
+    const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, modulation.sourceModuleId) as unknown as SourceRuntime | null;
     if (!sourceRuntime) {
       return null;
     }
@@ -839,22 +933,25 @@ export class ModulationManager {
 
   /**
    * 获取调制目标参数
-   * @param {Object} modulation - 调制对象
-   * @returns {Object|null} 调制目标参数
+   * @param modulation - 调制对象
+   * @returns 调制目标参数
    */
-  getModulationTargetParams(modulation, chainIndex = this.app.getSelectedChainIndex()) {
+  getModulationTargetParams(
+    modulation: ChainModulation,
+    chainIndex: number = this.app.getSelectedChainIndex(),
+  ): ModulationTargetParam[] {
     const targetModule = this.getModules(chainIndex).find((m) => m.id === modulation.targetModuleId);
     if (!targetModule) {
       return [];
     }
 
-    const runtime = this.app.engine.getModuleRuntime(chainIndex, targetModule.id);
+    const runtime = this.app.engine.getModuleRuntime(chainIndex, targetModule.id) as Record<string, unknown> | null;
     if (!runtime) {
       return [];
     }
 
     if (runtime.category === "source" && Array.isArray(runtime.voices)) {
-      const targets = runtime.voices
+      const targets = (runtime.voices as SourceVoice[])
         .map((voice, voiceIndex) => {
           const param = this.getSourceVoiceTargetParam(voice, modulation.targetParamPath);
           if (!param || typeof param === "number") {
@@ -862,7 +959,7 @@ export class ModulationManager {
           }
           return { param, voiceIndex };
         })
-        .filter(Boolean);
+        .filter(Boolean) as ModulationTargetParam[];
 
       if (!targets.length) {
         return [];
@@ -871,11 +968,12 @@ export class ModulationManager {
       return targets;
     }
 
-    if (!runtime.node) {
+    const node = runtime.node as Record<string, unknown> | undefined;
+    if (!node) {
       return [];
     }
     const paramPath = modulation.targetParamPath.replace(/^options\./, "");
-    const param = getByPath(runtime.node, paramPath);
+    const param = getByPath(node, paramPath);
     if (!param) {
       return [];
     }
@@ -883,16 +981,16 @@ export class ModulationManager {
       return [];
     }
 
-    return [{ param, voiceIndex: null }];
+    return [{ param: param as AudioParam | Tone.ToneAudioNode, voiceIndex: null }];
   }
 
   /**
    * 获取 Source 模块单个 voice 的目标参数
-   * @param {Object} voice - Source voice 运行时
-   * @param {string} targetParamPath - 目标参数路径
-   * @returns {Object|null} 可连接参数
+   * @param voice - Source voice 运行时
+   * @param targetParamPath - 目标参数路径
+   * @returns 可连接参数
    */
-  getSourceVoiceTargetParam(voice, targetParamPath) {
+  getSourceVoiceTargetParam(voice: SourceVoice, targetParamPath: string): unknown {
     if (!voice || !targetParamPath) {
       return null;
     }
@@ -918,7 +1016,7 @@ export class ModulationManager {
     }
 
     const paramPath = targetParamPath.replace(/^options\./, "");
-    const param = getByPath(voice.node, paramPath);
+    const param = getByPath(voice.node as unknown as Record<string, unknown>, paramPath);
     if (!param || typeof param === "number") {
       return null;
     }
@@ -929,7 +1027,7 @@ export class ModulationManager {
   /**
    * 取消调制拖拽，重置拖拽状态
    */
-  cancelModulationDrag() {
+  cancelModulationDrag(): void {
     this.modulationDrag = {
       active: false,
       pointerId: 0,
@@ -945,16 +1043,16 @@ export class ModulationManager {
 
   /**
    * 获取元素在信号流容器中的相对坐标（中心点）
-   * @param {HTMLElement} element - DOM元素
-   * @returns {Object|null} 包含x和y坐标的对象，或null
+   * @param element - DOM元素
+   * @returns 包含x和y坐标的对象，或null
    */
-  getPointInSignalFlowShell(element) {
+  getPointInSignalFlowShell(element: Element | null): { x: number; y: number } | null {
     const shell = this.app.elements.signalFlowShell;
     if (!shell || !element) {
       return null;
     }
     const shellRect = shell.getBoundingClientRect();
-    const rect = element.getBoundingClientRect();
+    const rect = (element as HTMLElement).getBoundingClientRect();
     return {
       x: rect.left - shellRect.left + rect.width / 2,
       y: rect.top - shellRect.top + rect.height / 2,
@@ -963,12 +1061,16 @@ export class ModulationManager {
 
   /**
    * 线性插值平滑移动点
-   * @param {Object} current - 当前点坐标
-   * @param {Object} target - 目标点坐标
-   * @param {number} damping - 阻尼系数（0-1）
-   * @returns {boolean} 是否还在移动中
+   * @param current - 当前点坐标
+   * @param target - 目标点坐标
+   * @param damping - 阻尼系数（0-1）
+   * @returns 是否还在移动中
    */
-  lerpPoint(current, target, damping) {
+  lerpPoint(
+    current: { x: number; y: number },
+    target: { x: number; y: number },
+    damping: number,
+  ): boolean {
     current.x += (target.x - current.x) * damping;
     current.y += (target.y - current.y) * damping;
     const dx = Math.abs(target.x - current.x);
@@ -985,24 +1087,21 @@ export class ModulationManager {
    * 渲染调制连接线覆盖层
    * 使用SVG绘制平滑的贝塞尔曲线连接线
    */
-  renderModulationOverlay() {
+  renderModulationOverlay(): void {
     const shell = this.app.elements.signalFlowShell;
     if (!shell) return;
 
-    // 创建SVG元素（如果不存在）
     if (!this.modulationSvg) {
       this.modulationSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       this.modulationSvg.classList.add("modulation-cables");
       shell.appendChild(this.modulationSvg);
     }
 
-    // 设置SVG尺寸
     const shellRect = shell.getBoundingClientRect();
     const svg = this.modulationSvg;
     svg.setAttribute("width", String(Math.max(1, shellRect.width)));
     svg.setAttribute("height", String(Math.max(1, shellRect.height)));
 
-    // 如果尺寸变化或首次创建，清空缓存
     const sizeKey = `${shellRect.width}x${shellRect.height}`;
     if (this._lastSvgSize !== sizeKey) {
       this._lastSvgSize = sizeKey;
@@ -1011,10 +1110,9 @@ export class ModulationManager {
     }
 
     const color = "var(--modulation)";
-    const activeKeys = new Set();
+    const activeKeys = new Set<string>();
 
-    // 获取或创建SVG元素
-    const getOrCreateElement = (id, tag, parent = svg) => {
+    const getOrCreateElement = (id: string, tag: string, parent: SVGElement = svg): SVGElement => {
       const key = id;
       let el = this.cableElements.get(key);
       if (!el) {
@@ -1025,8 +1123,7 @@ export class ModulationManager {
       return el;
     };
 
-    // 移除未使用的元素
-    const removeUnusedElements = () => {
+    const removeUnusedElements = (): void => {
       this.cableElements.forEach((el, key) => {
         if (!activeKeys.has(key)) {
           el.remove();
@@ -1035,18 +1132,15 @@ export class ModulationManager {
       });
     };
 
-    /**
-     * 更新连接线SVG路径
-     * @param {Object} from - 起点坐标
-     * @param {Object} to - 终点坐标
-     * @param {boolean} isGhost - 是否为幽灵线（拖拽预览）
-     * @param {string} id - 元素ID
-     */
-    const updateCablePath = (from, to, isGhost = false, id) => {
-      const path = getOrCreateElement(id, "path");
+    const updateCablePath = (
+      from: { x: number; y: number },
+      to: { x: number; y: number },
+      isGhost = false,
+      id: string,
+    ): void => {
+      const path = getOrCreateElement(id, "path") as SVGPathElement;
       const horizontalDist = Math.abs(to.x - from.x);
 
-      // 计算二次贝塞尔曲线的控制点
       const cx = (from.x + to.x) / 2;
       const sag = 15 + horizontalDist * 0.25;
       const cy = Math.max(from.y, to.y) + sag;
@@ -1067,13 +1161,8 @@ export class ModulationManager {
       activeKeys.add(id);
     };
 
-    /**
-     * 更新连接点（圆形节点）
-     * @param {Object} point - 点坐标
-     * @param {string} id - 元素ID
-     */
-    const updateSocket = (point, id) => {
-      const dot = getOrCreateElement(id, "circle");
+    const updateSocket = (point: { x: number; y: number }, id: string): void => {
+      const dot = getOrCreateElement(id, "circle") as SVGCircleElement;
       dot.setAttribute("cx", String(point.x));
       dot.setAttribute("cy", String(point.y));
       dot.setAttribute("r", "4");
@@ -1082,12 +1171,7 @@ export class ModulationManager {
       activeKeys.add(id);
     };
 
-    /**
-     * 渲染单条连接线
-     * @param {Object} route - 路由信息
-     * @param {boolean} isGhost - 是否为幽灵线
-     */
-    const renderCable = (route, isGhost = false) => {
+    const renderCable = (route: { id: string; from: { x: number; y: number }; to: { x: number; y: number } }, isGhost = false): void => {
       const pathId = `path-${route.id}`;
       const fromSocketId = `from-${route.id}`;
       const toSocketId = `to-${route.id}`;
@@ -1097,7 +1181,6 @@ export class ModulationManager {
       updateSocket(route.to, toSocketId);
     };
 
-    // 渲染所有已建立的调制连接
     this.getModulations().forEach((connection) => {
       const fromEl = this.app.elements.signalFlow?.querySelector(
         `.module-mod-anchor[data-module-id="${connection.sourceModuleId}"]`,
@@ -1110,14 +1193,10 @@ export class ModulationManager {
       const to = this.getPointInSignalFlowShell(toEl);
 
       if (from && to) {
-        renderCable(
-          { id: connection.id, from, to },
-          false,
-        );
+        renderCable({ id: connection.id, from, to }, false);
       }
     });
 
-    // 渲染正在拖拽的连接线预览
     if (this.modulationDrag.active) {
       const fromEl = this.app.elements.signalFlow?.querySelector(
         `.module-mod-anchor[data-module-id="${this.modulationDrag.sourceModuleId}"]`,
@@ -1136,10 +1215,8 @@ export class ModulationManager {
       }
     }
 
-    // 清理不再使用的SVG元素
     removeUnusedElements();
 
-    // 如果正在拖拽，请求下一帧
     if (this.modulationDrag.active) {
       this.modulationFrame = requestAnimationFrame(() => this.renderModulationOverlay());
     } else {

@@ -1,4 +1,27 @@
-export function createSwitchControl({ label, options, value, onChange, accent }) {
+/**
+ * Switch control component
+ */
+
+export interface SwitchOption {
+  label: string;
+  value: string | number | boolean;
+}
+
+export interface SwitchControlOptions {
+  label: string;
+  options: SwitchOption[];
+  value: string | number | boolean;
+  onChange: (value: string | number | boolean) => void;
+  accent: string;
+}
+
+export function createSwitchControl({
+  label,
+  options,
+  value,
+  onChange,
+  accent,
+}: SwitchControlOptions): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.className = "control";
 
@@ -14,7 +37,7 @@ export function createSwitchControl({ label, options, value, onChange, accent })
   buttonGroup.style.gap = "4px";
   buttonGroup.style.width = "100%";
 
-  const buttons = [];
+  const buttons: Array<{ button: HTMLButtonElement; option: SwitchOption }> = [];
 
   options.forEach((option) => {
     const button = document.createElement("button");
@@ -29,15 +52,14 @@ export function createSwitchControl({ label, options, value, onChange, accent })
     button.addEventListener("click", (event) => {
       onChange(option.value);
       syncState(option.value);
-      event.target.blur();
+      (event.target as HTMLElement).blur();
     });
 
     buttonGroup.append(button);
   });
 
-  const syncState = (nextValue) => {
+  const syncState = (nextValue: string | number | boolean) => {
     buttons.forEach(({ button, option }) => {
-      // Use strict equality for boolean values
       const isActive = option.value === nextValue;
       button.classList.toggle("is-on", isActive);
     });

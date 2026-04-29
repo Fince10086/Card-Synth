@@ -1,16 +1,20 @@
-let currentAnimationId = null;
-let currentMode = null;
-let canvasMetrics = { width: 0, height: 0 };
-let cachedMainColor = null;
+/**
+ * Scope renderer - oscilloscope and spectrum analyzer
+ */
 
-function getMainColor() {
+let currentAnimationId: number | null = null;
+let currentMode: string | null = null;
+let canvasMetrics = { width: 0, height: 0 };
+let cachedMainColor: string | null = null;
+
+function getMainColor(): string {
   if (cachedMainColor) return cachedMainColor;
   const style = getComputedStyle(document.documentElement);
   cachedMainColor = style.getPropertyValue("--main").trim() || "#4b0082";
   return cachedMainColor;
 }
 
-export function resizeScopeCanvas(canvas, context) {
+export function resizeScopeCanvas(canvas: HTMLCanvasElement | null, context: CanvasRenderingContext2D | null): void {
   if (!canvas || !context) {
     return;
   }
@@ -31,11 +35,20 @@ export function resizeScopeCanvas(canvas, context) {
   }
 
   canvasMetrics = { width, height };
-  cachedMainColor = null; // 窗口变化时刷新颜色缓存
+  cachedMainColor = null;
 
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+export interface ScopeRenderingOptions {
+  getCanvasFn: () => HTMLCanvasElement | null;
+  getContextFn: () => CanvasRenderingContext2D | null;
+  getAnalyserFn: () => AnalyserNode | null;
+  getSpectrumAnalyserFn: () => AnalyserNode | null;
+  getAudioBootedFn: () => boolean;
+  getModeFn: () => string;
 }
 
 export function startScopeRendering({
@@ -45,10 +58,10 @@ export function startScopeRendering({
   getSpectrumAnalyserFn,
   getAudioBootedFn,
   getModeFn,
-}) {
+}: ScopeRenderingOptions): void {
   stopScopeRendering();
 
-  function render() {
+  function render(): void {
     currentAnimationId = requestAnimationFrame(render);
 
     const canvas = getCanvasFn();
@@ -86,8 +99,14 @@ export function startScopeRendering({
   render();
 }
 
-function renderOscilloscope(canvas, context, width, height, analyser) {
-  const waveform = analyser.getValue();
+function renderOscilloscope(
+  _canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  analyser: AnalyserNode
+): void {
+  const waveform = analyser.getValue() as Float32Array;
   if (!waveform || waveform.length === 0) {
     return;
   }
@@ -132,15 +151,22 @@ function renderOscilloscope(canvas, context, width, height, analyser) {
   context.stroke();
 }
 
-function renderSpectrum(canvas, context, width, height, analyser, spectrumAnalyser) {
+function renderSpectrum(
+  _canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  analyser: AnalyserNode,
+  spectrumAnalyser: AnalyserNode | null
+): void {
   if (spectrumAnalyser) {
-    const fftData = spectrumAnalyser.getValue();
+    const fftData = spectrumAnalyser.getValue() as Float32Array;
     if (!fftData || fftData.length === 0) {
       return;
     }
 
     const bufferLength = fftData.length;
-    const sampleRate = analyser.context.sampleRate || 44100;
+    const sampleRate = (analyser.context as AudioContext).sampleRate || 44100;
     const nyquist = sampleRate / 2;
     const targetFreq = 12000;
 
@@ -166,7 +192,7 @@ function renderSpectrum(canvas, context, width, height, analyser, spectrumAnalys
       }
     }
   } else {
-    const waveform = analyser.getValue();
+    const waveform = analyser.getValue() as Float32Array;
     if (!waveform || waveform.length === 0) {
       return;
     }
@@ -189,13 +215,13 @@ function renderSpectrum(canvas, context, width, height, analyser, spectrumAnalys
   }
 }
 
-export function stopScopeRendering() {
+export function stopScopeRendering(): void {
   if (currentAnimationId !== null) {
     cancelAnimationFrame(currentAnimationId);
     currentAnimationId = null;
   }
 }
 
-export function getCurrentMode() {
+export function getCurrentMode(): string | null {
   return currentMode;
 }

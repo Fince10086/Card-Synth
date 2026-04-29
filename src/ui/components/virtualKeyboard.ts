@@ -1,9 +1,30 @@
-import { noteFromOffset } from "../../utils/helpers.js";
+import { noteFromOffset } from "../../utils/helpers";
+import type { InputManager } from "../../input/inputManager";
+
+interface KeyboardDefOctave {
+  type: "octave";
+  delta: number;
+  label: string;
+}
+
+interface KeyboardDefKey {
+  type: "white" | "black";
+  key: string;
+  offset: number;
+  whiteIndex: number;
+}
+
+type KeyboardDef = KeyboardDefOctave | KeyboardDefKey;
+
+interface PointerDownInfo {
+  keyElement: HTMLElement;
+  note: string;
+}
 
 // 统一的键盘布局定义：按钮和琴键一体化
 // 布局比例：按钮占 1 份，白键占 3 份，黑键不占宽度（叠加）
 // 总份数 = 1 + 8*3 + 1 = 26
-const KEYBOARD_DEF = [
+const KEYBOARD_DEF: KeyboardDef[] = [
   { type: "octave", delta: -1, label: "<" },
   { type: "white", key: "a", offset: 0, whiteIndex: 0 },
   { type: "black", key: "w", offset: 1, whiteIndex: 0 },
@@ -21,16 +42,22 @@ const KEYBOARD_DEF = [
   { type: "octave", delta: 1, label: ">" },
 ];
 
-const pointerDownMap = new Map();
+const pointerDownMap = new Map<number, PointerDownInfo>();
+
+interface KeyboardState {
+  global: {
+    octave: number;
+  };
+}
 
 export function renderKeyboard(
-  keyboardElement,
-  state,
-  inputManager,
-  ensureAudioStartedFn,
-  heldPointerNotes,
-  onOctaveChange
-) {
+  keyboardElement: HTMLElement | null,
+  state: KeyboardState,
+  inputManager: InputManager,
+  ensureAudioStartedFn: () => void,
+  heldPointerNotes: Set<string>,
+  onOctaveChange?: (octave: number) => void
+): void {
   if (!keyboardElement) {
     return;
   }
@@ -75,31 +102,31 @@ export function renderKeyboard(
     keyboardElement.append(fragment);
 
     // 事件委托 + setPointerCapture，支持滑动切换
-    keyboardElement.addEventListener("pointerdown", (e) => {
-      const octaveBtn = e.target.closest("[data-octave]");
+    keyboardElement.addEventListener("pointerdown", (e: PointerEvent) => {
+      const octaveBtn = (e.target as HTMLElement).closest("[data-octave]");
       if (octaveBtn) {
         e.preventDefault();
-        const delta = parseInt(octaveBtn.dataset.octave, 10);
+        const delta = parseInt((octaveBtn as HTMLElement).dataset.octave!, 10);
         const newOctave = Math.max(1, Math.min(7, state.global.octave + delta));
         onOctaveChange?.(newOctave);
         return;
       }
 
-      const key = e.target.closest("[data-key]");
+      const key = (e.target as HTMLElement).closest("[data-key]");
       if (!key) return;
 
-      key.setPointerCapture(e.pointerId);
+      (key as HTMLElement).setPointerCapture(e.pointerId);
 
-      const note = key.dataset.note;
+      const note = (key as HTMLElement).dataset.note!;
       inputManager.pressNote(note);
       heldPointerNotes.add(note);
-      key.classList.add("active");
-      pointerDownMap.set(e.pointerId, { keyElement: key, note });
+      (key as HTMLElement).classList.add("active");
+      pointerDownMap.set(e.pointerId, { keyElement: key as HTMLElement, note });
 
       ensureAudioStartedFn();
     });
 
-    keyboardElement.addEventListener("pointermove", (e) => {
+    keyboardElement.addEventListener("pointermove", (e: PointerEvent) => {
       const current = pointerDownMap.get(e.pointerId);
       if (!current) return;
 
@@ -118,22 +145,22 @@ export function renderKeyboard(
 
       if (key !== current.keyElement) {
         current.keyElement.releasePointerCapture(e.pointerId);
-        key.setPointerCapture(e.pointerId);
+        (key as HTMLElement).setPointerCapture(e.pointerId);
 
         inputManager.releaseNote(current.note);
         heldPointerNotes.delete(current.note);
         current.keyElement.classList.remove("active");
 
-        const newNote = key.dataset.note;
+        const newNote = (key as HTMLElement).dataset.note!;
         inputManager.pressNote(newNote);
         heldPointerNotes.add(newNote);
-        key.classList.add("active");
+        (key as HTMLElement).classList.add("active");
 
-        pointerDownMap.set(e.pointerId, { keyElement: key, note: newNote });
+        pointerDownMap.set(e.pointerId, { keyElement: key as HTMLElement, note: newNote });
       }
     });
 
-    keyboardElement.addEventListener("pointerup", (e) => {
+    keyboardElement.addEventListener("pointerup", (e: PointerEvent) => {
       const current = pointerDownMap.get(e.pointerId);
       if (!current) return;
 
@@ -143,7 +170,7 @@ export function renderKeyboard(
       pointerDownMap.delete(e.pointerId);
     });
 
-    keyboardElement.addEventListener("pointercancel", (e) => {
+    keyboardElement.addEventListener("pointercancel", (e: PointerEvent) => {
       const current = pointerDownMap.get(e.pointerId);
       if (!current) return;
 
@@ -160,7 +187,7 @@ export function renderKeyboard(
   let currentLeft = 0;
 
   KEYBOARD_DEF.forEach((def, index) => {
-    const el = keyboardElement.children[index];
+    const el = keyboardElement.children[index] as HTMLElement | undefined;
     if (!el) return;
 
     if (def.type === "octave") {

@@ -1,17 +1,15 @@
-/** KeyboardNavigationManager — 管理卡片级 Tab 导航
- *
- * 行为：
- * - 卡片级元素（.module-card, .add-module-card）默认可 Tab 聚焦。
- * - 卡片内部所有可聚焦控件（button / input / select / textarea）默认 tabindex="-1"，
- *   避免 Tab 直接跳进卡片内部。
- * - 聚焦到某个卡片后按 Enter，将该卡片标记为“激活”，内部控件恢复 tabindex="0"，
- *   此时 Tab 会在该卡片内部循环（焦点陷阱）。
- * - 按 Escape 或再次按 Enter（或 Tab 到卡片外部）退出激活状态，
- *   内部控件重新设为 tabindex="-1"，焦点回到卡片本身。
- * - 渲染重建（renderAll）前可调用 saveFocusState() 保存当前聚焦卡片标识，
- *   重建后调用 restoreFocusState() 自动恢复。
+/**
+ * KeyboardNavigationManager - manages card-level Tab navigation
  */
+
 export class KeyboardNavigationManager {
+  activeCard: HTMLElement | null;
+  private _focusState: FocusState | null;
+  private _nextFocusTarget: string | null;
+  private _boundOnKeyDown: (event: KeyboardEvent) => void;
+  private _boundOnFocusIn: (event: FocusEvent) => void;
+  private _boundOnFocusOut: (event: FocusEvent) => void;
+
   constructor() {
     this.activeCard = null;
     this._focusState = null;
@@ -21,20 +19,19 @@ export class KeyboardNavigationManager {
     this._boundOnFocusOut = this._onFocusOut.bind(this);
   }
 
-  bind() {
+  bind(): void {
     document.addEventListener("keydown", this._boundOnKeyDown, true);
     document.addEventListener("focusin", this._boundOnFocusIn, true);
     document.addEventListener("focusout", this._boundOnFocusOut, true);
   }
 
-  unbind() {
+  unbind(): void {
     document.removeEventListener("keydown", this._boundOnKeyDown, true);
     document.removeEventListener("focusin", this._boundOnFocusIn, true);
     document.removeEventListener("focusout", this._boundOnFocusOut, true);
   }
 
-  /** 判断元素是否为“卡片级”可聚焦元素 */
-  _isCardElement(el) {
+  private _isCardElement(el: HTMLElement | null): boolean {
     if (!el) return false;
     return (
       el.classList.contains("module-card") ||
@@ -42,15 +39,13 @@ export class KeyboardNavigationManager {
     );
   }
 
-  /** 获取元素所在的卡片（或自身） */
-  _getCardElement(el) {
+  private _getCardElement(el: HTMLElement | null): HTMLElement | null {
     if (!el) return null;
     if (this._isCardElement(el)) return el;
-    return el.closest(".module-card, .add-module-card");
+    return el.closest(".module-card, .add-module-card") as HTMLElement | null;
   }
 
-  /** 收集某卡片内部所有可聚焦元素 */
-  _getFocusableInside(card) {
+  private _getFocusableInside(card: HTMLElement): HTMLElement[] {
     if (!card) return [];
     return Array.from(
       card.querySelectorAll(
@@ -60,26 +55,22 @@ export class KeyboardNavigationManager {
           'textarea:not([disabled]):not([tabindex="-1"]), ' +
           '[tabindex]:not([tabindex="-1"])'
       )
-    ).filter((el) => el.closest(".module-card, .add-module-card") === card);
+    ).filter((el) => (el as HTMLElement).closest(".module-card, .add-module-card") === card) as HTMLElement[];
   }
 
-  /** 设置某卡片内部所有天然可聚焦元素的 tabindex */
-  _setCardTabIndex(card, tabIndex) {
+  private _setCardTabIndex(card: HTMLElement, tabIndex: number): void {
     if (!card) return;
     const inner = card.querySelectorAll(
       'button, input:not([type="hidden"]), select, textarea'
     );
     inner.forEach((el) => {
-      // 跳过卡片本身（如果卡片内部有 role 或 tabindex 的嵌套元素）
-      if (this._isCardElement(el)) return;
-      el.setAttribute("tabindex", String(tabIndex));
+      if (this._isCardElement(el as HTMLElement)) return;
+      (el as HTMLElement).setAttribute("tabindex", String(tabIndex));
     });
   }
 
-  /** 激活卡片：内部控件可 Tab */
-  activateCard(card) {
+  activateCard(card: HTMLElement): void {
     if (!card) return;
-    // 先取消上一个激活
     if (this.activeCard && this.activeCard !== card) {
       this._setCardTabIndex(this.activeCard, -1);
       this.activeCard.classList.remove("is-keyboard-active");
@@ -89,22 +80,19 @@ export class KeyboardNavigationManager {
     this._setCardTabIndex(card, 0);
   }
 
-  /** 取消激活：内部控件不可 Tab */
-  deactivateCard() {
+  deactivateCard(): void {
     if (!this.activeCard) return;
     this._setCardTabIndex(this.activeCard, -1);
     this.activeCard.classList.remove("is-keyboard-active");
     this.activeCard = null;
   }
 
-  /** 设置重建后的优先聚焦目标（如删除模块后聚焦到前一个卡片） */
-  setNextFocusTarget(cardRef) {
+  setNextFocusTarget(cardRef: string): void {
     this._nextFocusTarget = cardRef;
   }
 
-  /** 保存当前聚焦状态（供 renderAll 重建前调用） */
-  saveFocusState() {
-    const active = document.activeElement;
+  saveFocusState(): void {
+    const active = document.activeElement as HTMLElement | null;
     if (!active) {
       this._focusState = null;
       return;
@@ -119,11 +107,9 @@ export class KeyboardNavigationManager {
     const isCardItself = active === card;
     const isActive = card === this.activeCard;
 
-    // 用 moduleRef / data-main-card 作为卡片唯一标识
     const cardRef =
       card.dataset.moduleRef || card.dataset.mainCard || card.id || "";
 
-    // 如果焦点在卡片内部某个控件上，记录其选择器路径
     let innerSelector = "";
     if (!isCardItself) {
       const tag = active.tagName.toLowerCase();
@@ -152,27 +138,23 @@ export class KeyboardNavigationManager {
     };
   }
 
-  /** 重建后恢复焦点 */
-  restoreFocusState(container) {
-    // 如果有预设的下一个聚焦目标（如删除后），优先使用
+  restoreFocusState(container: HTMLElement | null): void {
     const nextTarget = this._nextFocusTarget;
     this._nextFocusTarget = null;
 
-    // 延时恢复，确保 DOM 已插入并 layout
     requestAnimationFrame(() => {
       if (!container) return;
 
-      // 优先处理 _nextFocusTarget
       if (nextTarget) {
-        let targetCard = null;
+        let targetCard: HTMLElement | null = null;
         if (nextTarget === "true") {
-          targetCard = container.querySelector('.module-card[data-main-card="true"]');
+          targetCard = container.querySelector('.module-card[data-main-card="true"]') as HTMLElement | null;
         } else if (nextTarget === "addModuleCard") {
-          targetCard = container.querySelector("#addModuleCard");
+          targetCard = container.querySelector("#addModuleCard") as HTMLElement | null;
         } else {
           targetCard = container.querySelector(
             `.module-card[data-module-ref="${nextTarget}"]`
-          );
+          ) as HTMLElement | null;
         }
         if (targetCard) {
           this.deactivateCard();
@@ -185,15 +167,15 @@ export class KeyboardNavigationManager {
       const { cardRef, isActive, isCardItself, innerSelector } = this._focusState;
       this._focusState = null;
 
-      let card = null;
+      let card: HTMLElement | null = null;
       if (cardRef === "true") {
-        card = container.querySelector('.module-card[data-main-card="true"]');
+        card = container.querySelector('.module-card[data-main-card="true"]') as HTMLElement | null;
       } else if (cardRef === "addModuleCard") {
-        card = container.querySelector("#addModuleCard");
+        card = container.querySelector("#addModuleCard") as HTMLElement | null;
       } else if (cardRef) {
         card = container.querySelector(
           `.module-card[data-module-ref="${cardRef}"]`
-        );
+        ) as HTMLElement | null;
       }
       if (!card) return;
 
@@ -204,43 +186,37 @@ export class KeyboardNavigationManager {
       if (isCardItself) {
         card.focus({ preventScroll: true });
       } else if (innerSelector) {
-        const inner = card.querySelector(innerSelector);
+        const inner = card.querySelector(innerSelector) as HTMLElement | null;
         if (inner) {
           inner.focus({ preventScroll: true });
         } else {
-          // 找不到内部元素，回退到聚焦卡片
           card.focus({ preventScroll: true });
         }
       }
     });
   }
 
-  /** 监听 focusin：如果 Tab 跳出激活卡片，自动退出激活状态 */
-  _onFocusIn(event) {
-    const target = event.target;
+  private _onFocusIn(event: FocusEvent): void {
+    const target = event.target as HTMLElement | null;
     if (!target) return;
     if (!this.activeCard) return;
 
     const card = this._getCardElement(target);
     if (card !== this.activeCard) {
-      // 焦点离开了当前激活卡片，取消激活
       this.deactivateCard();
     }
   }
 
-  /** focusout 不需要做太多，主要是 focusin 判断 */
-  _onFocusOut(event) {
-    // 留空，逻辑在 focusin 处理即可
+  private _onFocusOut(_event: FocusEvent): void {
+    // Logic handled in focusin
   }
 
-  /** 键盘事件处理 */
-  _onKeyDown(event) {
-    const target = event.target;
+  private _onKeyDown(event: KeyboardEvent): void {
+    const target = event.target as HTMLElement | null;
     if (!target) return;
 
     const card = this._getCardElement(target);
 
-    // Escape：如果当前有激活卡片，退出激活并焦点回到卡片
     if (event.key === "Escape") {
       if (this.activeCard) {
         event.preventDefault();
@@ -250,10 +226,8 @@ export class KeyboardNavigationManager {
       return;
     }
 
-    // Enter：聚焦在卡片本身时激活它；聚焦在卡片内部时把焦点送回卡片
     if (event.key === "Enter") {
       if (card && target === card) {
-        // 在卡片上按 Enter，激活卡片并把焦点移到第一个内部控件
         event.preventDefault();
         this.activateCard(card);
         const inside = this._getFocusableInside(card);
@@ -262,8 +236,15 @@ export class KeyboardNavigationManager {
         }
         return;
       }
-      // 如果焦点在卡片内部的某个控件上按 Enter，不处理（让控件自己的行为生效）
       return;
     }
   }
+}
+
+interface FocusState {
+  cardRef: string;
+  isActive: boolean;
+  isCardItself: boolean;
+  innerSelector: string;
+  activeElementTag: string;
 }

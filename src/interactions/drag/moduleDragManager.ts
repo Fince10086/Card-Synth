@@ -1,7 +1,31 @@
-import { EdgeScrollManager } from "../edgeScrollManager.js";
+/**
+ * Module drag manager - handles module reordering via drag and drop
+ */
+
+import { EdgeScrollManager } from "../edgeScrollManager";
+
+export interface DragState {
+  isDragging: boolean;
+  isDragStarted: boolean;
+  hasPointerCapture: boolean;
+  dragCard: HTMLElement | null;
+  dragIndex: number;
+  pointerId: number;
+  indicator: HTMLElement | null;
+  startX: number;
+  startY: number;
+  offsetX: number;
+  offsetY: number;
+  originalRect: DOMRect | null;
+  targetIndex: number;
+}
 
 export class ModuleDragManager {
-  constructor(app) {
+  app: Record<string, unknown>;
+  dragState: DragState;
+  edgeScroll: EdgeScrollManager;
+
+  constructor(app: Record<string, unknown>) {
     this.app = app;
     this.dragState = {
       isDragging: false,
@@ -21,8 +45,8 @@ export class ModuleDragManager {
     this.edgeScroll = new EdgeScrollManager();
   }
 
-  initModuleDrag(event, card, moduleIndex) {
-    const modules = this.app.getCurrentModules();
+  initModuleDrag(event: PointerEvent, card: HTMLElement, moduleIndex: number): void {
+    const modules = (this.app.getCurrentModules as () => unknown[])?.() || [];
     if (modules.length <= 1) {
       return;
     }
@@ -49,7 +73,7 @@ export class ModuleDragManager {
     card.addEventListener("pointercancel", this.handleDragEnd.bind(this));
   }
 
-  handleDragMove(event) {
+  handleDragMove(event: PointerEvent): void {
     if (!this.dragState.dragCard) {
       return;
     }
@@ -70,10 +94,10 @@ export class ModuleDragManager {
       this.dragState.hasPointerCapture = true;
     }
 
-    // 边缘滚动
     this.edgeScroll.update(event);
 
-    const container = this.app.elements.signalFlow;
+    const elements = this.app.elements as Record<string, HTMLElement>;
+    const container = elements.signalFlow;
 
     card.classList.add("dragging");
     card.style.position = "fixed";
@@ -93,8 +117,8 @@ export class ModuleDragManager {
       return;
     }
 
-    const moduleCards = [...container.querySelectorAll(".module-card:not(.dragging):not([data-main-card='true'])")];
-    let targetCard = null;
+    const moduleCards = [...container.querySelectorAll(".module-card:not(.dragging):not([data-main-card='true'])")] as HTMLElement[];
+    let targetCard: HTMLElement | null = null;
     let targetIndex = -1;
 
     for (let i = 0; i < moduleCards.length; i++) {
@@ -113,7 +137,7 @@ export class ModuleDragManager {
       ) {
         targetCard = card;
         const moduleId = card.dataset.moduleId;
-        const modules = this.app.getCurrentModules();
+        const modules = (this.app.getCurrentModules as () => Array<{ id: string }>)?.() || [];
         targetIndex = modules.findIndex((m) => m.id === moduleId);
         break;
       }
@@ -123,13 +147,14 @@ export class ModuleDragManager {
     this.updateDragIndicator(targetCard, targetIndex);
   }
 
-  updateDragIndicator(targetCard, targetIndex) {
+  updateDragIndicator(targetCard: HTMLElement | null, targetIndex: number): void {
     if (targetCard?.hasAttribute("data-main-card")) {
       this.removeDragIndicator();
       return;
     }
 
-    if (!targetCard && targetIndex !== this.app.getCurrentModules().length) {
+    const modules = (this.app.getCurrentModules as () => unknown[])?.() || [];
+    if (!targetCard && targetIndex !== modules.length) {
       this.removeDragIndicator();
       return;
     }
@@ -137,10 +162,12 @@ export class ModuleDragManager {
     if (!this.dragState.indicator) {
       this.dragState.indicator = document.createElement("div");
       this.dragState.indicator.className = "drag-indicator";
-      this.app.elements.signalFlow.appendChild(this.dragState.indicator);
+      const elements = this.app.elements as Record<string, HTMLElement>;
+      elements.signalFlow.appendChild(this.dragState.indicator);
     }
 
-    const container = this.app.elements.signalFlow;
+    const elements = this.app.elements as Record<string, HTMLElement>;
+    const container = elements.signalFlow;
     const containerRect = container.getBoundingClientRect();
 
     if (targetCard) {
@@ -149,7 +176,7 @@ export class ModuleDragManager {
       this.dragState.indicator.style.top = `${targetRect.top - containerRect.top}px`;
       this.dragState.indicator.style.height = `${targetRect.height}px`;
     } else {
-      const lastCard = container.querySelector(".module-card:not(.dragging):last-of-type");
+      const lastCard = container.querySelector(".module-card:not(.dragging):last-of-type") as HTMLElement | null;
       if (lastCard) {
         const lastRect = lastCard.getBoundingClientRect();
         this.dragState.indicator.style.left = `${lastRect.right - containerRect.left}px`;
@@ -159,19 +186,18 @@ export class ModuleDragManager {
     }
   }
 
-  removeDragIndicator() {
+  removeDragIndicator(): void {
     if (this.dragState.indicator) {
       this.dragState.indicator.remove();
       this.dragState.indicator = null;
     }
   }
 
-  handleDragEnd(event) {
+  handleDragEnd(event: PointerEvent): void {
     if (!this.dragState.dragCard) {
       return;
     }
 
-    // 停止边缘滚动
     this.edgeScroll.stopScrolling();
 
     const card = this.dragState.dragCard;
@@ -192,7 +218,8 @@ export class ModuleDragManager {
 
       this.removeDragIndicator();
 
-      const container = this.app.elements.signalFlow;
+      const elements = this.app.elements as Record<string, HTMLElement>;
+      const container = elements.signalFlow;
       const containerRect = container.getBoundingClientRect();
       const isOutsideContainer =
         event.clientX < containerRect.left ||
@@ -206,10 +233,10 @@ export class ModuleDragManager {
         if (toIndex !== this.dragState.dragIndex) {
           this.reorderModule(this.dragState.dragIndex, toIndex);
         } else {
-          this.app.layoutModuleMasonry();
+          (this.app.layoutModuleMasonry as () => void)?.();
         }
       } else {
-        this.app.layoutModuleMasonry();
+        (this.app.layoutModuleMasonry as () => void)?.();
       }
     }
 
@@ -225,12 +252,13 @@ export class ModuleDragManager {
       startY: 0,
       offsetX: 0,
       offsetY: 0,
-      placeholder: null,
+      originalRect: null,
+      targetIndex: -1,
     };
   }
 
-  reorderModule(fromIndex, toIndex) {
-    const modules = this.app.getCurrentModules();
+  reorderModule(fromIndex: number, toIndex: number): void {
+    const modules = (this.app.getCurrentModules as () => Array<unknown>)?.() || [];
 
     if (fromIndex < 0 || fromIndex >= modules.length || toIndex < 0 || toIndex >= modules.length) {
       return;
@@ -240,8 +268,8 @@ export class ModuleDragManager {
     const insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
     modules.splice(insertIndex, 0, module);
 
-    this.app.markUnsaved();
-    this.app.renderAll();
-    this.app.engine.fullSync(this.app.state);
+    (this.app.markUnsaved as () => void)?.();
+    (this.app.renderAll as () => void)?.();
+    (this.app.engine as Record<string, unknown>)?.fullSync?.(this.app.state);
   }
 }

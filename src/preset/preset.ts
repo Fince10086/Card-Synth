@@ -1,3 +1,7 @@
+/**
+ * Preset management utilities
+ */
+
 import {
   createId,
   resetModuleCounter,
@@ -9,14 +13,34 @@ import {
   createComponentModule,
   createEffectModule,
   createInputModule,
-} from "../utils/helpers.js";
+} from "../utils/helpers";
+import type { ModuleConfig, Preset, ChainState, MacroChainState, MacroState, GlobalState } from "../types";
 
 const CHAIN_COUNT = 4;
-const DEFAULT_GLOBAL = { volume: -8, octave: 4, velocity: 0.8, velocityEnabled: true, polyVoice: 8 };
+const DEFAULT_GLOBAL: GlobalState = { volume: -8, octave: 4, velocity: 0.8, velocityEnabled: true, polyVoice: 8 };
 const MACRO_POINT_DEFAULT = Object.freeze({ x: 0.5, y: 0.5 });
 const MACRO_EPSILON = 1e-6;
 
-function createStarterModules() {
+export interface MacroMappingItem {
+  targetModuleId: string;
+  targetParamPath: string;
+  min: number;
+  max: number;
+  step: number;
+  rangeStart: number;
+  rangeEnd: number;
+}
+
+export interface ModulationItem {
+  id: string;
+  sourceModuleId: string;
+  sourceVoiceIndex: number;
+  targetModuleId: string;
+  targetParamPath: string;
+  radius: number;
+}
+
+function createStarterModules(): ModuleConfig[] {
   return [
     createInputModule("Pitch"),
     createSourceModule("Oscillator"),
@@ -26,8 +50,8 @@ function createStarterModules() {
   ];
 }
 
-function normalizeGlobalState(global = {}) {
-  const merged = deepMerge(DEFAULT_GLOBAL, global || {});
+function normalizeGlobalState(global: Partial<GlobalState> = {}): GlobalState {
+  const merged = deepMerge(DEFAULT_GLOBAL, global || {}) as GlobalState;
   merged.octave = clamp(Number(merged.octave || 4), 1, 7);
   merged.velocity = clamp(Number(merged.velocity || 0.8), 0.1, 1);
   merged.volume = clamp(Number(merged.volume || -8), -36, 6);
@@ -36,14 +60,12 @@ function normalizeGlobalState(global = {}) {
   return merged;
 }
 
-export function createDefaultMacroChainState() {
+export function createDefaultMacroChainState(): MacroChainState {
   return {
-    point: {
-      x: MACRO_POINT_DEFAULT.x,
-      y: MACRO_POINT_DEFAULT.y,
-      z: 0.5,
-    },
-    mappings: {
+    x: MACRO_POINT_DEFAULT.x,
+    y: MACRO_POINT_DEFAULT.y,
+    z: 0.5,
+    bindings: {
       x: [],
       y: [],
       z: [],
@@ -51,7 +73,7 @@ export function createDefaultMacroChainState() {
   };
 }
 
-function normalizeMacroMappingItem(item = {}) {
+function normalizeMacroMappingItem(item: Partial<MacroMappingItem> = {}): MacroMappingItem | null {
   const targetModuleId = String(item?.targetModuleId || "");
   const targetParamPath = String(item?.targetParamPath || "");
   const rawMin = Number(item?.min);
@@ -85,12 +107,12 @@ function normalizeMacroMappingItem(item = {}) {
   };
 }
 
-function normalizeMacroMappings(items = []) {
+function normalizeMacroMappings(items: Partial<MacroMappingItem>[] = []): MacroMappingItem[] {
   if (!Array.isArray(items)) {
     return [];
   }
 
-  const deduped = new Map();
+  const deduped = new Map<string, MacroMappingItem>();
   items.forEach((item) => {
     const normalized = normalizeMacroMappingItem(item);
     if (!normalized) {
@@ -103,36 +125,33 @@ function normalizeMacroMappings(items = []) {
   return Array.from(deduped.values());
 }
 
-export function normalizeMacroChain(chainMacro = {}) {
+export function normalizeMacroChain(chainMacro: Partial<MacroChainState> = {}): MacroChainState {
   const fallback = createDefaultMacroChainState();
-  const point = chainMacro?.point || {};
 
   return {
-    point: {
-      x: clamp(Number(point.x ?? fallback.point.x), 0, 1),
-      y: clamp(Number(point.y ?? fallback.point.y), 0, 1),
-      z: clamp(Number(point.z ?? fallback.point.z), 0, 1),
-    },
-    mappings: {
-      x: normalizeMacroMappings(chainMacro?.mappings?.x),
-      y: normalizeMacroMappings(chainMacro?.mappings?.y),
-      z: normalizeMacroMappings(chainMacro?.mappings?.z),
+    x: clamp(Number(chainMacro.x ?? fallback.x), 0, 1),
+    y: clamp(Number(chainMacro.y ?? fallback.y), 0, 1),
+    z: clamp(Number(chainMacro.z ?? fallback.z), 0, 1),
+    bindings: {
+      x: normalizeMacroMappings(chainMacro.bindings?.x),
+      y: normalizeMacroMappings(chainMacro.bindings?.y),
+      z: normalizeMacroMappings(chainMacro.bindings?.z),
     },
   };
 }
 
-export function createDefaultMacroState() {
+export function createDefaultMacroState(): MacroState {
   return {
     chains: Array.from({ length: CHAIN_COUNT }, () => createDefaultMacroChainState()),
   };
 }
 
-export function normalizeMacroState(macro = null, chainFallback = []) {
+export function normalizeMacroState(macro: Partial<MacroState> | null = null, chainFallback: ChainState[] = []): MacroState {
   const fallbackList = Array.isArray(chainFallback) ? chainFallback : [];
   const sourceChains = Array.isArray(macro)
     ? macro
     : Array.isArray(macro?.chains)
-      ? macro.chains
+      ? macro!.chains
       : [];
 
   return {
@@ -144,22 +163,22 @@ export function normalizeMacroState(macro = null, chainFallback = []) {
   };
 }
 
-export function hasMacroSettingsInChain(chainMacro = {}) {
+export function hasMacroSettingsInChain(chainMacro: Partial<MacroChainState> = {}): boolean {
   const normalized = normalizeMacroChain(chainMacro);
   return (
-    Math.abs(normalized.point.x - MACRO_POINT_DEFAULT.x) > MACRO_EPSILON
-    || Math.abs(normalized.point.y - MACRO_POINT_DEFAULT.y) > MACRO_EPSILON
-    || normalized.mappings.x.length > 0
-    || normalized.mappings.y.length > 0
+    Math.abs(normalized.x - MACRO_POINT_DEFAULT.x) > MACRO_EPSILON
+    || Math.abs(normalized.y - MACRO_POINT_DEFAULT.y) > MACRO_EPSILON
+    || normalized.bindings.x.length > 0
+    || normalized.bindings.y.length > 0
   );
 }
 
-export function hasAnyMacroSettings(macroState = {}) {
+export function hasAnyMacroSettings(macroState: Partial<MacroState> = {}): boolean {
   const normalized = normalizeMacroState(macroState);
   return normalized.chains.some((chainMacro) => hasMacroSettingsInChain(chainMacro));
 }
 
-function normalizeModulations(modulations = []) {
+function normalizeModulations(modulations: Partial<ModulationItem>[] = []): ModulationItem[] {
   return Array.isArray(modulations)
     ? modulations
       .map((item) => {
@@ -185,10 +204,10 @@ function normalizeModulations(modulations = []) {
     : [];
 }
 
-function normalizeChain(chain = {}, { defaultEnabled = false, defaultModules = [] } = {}) {
+function normalizeChain(chain: Partial<ChainState> = {}, { defaultEnabled = false, defaultModules = [] }: { defaultEnabled?: boolean; defaultModules?: ModuleConfig[] } = {}): ChainState {
   const hasModulesField = Array.isArray(chain?.modules);
   const modules = hasModulesField
-    ? chain.modules.map((module) => normalizeAnyModule(module))
+    ? chain.modules!.map((module) => normalizeAnyModule(module))
     : defaultModules.map((module) => normalizeAnyModule(module));
 
   const rawModulations = Array.isArray(chain?.modulations) ? chain.modulations : [];
@@ -200,11 +219,11 @@ function normalizeChain(chain = {}, { defaultEnabled = false, defaultModules = [
   };
 }
 
-function emptyChain() {
+function emptyChain(): ChainState {
   return { enabled: false, modules: [], modulations: [] };
 }
 
-export function normalizeCurrentPresetData(preset = {}) {
+export function normalizeCurrentPresetData(preset: Partial<{ global: Partial<GlobalState>; modules: ModuleConfig[]; modulations: ModulationItem[]; macro: Partial<MacroChainState> }> = {}): { global: GlobalState; modules: ModuleConfig[]; modulations: ModulationItem[]; macro: MacroChainState } {
   const modules = Array.isArray(preset.modules)
     ? preset.modules.map((module) => normalizeAnyModule(module))
     : createStarterModules();
@@ -217,7 +236,7 @@ export function normalizeCurrentPresetData(preset = {}) {
   };
 }
 
-export function createBasePreset() {
+export function createBasePreset(): Preset {
   return {
     global: normalizeGlobalState({}),
     selectedChainIndex: 0,
@@ -231,13 +250,13 @@ export function createBasePreset() {
   };
 }
 
-export function normalizePreset(preset = {}) {
+export function normalizePreset(preset: Partial<Preset> = {}): Preset {
   resetModuleCounter();
 
   if (Array.isArray(preset?.chains)) {
     const macro = normalizeMacroState(preset?.macro, preset.chains);
     const chains = Array.from({ length: CHAIN_COUNT }, (_, index) => {
-      const incoming = preset.chains[index] || {};
+      const incoming = preset.chains![index] || {};
       return normalizeChain(incoming, { defaultEnabled: index === 0, defaultModules: [] });
     });
 
@@ -265,7 +284,7 @@ export function normalizePreset(preset = {}) {
   };
 }
 
-function downloadJson(filename, data) {
+function downloadJson(filename: string, data: unknown): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
@@ -276,11 +295,11 @@ function downloadJson(filename, data) {
   link.remove();
 }
 
-export function isAllTypePreset(preset) {
-  return Array.isArray(preset?.chains) || preset?.presetType === "all";
+export function isAllTypePreset(preset: unknown): boolean {
+  return Array.isArray((preset as Record<string, unknown>)?.chains) || (preset as Record<string, unknown>)?.presetType === "all";
 }
 
-export async function importPresetFromFile(file) {
+export async function importPresetFromFile(file: File): Promise<{ type: "all"; preset: Preset } | { type: "current"; chain: ReturnType<typeof normalizeCurrentPresetData> }> {
   const text = await file.text();
   const raw = JSON.parse(text);
 
@@ -297,14 +316,14 @@ export async function importPresetFromFile(file) {
   };
 }
 
-export function exportCurrentPresetToFile(state, chainIndex = 0, presetName = "preset") {
+export function exportCurrentPresetToFile(state: Preset, chainIndex = 0, presetName = "preset"): string {
   const selectedIndex = clamp(Number(chainIndex || 0), 0, CHAIN_COUNT - 1);
   const chain = state?.chains?.[selectedIndex] || emptyChain();
   const macroChain = normalizeMacroChain(state?.macro?.chains?.[selectedIndex] || {});
   const slug = presetName.toLowerCase().replace(/\s+/g, "-");
   const filename = `${slug}-current.json`;
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     presetType: "current",
     global: deepClone(state?.global || DEFAULT_GLOBAL),
     modules: deepClone(chain.modules || []),
@@ -319,7 +338,7 @@ export function exportCurrentPresetToFile(state, chainIndex = 0, presetName = "p
   return filename;
 }
 
-export function exportAllPresetToFile(state, presetName = "preset") {
+export function exportAllPresetToFile(state: Preset, presetName = "preset"): string {
   const slug = presetName.toLowerCase().replace(/\s+/g, "-");
   const filename = `${slug}-all.json`;
 
@@ -332,15 +351,15 @@ export function exportAllPresetToFile(state, presetName = "preset") {
   });
 
   if (!hasAnyMacroSettings(payload.macro)) {
-    delete payload.macro;
+    delete (payload as Record<string, unknown>).macro;
   }
 
-  payload.presetType = "all";
+  (payload as Record<string, unknown>).presetType = "all";
   downloadJson(filename, payload);
   return filename;
 }
 
-export function exportPresetToFile(state) {
+export function exportPresetToFile(state: Preset): string {
   const selectedChainIndex = clamp(Number(state?.selectedChainIndex ?? 0), 0, CHAIN_COUNT - 1);
   const filename = exportCurrentPresetToFile(state, selectedChainIndex);
   return filename;

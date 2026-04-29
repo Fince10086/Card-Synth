@@ -1,4 +1,20 @@
-export function createAudioImportControl({ label, value, onSelect, onError }) {
+/**
+ * Audio import control component
+ */
+
+export interface AudioImportControlOptions {
+  label: string;
+  value?: string;
+  onSelect: (file: File) => Promise<void>;
+  onError?: (message: string) => void;
+}
+
+export function createAudioImportControl({
+  label,
+  value,
+  onSelect,
+  onError,
+}: AudioImportControlOptions): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.className = "control control-file";
 
@@ -28,15 +44,16 @@ export function createAudioImportControl({ label, value, onSelect, onError }) {
 
   trigger.addEventListener("click", () => input.click());
   input.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    input.value = "";
+    const target = event.target as HTMLInputElement;
+    const file = target.files?.[0];
+    target.value = "";
     if (!file) {
       return;
     }
     try {
       await onSelect(file);
     } catch (error) {
-      onError?.(error?.message || "Unable to import the selected audio file.");
+      onError?.((error as Error)?.message || "Unable to import the selected audio file.");
     }
   });
 

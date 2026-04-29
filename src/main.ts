@@ -1,4 +1,8 @@
-import { ModularSynthApp } from "./app/modularSynthApp.js";
+/**
+ * Main entry point
+ */
+
+import { ModularSynthApp } from "./app/modularSynthApp";
 
 window.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -15,7 +19,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const status = document.getElementById("statusText");
     const dot = document.getElementById("statusDot");
     if (status) {
-      status.textContent = `Initialization failed: ${error.message}`;
+      status.textContent = `Initialization failed: ${(error as Error).message}`;
     }
     dot?.classList.add("error");
   }

@@ -1,5 +1,5 @@
 /**
- * @fileoverview gestureManager.js
+ * @fileoverview gestureManager.ts
  * 手势管理器：负责将 MediaPipe 手部检测结果映射到合成器的链（Chain）控制上。
  * 主要功能包括：
  *   - 激活/停用手势控制界面（摄像头 + 覆盖层）
@@ -9,8 +9,10 @@
  *   - 通过时间插值和平滑滤波保证渲染流畅度
  */
 
-import { HandGestureRecognizer } from "./handGestureRecognizer.js";
-import { createEffectModule, clamp } from "../../utils/helpers.js";
+import { HandGestureRecognizer, type GestureResults } from "./handGestureRecognizer";
+import { createEffectModule, clamp } from "../../utils/helpers";
+import type { Preset, ChainState, ModuleConfig } from "../../types";
+import type { MacroMappingItem } from "../../preset/preset";
 
 // ==================== 常量配置 ====================
 
@@ -31,44 +33,151 @@ const DEFAULT_DETECT_FRAME_MS = 1000 / 30;
 /** 手部被持续检测到后才生效的防抖时间（毫秒） */
 const HAND_CONFIRMATION_MS = 100;
 
+// ==================== 类型定义 ====================
+
+interface ChainMacroState {
+  point: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  mappings: Record<string, MacroMappingItem[]>;
+}
+
+export interface GestureManagerApp {
+  state: Preset;
+  getChainCount(): number;
+  getSelectedChainIndex(): number;
+  isChainEnabled(index: number): boolean;
+  getChain(index: number): ChainState;
+  setChainEnabled(index: number, enabled: boolean): void;
+  macroManager: {
+    getChainMacro(chainIndex: number): ChainMacroState;
+    resetChainMacro(chainIndex: number): void;
+    applyMappingsForChain(chainIndex: number, syncControls: boolean): void;
+  };
+  engine: {
+    fullSync(state: Preset): void;
+  };
+  renderAll(): void;
+  markUnsaved(): void;
+  setStatus?(message: string, tone?: string): void;
+}
+
+interface ParsedGestures {
+  leftPinch: boolean;
+  rightPinch: boolean;
+  xGesture: boolean;
+  leftPinchPos: { x: number; y: number } | null;
+  rightPinchPos: { x: number; y: number } | null;
+  xCenter: { x: number; y: number } | null;
+  hands?: unknown;
+}
+
+interface Landmark {
+  x: number;
+  y: number;
+  z: number;
+}
+
+type HandLandmarks = Landmark[];
+
+interface GestureState {
+  leftPinchChainIndex: number;
+  rightPinchChainIndex: number;
+  leftPinchStartY: number;
+  leftPinchStartGain: number;
+  lastPinchTime: number;
+  leftPinchHoldStart: number;
+  rightPinchHoldStart: number;
+  leftPinchConfirmed: boolean;
+  rightPinchConfirmed: boolean;
+}
+
+interface FrameBlend {
+  startAt: number;
+  duration: number;
+}
+
+interface HandConfirmation {
+  left: { firstSeenAt: number; confirmed: boolean };
+  right: { firstSeenAt: number; confirmed: boolean };
+}
+
+interface FpsStats {
+  render: { frames: number; lastSampleAt: number; value: number };
+  detect: { frames: number; lastSampleAt: number; value: number };
+}
+
+interface ControlPointVisual {
+  x: number;
+  y: number;
+  radius: number;
+  rangeRadius: number;
+}
+
+interface ControlArea {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// ==================== 类定义 ====================
+
 export class GestureManager {
-  /**
-   * @param {Object} app - ModularSynthApp 实例引用，用于操作链、模块、宏控制等
-   */
-  constructor(app) {
-    /** @type {Object} 主应用实例 */
+  app: GestureManagerApp;
+  recognizer: HandGestureRecognizer;
+  active: boolean;
+  activating: boolean;
+
+  overlay: HTMLDivElement | null;
+  canvas: HTMLCanvasElement | null;
+  ctx: CanvasRenderingContext2D | null;
+  staticCanvas: HTMLCanvasElement | null;
+  staticCtx: CanvasRenderingContext2D | null;
+  staticLayerDirty: boolean;
+
+  gestureState: GestureState;
+
+  smoothedLandmarks: HandLandmarks[];
+  smoothAlpha: number;
+  lastLandmarks: HandLandmarks[];
+  lastGestures: ParsedGestures | null;
+
+  renderPending: boolean;
+  renderFrame: number;
+  prevLandmarks: HandLandmarks[];
+  currentLandmarks: HandLandmarks[];
+  interpolatedLandmarks: HandLandmarks[];
+  frameBlend: FrameBlend;
+  lastDetectAt: number;
+
+  controlPointVisuals: (ControlPointVisual | null)[];
+
+  handConfirmation: HandConfirmation;
+
+  fpsStats: FpsStats;
+
+  onEsc: (e: KeyboardEvent) => void;
+  onVisibilityChange: () => void;
+  onResize: (() => void) | null;
+
+  constructor(app: GestureManagerApp) {
     this.app = app;
-    /** @type {HandGestureRecognizer} 手势识别器实例 */
     this.recognizer = new HandGestureRecognizer();
-    /** 手势系统是否处于激活状态 */
     this.active = false;
-    /** 是否正在激活中（防止加载过程中重复触发） */
     this.activating = false;
 
     // ==================== DOM 与画布 ====================
-    /** @type {HTMLDivElement|null} 覆盖层容器 */
     this.overlay = null;
-    /** @type {HTMLCanvasElement|null} 动态绘制画布（手部关键点、ControlPoint、FPS） */
     this.canvas = null;
-    /** @type {CanvasRenderingContext2D|null} 动态画布 2D 上下文 */
     this.ctx = null;
-    /** @type {HTMLCanvasElement|null} 静态绘制画布（控制区域边框等不常变化的内容） */
     this.staticCanvas = null;
-    /** @type {CanvasRenderingContext2D|null} 静态画布 2D 上下文 */
     this.staticCtx = null;
-    /** 静态层是否需要重绘 */
     this.staticLayerDirty = true;
 
     // ==================== 手势状态机 ====================
-    /**
-     * 捏合手势的内部状态。
-     * - leftPinchChainIndex / rightPinchChainIndex: 当前捏合关联的链索引，-1 表示无
-     * - leftPinchStartY: 左手捏合开始时的 Y 坐标，用于计算垂直拖拽增量
-     * - leftPinchStartGain: 左手捏合开始时链的增益值
-     * - lastPinchTime: 上一次捏合触发时间，用于去抖
-     * - leftPinchHoldStart / rightPinchHoldStart: 捏合开始按压的时间戳
-     * - leftPinchConfirmed / rightPinchConfirmed: 是否已满足 PINCH_HOLD_MS 确认条件
-     */
     this.gestureState = {
       leftPinchChainIndex: -1,
       rightPinchChainIndex: -1,
@@ -82,51 +191,27 @@ export class GestureManager {
     };
 
     // ==================== Landmark 平滑与插值 ====================
-    /** 经一阶低通滤波后的 landmark 缓存 */
     this.smoothedLandmarks = [];
-    /** landmark 平滑系数（越大越跟手，越小越平滑） */
     this.smoothAlpha = 0.4;
-    /** 上一帧收到的 landmark 数据 */
     this.lastLandmarks = [];
-    /** 上一帧解析出的手势结果 */
     this.lastGestures = null;
 
     // ==================== 渲染循环状态 ====================
-    /** 是否有渲染请求正在等待执行 */
     this.renderPending = false;
-    /** requestAnimationFrame 返回的帧 ID */
     this.renderFrame = 0;
-    /** 插值用的上一检测帧 landmark */
     this.prevLandmarks = [];
-    /** 插值用的当前检测帧 landmark */
     this.currentLandmarks = [];
-    /** 经时间插值后用于渲染的 landmark */
     this.interpolatedLandmarks = [];
-    /**
-     * 帧混合时间参数。
-     * startAt: 当前检测帧开始时间；duration: 相邻两检测帧的间隔。
-     */
     this.frameBlend = {
       startAt: 0,
       duration: DEFAULT_DETECT_FRAME_MS,
     };
-    /** 上一次收到检测结果的绝对时间戳 */
     this.lastDetectAt = 0;
 
     // ==================== ControlPoint 视觉状态 ====================
-    /**
-     * 每个链对应的 ControlPoint 视觉属性缓存。
-     * 数组索引对应链索引，值为 {x, y, radius, rangeRadius} 或 null（链未启用）。
-     * 用于实现位置与半径的阻尼平滑。
-     */
     this.controlPointVisuals = [];
 
     // ==================== 手部确认防抖 ====================
-    /**
-     * 每只手的确认状态。
-     * firstSeenAt: 首次检测到该手的时间戳（0 表示未检测到）；
-     * confirmed: 是否已通过持续检测确认。
-     */
     this.handConfirmation = {
       left: { firstSeenAt: 0, confirmed: false },
       right: { firstSeenAt: 0, confirmed: false },
@@ -149,14 +234,12 @@ export class GestureManager {
 
     // ==================== 事件绑定 ====================
 
-    /** ESC 键监听：按 Escape 时停用手势系统 */
     this.onEsc = (e) => {
       if (e.key === "Escape") {
         this.deactivate();
       }
     };
 
-    /** 页面可见性监听：切出标签页时暂停检测以节省资源 */
     this.onVisibilityChange = () => {
       if (document.hidden) {
         this.pauseDetection();
@@ -164,16 +247,13 @@ export class GestureManager {
         this.resumeDetection();
       }
     };
+
+    this.onResize = null;
   }
 
   // ==================== 生命周期 ====================
 
-  /**
-   * 激活手势控制系统。
-   * 顺序执行：初始化 Worker → 启动摄像头 → 创建覆盖层 → 开始检测。
-   * 若过程中出错，将在控制台打印错误并在应用状态栏提示。
-   */
-  async activate() {
+  async activate(): Promise<void> {
     if (this.active || this.activating) return;
     this.activating = true;
     try {
@@ -191,18 +271,13 @@ export class GestureManager {
       }
     } catch (err) {
       console.error("Gesture activation failed:", err);
-      this.app.setStatus?.(`Gesture failed: ${err.message}`, "error");
+      this.app.setStatus?.(`Gesture failed: ${(err as Error).message}`, "error");
     } finally {
       this.activating = false;
     }
   }
 
-  /**
-   * 确保所有已启用的音频链末尾都包含一个 Gain 模块。
-   * 该模块作为手势控制的目标（捏合调节音量）。
-   * 若新增模块，会自动调用引擎同步并将预设标记为自定义。
-   */
-  ensureAllChainsHaveGain() {
+  ensureAllChainsHaveGain(): void {
     let added = false;
     for (let i = 0; i < this.app.getChainCount(); i++) {
       if (!this.app.isChainEnabled(i)) continue;
@@ -223,25 +298,19 @@ export class GestureManager {
     this.app.markUnsaved();
   }
 
-  /** 暂停检测：仅停止摄像头采集，保留覆盖层与手势状态。 */
-  pauseDetection() {
+  pauseDetection(): void {
     if (!this.active) return;
     this.recognizer.stopCamera();
   }
 
-  /** 恢复检测：重新启动摄像头并在就绪后继续检测循环。 */
-  resumeDetection() {
+  resumeDetection(): void {
     if (!this.active) return;
     this.recognizer.startCamera().then(() => {
       this.recognizer.startDetection();
     });
   }
 
-  /**
-   * 停用手势控制系统。
-   * 停止摄像头、移除事件监听、销毁覆盖层，并触发一次全量 UI 重绘。
-   */
-  deactivate() {
+  deactivate(): void {
     if (!this.active) return;
     this.active = false;
     this.recognizer.stopCamera();
@@ -254,12 +323,7 @@ export class GestureManager {
 
   // ==================== 覆盖层与画布 ====================
 
-  /**
-   * 创建手势覆盖层 DOM 结构。
-   * 包含两层 canvas：staticCanvas（背景与控制区域边框）和 canvas（动态内容），
-   * 以及一个关闭按钮。创建完成后启动渲染循环。
-   */
-  createOverlay() {
+  createOverlay(): void {
     this.overlay = document.createElement("div");
     this.overlay.className = "gesture-overlay";
 
@@ -288,8 +352,7 @@ export class GestureManager {
     this.startRenderLoop();
   }
 
-  /** 销毁覆盖层并清理相关资源（ RAF、resize 监听）。 */
-  destroyOverlay() {
+  destroyOverlay(): void {
     if (this.onResize) {
       window.removeEventListener("resize", this.onResize);
       this.onResize = null;
@@ -308,12 +371,7 @@ export class GestureManager {
     }
   }
 
-  /**
-   * 响应式调整两层 canvas 的分辨率。
-   * 根据 devicePixelRatio 进行缩放，保证在高 DPI 屏幕上绘制清晰。
-   * 尺寸变化后会标记 staticLayer 为 dirty，触发重绘。
-   */
-  resizeCanvas() {
+  resizeCanvas(): void {
     const dpr = window.devicePixelRatio || 1;
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -324,7 +382,7 @@ export class GestureManager {
       this.staticCanvas.style.width = `${w}px`;
       this.staticCanvas.style.height = `${h}px`;
       this.staticCtx = this.staticCanvas.getContext("2d");
-      this.staticCtx.scale(dpr, dpr);
+      this.staticCtx!.scale(dpr, dpr);
       this.markStaticLayerDirty();
     }
 
@@ -334,18 +392,13 @@ export class GestureManager {
       this.canvas.style.width = `${w}px`;
       this.canvas.style.height = `${h}px`;
       this.ctx = this.canvas.getContext("2d");
-      this.ctx.scale(dpr, dpr);
+      this.ctx!.scale(dpr, dpr);
     }
   }
 
   // ==================== 坐标与几何 ====================
 
-  /**
-   * 计算屏幕中央可供手势交互的控制区域。
-   * 四周留出 MARGIN_RATIO 的边距，避免手指触及屏幕边缘时误操作。
-   * @returns {{x:number, y:number, width:number, height:number}}
-   */
-  getControlArea() {
+  getControlArea(): ControlArea {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const marginX = w * MARGIN_RATIO;
@@ -358,14 +411,7 @@ export class GestureManager {
     };
   }
 
-  /**
-   * 将摄像头归一化坐标（0~1）转换为画布像素坐标。
-   * X 轴做水平镜像翻转（1 - cx），并带有轻微 overscale 使手边缘也能被看到。
-   * @param {number} cx - 摄像头空间 X（0~1）
-   * @param {number} cy - 摄像头空间 Y（0~1）
-   * @returns {{x:number, y:number}} 画布像素坐标
-   */
-  cameraToCanvas(cx, cy) {
+  cameraToCanvas(cx: number, cy: number): { x: number; y: number } {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const scale = 1.1;
@@ -376,27 +422,14 @@ export class GestureManager {
     return { x, y };
   }
 
-  /**
-   * 将画布像素坐标映射到宏观控制空间的归一化坐标（0~1）。
-   * Y 轴做翻转，使屏幕上方对应宏控制的高值。
-   * @param {number} x - 画布像素 X
-   * @param {number} y - 画布像素 Y
-   * @returns {{x:number, y:number}} 归一化宏坐标
-   */
-  canvasToMacro(x, y) {
+  canvasToMacro(x: number, y: number): { x: number; y: number } {
     const area = this.getControlArea();
     const mx = clamp((x - area.x) / area.width, 0, 1);
     const my = clamp(1 - (y - area.y) / area.height, 0, 1);
     return { x: mx, y: my };
   }
 
-  /**
-   * 获取指定链在当前画布上的目标像素位置。
-   * 位置由链的 macroManager 中存储的宏坐标映射到控制区域得到。
-   * @param {number} chainIndex - 链索引
-   * @returns {{x:number, y:number}} 画布像素坐标
-   */
-  getChainPoint(chainIndex) {
+  getChainPoint(chainIndex: number): { x: number; y: number } {
     const chainMacro = this.app.macroManager.getChainMacro(chainIndex);
     const area = this.getControlArea();
     return {
@@ -405,14 +438,7 @@ export class GestureManager {
     };
   }
 
-  /**
-   * 查找距离给定坐标最近的已启用链。
-   * 仅在距离小于 MIN_DISTANCE_RATIO 阈值时返回有效结果，避免远距离误吸附。
-   * @param {number} x - 画布像素 X
-   * @param {number} y - 画布像素 Y
-   * @returns {number} 链索引，未找到返回 -1
-   */
-  findChainAtPosition(x, y) {
+  findChainAtPosition(x: number, y: number): number {
     const area = this.getControlArea();
     const minDist = Math.min(area.width, area.height) * MIN_DISTANCE_RATIO;
     let found = -1;
@@ -429,11 +455,7 @@ export class GestureManager {
     return found;
   }
 
-  /**
-   * 查找第一个未启用的链，用于新建 ControlPoint。
-   * @returns {number} 链索引，全部启用则返回 -1
-   */
-  findFirstAvailableChain() {
+  findFirstAvailableChain(): number {
     for (let i = 0; i < this.app.getChainCount(); i++) {
       if (!this.app.isChainEnabled(i)) return i;
     }
@@ -442,24 +464,17 @@ export class GestureManager {
 
   // ==================== 手部确认防抖 ====================
 
-  /**
-   * 根据 handedness 更新左右手的确认状态。
-   * 只有当手部被持续检测到超过 HAND_CONFIRMATION_MS 后，confirmed 才置为 true。
-   * 手一旦消失，立即重置。
-   * @param {Array} handedness - Worker 返回的手部类别数组
-   * @param {number} now - 当前时间戳
-   */
-  updateHandConfirmation(handedness, now) {
+  updateHandConfirmation(handedness: unknown[][], now: number): void {
     const detected = { left: false, right: false };
     for (const h of handedness || []) {
-      const name = h?.[0]?.categoryName;
+      const name = ((h as Array<{ categoryName: string }> | undefined)?.[0]?.categoryName);
       // MediaPipe 的 handedness 基于镜像视角：
       // "Right" 对应用户的左手，"Left" 对应用户的右手
       if (name === "Right") detected.left = true;
       if (name === "Left") detected.right = true;
     }
 
-    for (const side of ["left", "right"]) {
+    for (const side of ["left", "right"] as const) {
       if (detected[side]) {
         if (this.handConfirmation[side].firstSeenAt === 0) {
           this.handConfirmation[side].firstSeenAt = now;
@@ -473,18 +488,12 @@ export class GestureManager {
     }
   }
 
-  /**
-   * 过滤 landmark 数组，仅保留已确认的手部。
-   * @param {Array} landmarks - 原始 landmark
-   * @param {Array} handedness - 与 landmark 一一对应的类别数组
-   * @returns {Array} 已确认的 landmark
-   */
-  filterConfirmedLandmarks(landmarks, handedness) {
+  filterConfirmedLandmarks(landmarks: unknown[][], handedness: unknown[][]): HandLandmarks[] {
     if (!landmarks || !handedness || landmarks.length !== handedness.length) {
       return [];
     }
-    return landmarks.filter((_, i) => {
-      const name = handedness[i]?.[0]?.categoryName;
+    return (landmarks as HandLandmarks[]).filter((_, i) => {
+      const name = ((handedness[i] as Array<{ categoryName: string }> | undefined)?.[0]?.categoryName);
       const side = name === "Right" ? "left" : name === "Left" ? "right" : null;
       return side ? this.handConfirmation[side].confirmed : false;
     });
@@ -492,33 +501,21 @@ export class GestureManager {
 
   // ==================== 增益读写 ====================
 
-  /**
-   * 获取指定链末尾 Gain 模块的当前增益值。
-   * 若未找到 Gain 模块则返回默认值 1。
-   * @param {number} chainIndex - 链索引
-   * @returns {number} 增益值
-   */
-  getChainGainValue(chainIndex) {
+  getChainGainValue(chainIndex: number): number {
     const chain = this.app.getChain(chainIndex);
     const modules = chain.modules || [];
     for (let i = modules.length - 1; i >= 0; i--) {
       if (modules[i].type === "Gain") {
-        return modules[i].options?.gain ?? 1;
+        return ((modules[i].options as { gain?: number } | undefined)?.gain) ?? 1;
       }
     }
     return 1;
   }
 
-  /**
-   * 确保指定链末尾存在 Gain 模块，且该模块的 gain 参数已被映射到链宏控制的 Z 轴。
-   * 若缺失则自动创建并同步引擎。
-   * @param {number} chainIndex - 链索引
-   * @returns {Object} Gain 模块对象
-   */
-  ensureGainMapped(chainIndex) {
+  ensureGainMapped(chainIndex: number): ModuleConfig {
     const chain = this.app.getChain(chainIndex);
     const modules = chain.modules || [];
-    let gainModule = null;
+    let gainModule: ModuleConfig | null = null;
     for (let i = modules.length - 1; i >= 0; i--) {
       if (modules[i].type === "Gain") {
         gainModule = modules[i];
@@ -552,13 +549,7 @@ export class GestureManager {
     return gainModule;
   }
 
-  /**
-   * 设置指定链的增益值，并触发宏控制映射更新。
-   * 注意：视觉渲染平滑由 render loop 中的 updateControlPointVisuals 负责，此处不直接操作 DOM/Canvas。
-   * @param {number} chainIndex - 链索引
-   * @param {number} value - 增益值（0~2）
-   */
-  setChainGainValue(chainIndex, value) {
+  setChainGainValue(chainIndex: number, value: number): void {
     const gainModule = this.ensureGainMapped(chainIndex);
     const chainMacro = this.app.macroManager.getChainMacro(chainIndex);
     chainMacro.point.z = clamp(value / 2, 0, 1);
@@ -572,20 +563,7 @@ export class GestureManager {
 
   // ==================== 手势结果处理 ====================
 
-  /**
-   * 核心手势处理入口。
-   * 每次 Worker 返回检测结果时调用，负责：
-   *   1. 统计检测 FPS
-   *   2. 对 landmark 做平滑滤波并推入插值队列
-   *   3. 解析 X 手势（禁用链）
-   *   4. 解析左手捏合（控制增益 / 新建链）
-   *   5. 解析右手捏合（控制链位置）
-   *
-   * @param {Object} param0
-   * @param {Array} param0.landmarks - 检测到的手部关键点数组
-   * @param {Object} param0.gestures - 解析后的手势状态
-   */
-  handleResults({ landmarks, handedness, gestures }) {
+  handleResults({ landmarks, handedness, gestures }: GestureResults): void {
     const now = performance.now();
 
     // 更新手部确认状态：只有持续检测到手超过 HAND_CONFIRMATION_MS 后才生效
@@ -595,14 +573,15 @@ export class GestureManager {
     const confirmedLandmarks = this.filterConfirmedLandmarks(landmarks, handedness);
 
     // 过滤 gestures：未确认的手部对应手势不生效
-    const confirmedGestures = {
-      ...gestures,
-      leftPinch: this.handConfirmation.left.confirmed ? gestures.leftPinch : false,
-      leftPinchPos: this.handConfirmation.left.confirmed ? gestures.leftPinchPos : null,
-      rightPinch: this.handConfirmation.right.confirmed ? gestures.rightPinch : false,
-      rightPinchPos: this.handConfirmation.right.confirmed ? gestures.rightPinchPos : null,
+    const parsedGestures = gestures as ParsedGestures;
+    const confirmedGestures: ParsedGestures = {
+      ...parsedGestures,
+      leftPinch: this.handConfirmation.left.confirmed ? parsedGestures.leftPinch : false,
+      leftPinchPos: this.handConfirmation.left.confirmed ? parsedGestures.leftPinchPos : null,
+      rightPinch: this.handConfirmation.right.confirmed ? parsedGestures.rightPinch : false,
+      rightPinchPos: this.handConfirmation.right.confirmed ? parsedGestures.rightPinchPos : null,
     };
-    const confirmedHandCount = ["left", "right"].filter((s) => this.handConfirmation[s].confirmed).length;
+    const confirmedHandCount = (["left", "right"] as const).filter((s) => this.handConfirmation[s].confirmed).length;
     if (confirmedHandCount < 2) {
       confirmedGestures.xGesture = false;
       confirmedGestures.xCenter = null;
@@ -723,18 +702,13 @@ export class GestureManager {
 
   // ==================== 渲染循环 ====================
 
-  /**
-   * 启动覆盖层的渲染循环。
-   * 每帧执行：绘制静态层 → 获取时间插值后的 landmark → 绘制动态层。
-   * 使用 requestAnimationFrame 保证与显示器刷新率同步。
-   */
-  startRenderLoop() {
+  startRenderLoop(): void {
     if (this.renderFrame) {
       cancelAnimationFrame(this.renderFrame);
       this.renderFrame = 0;
     }
 
-    const frame = (now) => {
+    const frame = (now: number) => {
       if (!this.active || !this.canvas) {
         this.renderFrame = 0;
         return;
@@ -750,12 +724,7 @@ export class GestureManager {
 
   // ==================== Landmark 时间插值 ====================
 
-  /**
-   * 将新的检测结果推入插值队列，更新前后帧缓存与混合时间参数。
-   * 用于在两次检测之间生成平滑过渡，弥补检测帧率（~30fps）与渲染帧率（~60fps）的差距。
-   * @param {Array} landmarks - 当前检测帧的 landmark
-   */
-  pushDetectionFrame(landmarks) {
+  pushDetectionFrame(landmarks: HandLandmarks[]): void {
     const now = performance.now();
     if (this.lastDetectAt > 0) {
       this.frameBlend.duration = Math.max(8, now - this.lastDetectAt);
@@ -772,14 +741,7 @@ export class GestureManager {
     this.currentLandmarks = next;
   }
 
-  /**
-   * 基于当前渲染时间计算 landmark 的插值结果。
-   * 使用线性插值（lerp）在 prevLandmarks 与 currentLandmarks 之间过渡，
-   * t 的范围由检测帧间隔动态计算并 clamp 到 [0, 1]。
-   * @param {number} now - 当前时间戳（performance.now）
-   * @returns {Array} 插值后的 landmark
-   */
-  getInterpolatedLandmarks(now) {
+  getInterpolatedLandmarks(now: number): HandLandmarks[] {
     if (!this.currentLandmarks.length) {
       return [];
     }
@@ -791,15 +753,7 @@ export class GestureManager {
     return this.interpolateLandmarks(this.prevLandmarks, this.currentLandmarks, t);
   }
 
-  /**
-   * 对两组 landmark 执行逐点线性插值。
-   * 复用 interpolatedLandmarks 缓存数组以减少 GC。
-   * @param {Array} from - 上一帧 landmark
-   * @param {Array} to - 当前帧 landmark
-   * @param {number} t - 插值因子 [0, 1]
-   * @returns {Array} 插值后的 landmark
-   */
-  interpolateLandmarks(from, to, t) {
+  interpolateLandmarks(from: HandLandmarks[], to: HandLandmarks[], t: number): HandLandmarks[] {
     if (this.interpolatedLandmarks.length !== to.length) {
       this.interpolatedLandmarks = this.cloneLandmarks(to);
     }
@@ -820,12 +774,7 @@ export class GestureManager {
     return this.interpolatedLandmarks;
   }
 
-  /**
-   * 深拷贝 landmark 数据（仅复制 x, y, z）。
-   * @param {Array} landmarks - 原始 landmark
-   * @returns {Array} 深拷贝后的 landmark
-   */
-  cloneLandmarks(landmarks) {
+  cloneLandmarks(landmarks: HandLandmarks[]): HandLandmarks[] {
     return (landmarks || []).map((hand) =>
       hand.map((lm) => ({ x: lm.x, y: lm.y, z: lm.z }))
     );
@@ -833,13 +782,7 @@ export class GestureManager {
 
   // ==================== 绘制方法 ====================
 
-  /**
-   * 动态层绘制入口。
-   * 每帧清空画布后依次绘制：ControlPoint（含平滑插值）→ 手部 landmark → FPS 角标。
-   * @param {Array} [landmarks=[]] - 经插值后的手部关键点
-   * @param {Object|null} [gestures=null] - 当前手势状态（预留扩展）
-   */
-  draw(landmarks = [], gestures = null) {
+  draw(landmarks: HandLandmarks[] = [], gestures: ParsedGestures | null = null): void {
     if (!this.ctx || !this.canvas) return;
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -855,13 +798,7 @@ export class GestureManager {
     this.drawFpsBadge();
   }
 
-  /**
-   * 静态层绘制。
-   * 仅当 staticLayerDirty 为 true 时执行，减少不必要的重绘。
-   * 当前绘制内容：控制区域外边框。
-   * ControlPoint 已迁移到动态层以支持平滑动画。
-   */
-  drawStaticLayer() {
+  drawStaticLayer(): void {
     if (!this.staticCtx || !this.staticCanvas) return;
     if (!this.staticLayerDirty) return;
 
@@ -883,19 +820,13 @@ export class GestureManager {
     this.staticLayerDirty = false;
   }
 
-  /** 标记静态层为 dirty，触发下一帧重绘。 */
-  markStaticLayerDirty() {
+  markStaticLayerDirty(): void {
     this.staticLayerDirty = true;
   }
 
   // ==================== FPS 统计 ====================
 
-  /**
-   * 统计指定类型的帧率。
-   * 在 FPS_SAMPLE_WINDOW_MS 时间窗口内计数，到期后计算并更新 fpsStats.value。
-   * @param {"render"|"detect"} kind - 统计类型
-   */
-  tickFps(kind) {
+  tickFps(kind: "render" | "detect"): void {
     const stats = this.fpsStats[kind];
     if (!stats) return;
 
@@ -911,8 +842,7 @@ export class GestureManager {
     stats.lastSampleAt = now;
   }
 
-  /** 在画布左上角绘制渲染 FPS 与检测 FPS 的角标。 */
-  drawFpsBadge() {
+  drawFpsBadge(): void {
     if (!this.ctx) return;
 
     const renderFps = Math.round(this.fpsStats.render.value);
@@ -942,12 +872,7 @@ export class GestureManager {
 
   // ==================== ControlPoint 视觉平滑 ====================
 
-  /**
-   * 更新每个 ControlPoint 的视觉属性（位置、半径）。
-   * 使用阻尼系数 damping = 0.2 进行一阶低通平滑，使 ControlPoint 在链位置/增益变化时流畅过渡，
-   * 而非直接跳变。
-   */
-  updateControlPointVisuals() {
+  updateControlPointVisuals(): void {
     const chainCount = this.app.getChainCount();
     while (this.controlPointVisuals.length < chainCount) {
       this.controlPointVisuals.push(null);
@@ -981,8 +906,7 @@ export class GestureManager {
     }
   }
 
-  /** 遍历所有已启用的链，在动态画布上绘制对应的 ControlPoint。 */
-  drawControlPoints() {
+  drawControlPoints(): void {
     for (let i = 0; i < this.app.getChainCount(); i++) {
       if (!this.app.isChainEnabled(i)) continue;
       const visual = this.controlPointVisuals[i];
@@ -991,46 +915,35 @@ export class GestureManager {
     }
   }
 
-  /**
-   * 绘制单个 ControlPoint。
-   * 由外到内依次绘制：半透明外圈范围 → 黑色实心圆 → 白色罗马数字标签。
-   * @param {number} chainIndex - 链索引
-   * @param {Object} visual - 视觉属性 {x, y, radius, rangeRadius}
-   */
-  drawControlPoint(chainIndex, visual) {
-    if (!this.ctx) return;
+  drawControlPoint(chainIndex: number, visual: ControlPointVisual): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
 
     const pos = { x: visual.x, y: visual.y };
     const radius = visual.radius;
     const rangeRadius = visual.rangeRadius || BASE_RADIUS * CONTROL_RANGE_MULTIPLIER;
 
-    this.ctx.fillStyle = "rgba(0,0,0,0.1)";
-    this.ctx.beginPath();
-    this.ctx.arc(pos.x, pos.y, rangeRadius, 0, Math.PI * 2);
-    this.ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.1)";
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, rangeRadius, 0, Math.PI * 2);
+    ctx.fill();
 
-    this.ctx.fillStyle = "#000000";
-    this.ctx.beginPath();
-    this.ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
-    this.ctx.fill();
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+    ctx.fill();
 
-    this.ctx.fillStyle = "#ffffff";
-    this.ctx.font = `bold ${Math.round(radius)}px "IBM Plex Sans", sans-serif`;
-    this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "middle";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `bold ${Math.round(radius)}px "IBM Plex Sans", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     const labels = ["I", "II", "III", "IV"];
-    this.ctx.fillText(labels[chainIndex], pos.x, pos.y + 1);
+    ctx.fillText(labels[chainIndex], pos.x, pos.y + 1);
   }
 
   // ==================== Landmark 空间平滑 ====================
 
-  /**
-   * 对原始 landmark 进行一阶低通滤波，减少检测噪声引起的抖动。
-   * 每帧以 smoothAlpha = 0.4 向新值靠拢。
-   * @param {Array} landmarks - 原始检测 landmark
-   * @returns {Array} 平滑后的 landmark
-   */
-  smoothLandmarks(landmarks) {
+  smoothLandmarks(landmarks: HandLandmarks[]): HandLandmarks[] {
     if (!landmarks || landmarks.length === 0) {
       this.smoothedLandmarks = [];
       return landmarks;
@@ -1057,12 +970,10 @@ export class GestureManager {
 
   // ==================== 手部 landmark 绘制 ====================
 
-  /**
-   * 在动态画布上绘制单只手的 landmark 连线与关节点。
-   * 连线使用半透明蓝色，关节点使用蓝色实心圆。
-   * @param {Array} landmarks - 单只手的 21 个关键点
-   */
-  drawHandLandmarks(landmarks) {
+  drawHandLandmarks(landmarks: HandLandmarks): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+
     const connections = [
       [0, 1], [1, 2], [2, 3], [3, 4],
       [0, 5], [5, 6], [6, 7], [7, 8],
@@ -1072,23 +983,23 @@ export class GestureManager {
       [0, 17],
     ];
 
-    this.ctx.strokeStyle = "rgba(0, 120, 255, 0.4)";
-    this.ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(0, 120, 255, 0.4)";
+    ctx.lineWidth = 1.5;
     connections.forEach(([a, b]) => {
       const pa = this.cameraToCanvas(landmarks[a].x, landmarks[a].y);
       const pb = this.cameraToCanvas(landmarks[b].x, landmarks[b].y);
-      this.ctx.beginPath();
-      this.ctx.moveTo(pa.x, pa.y);
-      this.ctx.lineTo(pb.x, pb.y);
-      this.ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+      ctx.stroke();
     });
 
-    this.ctx.fillStyle = "rgba(0, 120, 255, 0.6)";
+    ctx.fillStyle = "rgba(0, 120, 255, 0.6)";
     landmarks.forEach((lm) => {
       const pos = this.cameraToCanvas(lm.x, lm.y);
-      this.ctx.beginPath();
-      this.ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
-      this.ctx.fill();
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
+      ctx.fill();
     });
   }
 }

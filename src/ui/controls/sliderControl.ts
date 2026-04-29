@@ -1,10 +1,37 @@
+/**
+ * Slider control component
+ */
+
+export interface SliderControlOptions {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  formatter?: (value: number) => string;
+  onInput: (value: number) => void;
+  accent?: string;
+  path?: string | null;
+  eventName?: string;
+  moduleId?: string;
+  paramPath?: string;
+  modulation?: Record<string, unknown> | null;
+  controlBindings?: Map<string, { setVisual(value: number): void }> | null;
+  engine?: unknown;
+  modulationManager?: Record<string, unknown> | null;
+  onPresetChange?: (() => void) | null;
+  macroBinding?: Record<string, unknown> | null;
+  onManualMacroInput?: (() => boolean) | null;
+  onMacroRangeChange?: ((start: number, end: number) => void) | null;
+}
+
 export function createSliderControl({
   label,
   value,
   min,
   max,
   step,
-  formatter,
+  formatter = (v: number) => String(v),
   onInput,
   accent = "source",
   path = null,
@@ -19,25 +46,25 @@ export function createSliderControl({
   macroBinding = null,
   onManualMacroInput = null,
   onMacroRangeChange = null,
-}) {
-  const isLogarithmic = formatter?.unit === "log" && min > 0 && max > 0 && max !== min;
+}: SliderControlOptions): HTMLElement {
+  const isLogarithmic = (formatter as Record<string, unknown>)?.unit === "log" && min > 0 && max > 0 && max !== min;
 
-  function toLogPercent(actualValue) {
+  function toLogPercent(actualValue: number): number {
     if (!isLogarithmic || actualValue <= 0) return (actualValue - min) / (max - min);
     return Math.max(0, Math.min(1, Math.log(actualValue / min) / Math.log(max / min)));
   }
 
-  function fromLogPercent(linearPercent) {
+  function fromLogPercent(linearPercent: number): number {
     if (!isLogarithmic) return min + (max - min) * linearPercent;
     return min * Math.pow(max / min, Math.max(0, Math.min(1, linearPercent)));
   }
 
-  function actualToLinear(actualValue) {
+  function actualToLinear(actualValue: number): number {
     if (!isLogarithmic) return actualValue;
     return min + (max - min) * toLogPercent(actualValue);
   }
 
-  function linearToActual(linearValue) {
+  function linearToActual(linearValue: number): number {
     if (!isLogarithmic) return linearValue;
     return fromLogPercent((linearValue - min) / (max - min));
   }
@@ -70,8 +97,11 @@ export function createSliderControl({
   if (moduleId && paramPath) {
     modulationTarget.dataset.moduleId = moduleId;
     modulationTarget.dataset.paramPath = paramPath;
-    if (modulationManager && modulationManager.getModulationByTarget(moduleId, paramPath)) {
-      modulationTarget.classList.add("is-connected");
+    if (modulationManager && (modulationManager as Record<string, unknown>).getModulationByTarget) {
+      const existing = (modulationManager as Record<string, Function>).getModulationByTarget(moduleId, paramPath);
+      if (existing) {
+        modulationTarget.classList.add("is-connected");
+      }
     }
   }
 
@@ -80,9 +110,9 @@ export function createSliderControl({
     event.stopPropagation();
 
     if (modulationManager) {
-      const existingModulation = modulationManager.getModulationByTarget(moduleId, paramPath);
+      const existingModulation = (modulationManager as Record<string, Function>).getModulationByTarget(moduleId, paramPath);
       if (existingModulation) {
-        modulationManager.startModulationDrag({
+        (modulationManager as Record<string, Function>).startModulationDrag({
           event,
           sourceModuleId: existingModulation.sourceModuleId,
           updateConnectionId: existingModulation.id,
@@ -115,7 +145,7 @@ export function createSliderControl({
 
   shell.append(input);
 
-  const updateVisual = (actualValue) => {
+  const updateVisual = (actualValue: number) => {
     const linearValue = actualToLinear(actualValue);
     const percent = (linearValue - min) / (max - min);
     readout.textContent = formatter(actualValue);
@@ -124,17 +154,24 @@ export function createSliderControl({
 
   updateVisual(value);
 
-  const syncModulationRange = (nextValue) => {
+  const syncModulationRange = (nextValue: number) => {
     if (!(modulation && paintRange)) {
       return;
     }
     paintRange();
     const centerValue = Number(nextValue);
-    const radius = modulation.radius ?? ((max - min) * 0.15);
-    modulationManager?.updateModulationRange(modulation.id, centerValue, radius, undefined, min, max);
+    const radius = (modulation as Record<string, unknown>).radius ?? ((max - min) * 0.15);
+    (modulationManager as Record<string, Function> | null)?.updateModulationRange?.(
+      (modulation as Record<string, unknown>).id,
+      centerValue,
+      radius,
+      undefined,
+      min,
+      max
+    );
   };
 
-  const setVisualValue = (nextValue) => {
+  const setVisualValue = (nextValue: number) => {
     input.value = String(actualToLinear(nextValue));
     updateVisual(nextValue);
     syncModulationRange(nextValue);
@@ -142,12 +179,12 @@ export function createSliderControl({
 
   if (path && controlBindings) {
     controlBindings.set(path, {
-      setVisual: (nextValue) => setVisualValue(nextValue),
+      setVisual: (nextValue: number) => setVisualValue(nextValue),
     });
   }
 
-  let paintRange = null;
-  let clearMacroVisualState = null;
+  let paintRange: (() => void) | null = null;
+  let clearMacroVisualState: (() => void) | null = null;
   let macroBindingCleared = false;
 
   const clearMacroBindingOnManualInput = () => {
@@ -161,11 +198,11 @@ export function createSliderControl({
     }
   };
 
-  let pendingValue = null;
-  let rafId = null;
+  let pendingValue: number | null = null;
+  let rafId: number | null = null;
 
   input.addEventListener("input", (event) => {
-    const linearValue = Number(event.target.value);
+    const linearValue = Number((event.target as HTMLInputElement).value);
     const nextValue = linearToActual(linearValue);
     clearMacroBindingOnManualInput();
     setVisualValue(nextValue);
@@ -173,7 +210,7 @@ export function createSliderControl({
       pendingValue = nextValue;
       if (!rafId) {
         rafId = requestAnimationFrame(() => {
-          onInput(pendingValue);
+          onInput(pendingValue!);
           rafId = null;
           pendingValue = null;
         });
@@ -187,7 +224,7 @@ export function createSliderControl({
 
   if (eventName === "change") {
     input.addEventListener("change", (event) => {
-      const linearValue = Number(event.target.value);
+      const linearValue = Number((event.target as HTMLInputElement).value);
       const nextValue = linearToActual(linearValue);
       clearMacroBindingOnManualInput();
       setVisualValue(nextValue);
@@ -196,27 +233,25 @@ export function createSliderControl({
     });
   }
 
-  /**
-   * 创建内联输入框
-   * @param {HTMLElement} targetEl - 要替换显示的元素
-   * @param {Object} config - 输入框配置
-   * @param {Function} onCommit - 提交回调
-   * @param {Function} onCancel - 取消回调（可选）
-   */
-  const createInlineInput = (targetEl, config, onCommit, onCancel) => {
+  const createInlineInput = (
+    targetEl: HTMLElement,
+    config: Record<string, unknown>,
+    onCommit: (value: string, cleanup: () => void) => void,
+    onCancel?: () => void
+  ) => {
     const inputField = document.createElement("input");
-    inputField.type = config.type || "number";
+    inputField.type = (config.type as string) || "number";
     if (config.min !== undefined) inputField.min = String(config.min);
     if (config.max !== undefined) inputField.max = String(config.max);
     if (config.step !== undefined) inputField.step = String(config.step);
     inputField.value = String(config.value);
-    inputField.className = config.className || "readout-input";
+    inputField.className = (config.className as string) || "readout-input";
     if (config.style) {
-      Object.assign(inputField.style, config.style);
+      Object.assign(inputField.style, config.style as Record<string, string>);
     }
 
     targetEl.style.display = "none";
-    targetEl.parentNode.insertBefore(inputField, targetEl);
+    targetEl.parentNode!.insertBefore(inputField, targetEl);
     inputField.focus();
     inputField.select();
 
@@ -251,8 +286,7 @@ export function createSliderControl({
     });
   };
 
-  // 双击读数手动输入
-  const handleReadoutDoubleClick = () => {
+  readout.addEventListener("dblclick", () => {
     const currentInput = readout.nextElementSibling;
     if (currentInput && currentInput.classList.contains("readout-input")) {
       return;
@@ -267,20 +301,18 @@ export function createSliderControl({
           newValue = linearToActual(Number(input.value));
         }
         newValue = Math.max(min, Math.min(max, newValue));
-        cleanup(); // 先恢复显示
+        cleanup();
         setVisualValue(newValue);
         clearMacroBindingOnManualInput();
         onInput(newValue);
       },
       () => {}
     );
-  };
-
-  readout.addEventListener("dblclick", handleReadoutDoubleClick);
+  });
 
   if (macroBinding) {
     shell.classList.add("slider-shell--macro-bound");
-    shell.style.setProperty("--thumb-fill", macroBinding.color || "var(--ink)");
+    shell.style.setProperty("--thumb-fill", (macroBinding.color as string) || "var(--ink)");
 
     const markerStart = document.createElement("span");
     markerStart.className = "macro-range-marker macro-range-marker--start";
@@ -300,7 +332,7 @@ export function createSliderControl({
       markerEnd.style.left = `${rangeEnd * 100}%`;
     };
 
-    const updateRangeFromPointer = (clientX, markerType) => {
+    const updateRangeFromPointer = (clientX: number, markerType: string) => {
       const rect = shell.getBoundingClientRect();
       if (!rect.width) {
         return;
@@ -315,12 +347,12 @@ export function createSliderControl({
       onMacroRangeChange?.(rangeStart, rangeEnd);
     };
 
-    const bindMacroMarkerDrag = (marker, markerType) => {
+    const bindMacroMarkerDrag = (marker: HTMLElement, markerType: string) => {
       marker.addEventListener("pointerdown", (event) => {
         event.preventDefault();
         event.stopPropagation();
 
-        const onMove = (moveEvent) => {
+        const onMove = (moveEvent: PointerEvent) => {
           updateRangeFromPointer(moveEvent.clientX, markerType);
         };
 
@@ -350,76 +382,63 @@ export function createSliderControl({
   if (modulation) {
     shell.classList.add("slider-shell--mod-range");
 
-    // min 边界：bracket 和 value 独立元素，左边缘对齐
     const bracketMin = document.createElement("span");
     bracketMin.className = "mod-range-bracket mod-range-bracket--min";
     bracketMin.textContent = "[";
     const valueMin = document.createElement("span");
     valueMin.className = "mod-range-value mod-range-value--min";
 
-    // max 边界：bracket 和 value 独立元素，右边缘对齐
     const bracketMax = document.createElement("span");
     bracketMax.className = "mod-range-bracket mod-range-bracket--max";
     bracketMax.textContent = "]";
     const valueMax = document.createElement("span");
     valueMax.className = "mod-range-value mod-range-value--max";
 
-    // 悬浮显示的 ±radius 值（跟随滑块 thumb）
     const centerValueEl = document.createElement("span");
     centerValueEl.className = "mod-range-center-value";
     shell.append(centerValueEl, bracketMin, valueMin, bracketMax, valueMax);
 
-    const clamp = (next) => Math.max(min, Math.min(max, next));
-    const snap = (next) => {
+    const clamp = (next: number) => Math.max(min, Math.min(max, next));
+    const snap = (next: number) => {
       const numericStep = Number(step) || 1;
       const snapped = min + Math.round((next - min) / numericStep) * numericStep;
       return clamp(Number(snapped.toFixed(6)));
     };
-    const safeNumber = (next, fallback) => {
-      const numeric = Number(next);
-      return Number.isFinite(numeric) ? numeric : fallback;
-    };
 
-    if (modulation.radius === undefined) {
-      modulation.radius = (max - min) * 0.15;
+    if ((modulation as Record<string, unknown>).radius === undefined) {
+      (modulation as Record<string, unknown>).radius = (max - min) * 0.15;
     }
 
     paintRange = () => {
       const centerValue = linearToActual(Number(input.value));
-      const radius = modulation.radius ?? ((max - min) * 0.15);
-      const minValue = centerValue - radius;
-      const maxValue = centerValue + radius;
+      const radius = (modulation as Record<string, unknown>).radius ?? ((max - min) * 0.15);
+      const minValue = centerValue - (radius as number);
+      const maxValue = centerValue + (radius as number);
 
-      // 计算有效范围（软钳制到 [min, max]）
       const effMinValue = Math.max(min, Math.min(max, minValue));
       const effMaxValue = Math.max(min, Math.min(max, maxValue));
 
-      // 使用有效范围计算比例（0~1），对数滑块使用对数映射
       const minPct = isLogarithmic ? toLogPercent(effMinValue) : ((effMinValue - min) / (max - min));
       const maxPct = isLogarithmic ? toLogPercent(effMaxValue) : ((effMaxValue - min) / (max - min));
       const centerPct = isLogarithmic ? toLogPercent(centerValue) : ((centerValue - min) / (max - min));
 
-      // 判断调制源是否为 Envelope（单向 0~1）
-      const sourceModule = modulationManager?.getModules?.()?.find(m => m.id === modulation.sourceModuleId);
+      const sourceModule = (modulationManager as Record<string, Function> | null)?.getModules?.()?.find((m: { id: string; type: string }) => m.id === (modulation as Record<string, unknown>).sourceModuleId);
       const isEnvelopeSource = sourceModule?.type === "Envelope";
 
       if (isEnvelopeSource) {
-        // Envelope 源：只显示 center 到 max 的区间，隐藏 min 部分
         shell.style.setProperty("--range-start", `${Math.min(centerPct, maxPct) * 100}%`);
         shell.style.setProperty("--range-end", `${Math.max(centerPct, maxPct) * 100}%`);
         bracketMin.style.visibility = "hidden";
         valueMin.style.visibility = "hidden";
       } else {
-        // 普通源（Source 等双向 -1~1）：显示完整范围
         shell.style.setProperty("--range-start", `${Math.min(minPct, maxPct) * 100}%`);
         shell.style.setProperty("--range-end", `${Math.max(minPct, maxPct) * 100}%`);
         bracketMin.style.visibility = "visible";
         valueMin.style.visibility = "visible";
       }
 
-      // 边缘约束定位：0% 时左边缘对齐，100% 时右边缘对齐
       const trackWidth = shell.clientWidth || input.clientWidth;
-      const edgeLeft = (percent, element) => {
+      const edgeLeft = (percent: number, element: HTMLElement) => {
         if (!trackWidth) return `${percent * 100}%`;
         const elWidth = element.getBoundingClientRect().width;
         const constrained = percent * (1 - elWidth / trackWidth);
@@ -431,7 +450,6 @@ export function createSliderControl({
       bracketMax.style.left = edgeLeft(maxPct, bracketMax);
       valueMax.style.left = edgeLeft(maxPct, valueMax);
 
-      // 碰撞检测：基于实际渲染边界（仅对非 Envelope 源生效）
       if (!isEnvelopeSource) {
         const minRect = bracketMin.getBoundingClientRect();
         const maxRect = bracketMax.getBoundingClientRect();
@@ -444,55 +462,55 @@ export function createSliderControl({
           valueMax.textContent = effMaxValue.toFixed(2);
         }
       } else {
-        // Envelope 源时只显示 max value
         valueMax.textContent = effMaxValue.toFixed(2);
       }
 
-      // 更新悬浮 radius 值，位置跟随滑块 thumb
       const radiusStr = isEnvelopeSource
-        ? `+${Math.abs(radius).toFixed(2)}`
-        : radius >= 0 ? `±${Math.abs(radius).toFixed(2)}` : `${radius.toFixed(2)}`;
+        ? `+${Math.abs(radius as number).toFixed(2)}`
+        : (radius as number) >= 0 ? `±${Math.abs(radius as number).toFixed(2)}` : `${(radius as number).toFixed(2)}`;
       centerValueEl.textContent = radiusStr;
       const sliderPercent = isLogarithmic ? toLogPercent(centerValue) : ((centerValue - min) / (max - min));
       centerValueEl.style.left = edgeLeft(sliderPercent, centerValueEl);
-
     };
 
     const commitRange = () => {
-      onPresetChange?.("custom");
+      onPresetChange?.();
     };
 
-    const bindMarkerDrag = (bracket) => {
+    const bindMarkerDrag = (bracket: HTMLElement) => {
       bracket.addEventListener("pointerdown", (event) => {
         event.preventDefault();
         event.stopPropagation();
         const isMinBracket = bracket.classList.contains("mod-range-bracket--min");
-        const updateFromPointer = (clientX) => {
+        const updateFromPointer = (clientX: number) => {
           const rect = shell.getBoundingClientRect();
           if (!rect.width) {
             return;
           }
 
-          // 像素位置 → 参数域绝对值（硬边界限制在 [min, max]）
           const bracketPercent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
           const valueAtBracket = isLogarithmic
             ? fromLogPercent(bracketPercent)
             : Math.max(min, Math.min(max, min + (max - min) * bracketPercent));
           const centerValue = linearToActual(Number(input.value));
 
-          // 根据 bracket 类型计算有符号的 radius
-          // min bracket：radius = centerValue - valueAtBracket（向右拉为正，向左拉为负）
-          // max bracket：radius = valueAtBracket - centerValue（向右拉为正，向左拉为负）
           if (isMinBracket) {
-            modulation.radius = centerValue - valueAtBracket;
+            (modulation as Record<string, unknown>).radius = centerValue - valueAtBracket;
           } else {
-            modulation.radius = valueAtBracket - centerValue;
+            (modulation as Record<string, unknown>).radius = valueAtBracket - centerValue;
           }
-          paintRange();
+          paintRange!();
 
-          modulationManager?.updateModulationRange(modulation.id, centerValue, modulation.radius, undefined, min, max);
+          (modulationManager as Record<string, Function> | null)?.updateModulationRange?.(
+            (modulation as Record<string, unknown>).id,
+            centerValue,
+            (modulation as Record<string, unknown>).radius,
+            undefined,
+            min,
+            max
+          );
         };
-        const onMove = (moveEvent) => {
+        const onMove = (moveEvent: PointerEvent) => {
           updateFromPointer(moveEvent.clientX);
         };
         const onUp = () => {
@@ -509,47 +527,51 @@ export function createSliderControl({
     bindMarkerDrag(bracketMin);
     bindMarkerDrag(bracketMax);
 
-    // 双击悬浮 ± 值直接编辑 radius
     centerValueEl.addEventListener("dblclick", () => {
-      if (centerValueEl.parentNode.querySelector(".mod-range-center-value + .readout-input")) {
+      if (centerValueEl.parentNode!.querySelector(".mod-range-center-value + .readout-input")) {
         return;
       }
 
-    createInlineInput(
-      centerValueEl,
-      {
-        type: "number",
-        step,
-        value: (modulation.radius ?? ((max - min) * 0.15)).toFixed(2),
-        style: {
-          position: "absolute",
-          left: centerValueEl.style.left || "0%",
-          top: "-10px",
-          zIndex: "3",
+      createInlineInput(
+        centerValueEl,
+        {
+          type: "number",
+          step,
+          value: ((modulation as Record<string, unknown>).radius ?? ((max - min) * 0.15)).toFixed(2),
+          style: {
+            position: "absolute",
+            left: centerValueEl.style.left || "0%",
+            top: "-10px",
+            zIndex: "3",
+          },
         },
-      },
-      (value, cleanup) => {
-        let newRadius = Number(value);
-        if (Number.isNaN(newRadius)) {
-          newRadius = modulation.radius ?? ((max - min) * 0.15);
-        }
-        // 自动 clamp：确保 centerValue ± radius 在 [min, max] 范围内
-        const centerValue = Number(input.value);
-        const maxRadius = Math.min(centerValue - min, max - centerValue);
-        newRadius = Math.max(-maxRadius, Math.min(maxRadius, newRadius));
-        modulation.radius = newRadius;
-        cleanup(); // 先恢复显示
-        paintRange(); // 再计算正确位置（此时元素可见）
-        modulationManager?.updateModulationRange(modulation.id, Number(input.value), modulation.radius, undefined, min, max);
-        commitRange();
-      },
-      () => {}
-    );
+        (value, cleanup) => {
+          let newRadius = Number(value);
+          if (Number.isNaN(newRadius)) {
+            newRadius = (modulation as Record<string, unknown>).radius as number ?? ((max - min) * 0.15);
+          }
+          const centerValue = Number(input.value);
+          const maxRadius = Math.min(centerValue - min, max - centerValue);
+          newRadius = Math.max(-maxRadius, Math.min(maxRadius, newRadius));
+          (modulation as Record<string, unknown>).radius = newRadius;
+          cleanup();
+          paintRange!();
+          (modulationManager as Record<string, Function> | null)?.updateModulationRange?.(
+            (modulation as Record<string, unknown>).id,
+            Number(input.value),
+            (modulation as Record<string, unknown>).radius,
+            undefined,
+            min,
+            max
+          );
+          commitRange();
+        },
+        () => {}
+      );
     });
 
-    // 使用 ResizeObserver 监听所有标记元素的尺寸变化，确保位置始终正确
     const resizeObserver = new ResizeObserver(() => {
-      paintRange();
+      paintRange!();
     });
     resizeObserver.observe(bracketMin);
     resizeObserver.observe(valueMin);

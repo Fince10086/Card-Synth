@@ -1,17 +1,66 @@
-import { clamp, noteFromOffset } from "../utils/helpers.js";
-import { KEY_MAP } from "../core/keyboard.js";
+/**
+ * Input manager - handles keyboard and MIDI input
+ */
+
+import { clamp, noteFromOffset } from "../utils/helpers";
+import { KEY_MAP } from "../core/keyboard";
 import * as Tone from "tone";
+import type { GlobalState } from "../types";
+
+export interface InputManagerOptions {
+  onAttack?: (note: string, velocity: number) => void;
+  onRelease?: (note: string) => void;
+  onEnsureAudioStarted?: () => Promise<void>;
+  onOctaveChange?: (octave: number) => void;
+  onVelocityChange?: (velocity: number) => void;
+  onUpdateKeyboardKeyState?: (key: string, active: boolean) => void;
+  onRenderMainCardContent?: () => void;
+  getGlobalState?: () => GlobalState;
+  getKeyboardElement?: () => HTMLElement | null;
+  getTransportInfoElement?: () => HTMLElement | null;
+  onSetCustomPreset?: () => void;
+}
+
+interface MidiState {
+  supported: boolean;
+  access: MIDIAccess | null;
+  inputs: MIDIInput[];
+  selectedInputId: string;
+  status: string;
+  activeNotes: Map<number, string>;
+}
 
 export class InputManager {
-  constructor(options = {}) {
+  onAttack: (note: string, velocity: number) => void;
+  onRelease: (note: string) => void;
+  onEnsureAudioStarted: () => Promise<void>;
+  onOctaveChange: (octave: number) => void;
+  onVelocityChange: (velocity: number) => void;
+  onUpdateKeyboardKeyState: (key: string, active: boolean) => void;
+  onRenderMainCardContent: () => void;
+  getGlobalState: () => GlobalState;
+  getKeyboardElement: () => HTMLElement | null;
+  getTransportInfoElement: () => HTMLElement | null;
+  onSetCustomPreset: () => void;
+
+  heldComputerKeys: Map<string, string | null>;
+  activeNoteRefs: Map<string, number>;
+  midi: MidiState;
+
+  boundOnKeyDown: (event: KeyboardEvent) => void;
+  boundOnKeyUp: (event: KeyboardEvent) => void;
+  boundOnBlur: () => void;
+  boundOnVisibilityChange: () => void;
+
+  constructor(options: InputManagerOptions = {}) {
     this.onAttack = options.onAttack || (() => {});
     this.onRelease = options.onRelease || (() => {});
-    this.onEnsureAudioStarted = options.onEnsureAudioStarted || (() => {});
+    this.onEnsureAudioStarted = options.onEnsureAudioStarted || (async () => {});
     this.onOctaveChange = options.onOctaveChange || (() => {});
     this.onVelocityChange = options.onVelocityChange || (() => {});
     this.onUpdateKeyboardKeyState = options.onUpdateKeyboardKeyState || (() => {});
     this.onRenderMainCardContent = options.onRenderMainCardContent || (() => {});
-    this.getGlobalState = options.getGlobalState || (() => ({ octave: 4, velocity: 0.8 }));
+    this.getGlobalState = options.getGlobalState || (() => ({ octave: 4, velocity: 0.8 } as GlobalState));
     this.getKeyboardElement = options.getKeyboardElement || (() => null);
     this.getTransportInfoElement = options.getTransportInfoElement || (() => null);
     this.onSetCustomPreset = options.onSetCustomPreset || (() => {});
@@ -36,37 +85,37 @@ export class InputManager {
     };
   }
 
-  bindEvents() {
+  bindEvents(): void {
     window.addEventListener("keydown", this.boundOnKeyDown);
     window.addEventListener("keyup", this.boundOnKeyUp);
     window.addEventListener("blur", this.boundOnBlur);
     document.addEventListener("visibilitychange", this.boundOnVisibilityChange);
   }
 
-  unbindEvents() {
+  unbindEvents(): void {
     window.removeEventListener("keydown", this.boundOnKeyDown);
     window.removeEventListener("keyup", this.boundOnKeyUp);
     window.removeEventListener("blur", this.boundOnBlur);
     document.removeEventListener("visibilitychange", this.boundOnVisibilityChange);
   }
 
-  getMidiStatus() {
+  getMidiStatus(): string {
     return this.midi.status;
   }
 
-  getMidiSupported() {
+  getMidiSupported(): boolean {
     return this.midi.supported;
   }
 
-  getMidiInputs() {
+  getMidiInputs(): MIDIInput[] {
     return this.midi.inputs;
   }
 
-  getMidiSelectedInputId() {
+  getMidiSelectedInputId(): string {
     return this.midi.selectedInputId;
   }
 
-  async requestMidiAccess() {
+  async requestMidiAccess(): Promise<void> {
     if (!this.midi.supported) {
       this.midi.status = "Web MIDI unsupported";
       this.onRenderMainCardContent();
@@ -78,7 +127,7 @@ export class InputManager {
         this.midi.access = await navigator.requestMIDIAccess();
         this.midi.access.onstatechange = () => this.handleMidiStateChange();
       }
-    } catch (error) {
+    } catch (_error) {
       this.midi.status = "MIDI access denied";
       this.onRenderMainCardContent();
       return;
@@ -98,7 +147,8 @@ export class InputManager {
     this.selectMidiInput(this.midi.selectedInputId, false);
   }
 
-  handleMidiStateChange() {
+  handleMidiStateChange(): void {
+    if (!this.midi.access) return;
     this.midi.inputs = Array.from(this.midi.access.inputs.values());
     if (!this.midi.inputs.length) {
       this.midi.selectedInputId = "";
@@ -114,7 +164,7 @@ export class InputManager {
     this.selectMidiInput(this.midi.selectedInputId);
   }
 
-  selectMidiInput(inputId, rerender = true) {
+  selectMidiInput(inputId: string, rerender = true): void {
     this.midi.selectedInputId = inputId;
     this.midi.inputs.forEach((input) => {
       input.onmidimessage = input.id === inputId ? (event) => this.handleMidiMessage(event) : null;
@@ -127,7 +177,7 @@ export class InputManager {
     }
   }
 
-  closeMidi() {
+  closeMidi(): void {
     this.releaseAllNotes();
     this.midi.inputs.forEach((input) => {
       input.onmidimessage = null;
@@ -142,7 +192,7 @@ export class InputManager {
     this.onRenderMainCardContent();
   }
 
-  async handleMidiMessage(event) {
+  async handleMidiMessage(event: MIDIMessageEvent): Promise<void> {
     const [status, data1, data2] = event.data;
     const command = status & 0xf0;
     const note = Tone.Frequency(data1, "midi").toNote();
@@ -161,7 +211,7 @@ export class InputManager {
     }
   }
 
-  updateTransportInfo() {
+  updateTransportInfo(): void {
     const transportInfo = this.getTransportInfoElement();
     const global = this.getGlobalState();
     if (transportInfo) {
@@ -169,7 +219,7 @@ export class InputManager {
     }
   }
 
-  async onKeyDown(event) {
+  async onKeyDown(event: KeyboardEvent): Promise<void> {
     if (event.repeat) {
       return;
     }
@@ -177,7 +227,7 @@ export class InputManager {
     const key = event.key.toLowerCase();
     const global = this.getGlobalState();
 
-    // 八度控制
+    // Octave control
     if (key === "z" || key === "x") {
       const delta = key === "z" ? -1 : 1;
       const newOctave = clamp(global.octave + delta, 1, 7);
@@ -191,7 +241,7 @@ export class InputManager {
       return;
     }
 
-    // 力度控制
+    // Velocity control
     if (key === "c" || key === "v") {
       const delta = key === "c" ? -0.05 : 0.05;
       const newVelocity = clamp(Number((global.velocity + delta).toFixed(2)), 0.1, 1);
@@ -201,7 +251,7 @@ export class InputManager {
       return;
     }
 
-    // 音符触发
+    // Note trigger
     const entry = KEY_MAP.get(key);
     if (!entry) {
       return;
@@ -216,7 +266,7 @@ export class InputManager {
     }
   }
 
-  onKeyUp(event) {
+  onKeyUp(event: KeyboardEvent): void {
     const key = event.key.toLowerCase();
     if (!this.heldComputerKeys.has(key)) {
       return;
@@ -231,7 +281,7 @@ export class InputManager {
     }
   }
 
-  pressNote(note, velocity) {
+  pressNote(note: string, velocity?: number): void {
     const global = this.getGlobalState();
     const actualVelocity = velocity !== undefined ? velocity : global.velocity;
     const count = this.activeNoteRefs.get(note) || 0;
@@ -241,7 +291,7 @@ export class InputManager {
     }
   }
 
-  releaseNote(note) {
+  releaseNote(note: string): void {
     const count = this.activeNoteRefs.get(note) || 0;
     if (count <= 1) {
       this.activeNoteRefs.delete(note);
@@ -251,7 +301,7 @@ export class InputManager {
     this.activeNoteRefs.set(note, count - 1);
   }
 
-  releaseAllNotes() {
+  releaseAllNotes(): void {
     this.activeNoteRefs.forEach((_, note) => {
       this.onRelease(note);
     });

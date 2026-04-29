@@ -7,7 +7,7 @@ import {
   exportCurrentPresetToFile,
   exportAllPresetToFile,
   isAllTypePreset,
-} from "../preset/preset.js";
+} from "../preset/preset";
 import {
   loadAllPresets,
   getBuiltinPresets,
@@ -19,15 +19,15 @@ import {
   getLastSelectedId,
   saveLastSelectedId,
   isBuiltinPreset,
-} from "../preset/presetLoader.js";
-import { AudioEngine } from "../audio/audio.js";
-import { InputManager } from "../input/inputManager.js";
-import { ModulationManager } from "../interactions/modulation/modulationManager.js";
-import { MacroManager } from "../interactions/macro/macroManager.js";
-import { GestureManager } from "../interactions/gesture/gestureManager.js";
-import { ModuleDragManager } from "../interactions/drag/moduleDragManager.js";
-import { ENABLED as SOURCE_MONITOR_ENABLED, SourceOutputMonitor } from "../debug/sourceOutputMonitor.js";
-import { KeyboardNavigationManager } from "../input/keyboardNavigation.js";
+} from "../preset/presetLoader";
+import { AudioEngine } from "../audio/audio";
+import { InputManager } from "../input/inputManager";
+import { ModulationManager } from "../interactions/modulation/modulationManager";
+import { MacroManager } from "../interactions/macro/macroManager";
+import { GestureManager, type GestureManagerApp } from "../interactions/gesture/gestureManager";
+import { ModuleDragManager } from "../interactions/drag/moduleDragManager";
+import { ENABLED as SOURCE_MONITOR_ENABLED, SourceOutputMonitor } from "../debug/sourceOutputMonitor";
+import { KeyboardNavigationManager } from "../input/keyboardNavigation";
 import {
   renderKeyboard,
   resizeScopeCanvas,
@@ -36,10 +36,10 @@ import {
   renderMainCard,
   renderMainCardContent,
   cacheDynamicElements as cacheDynamicElementsFn,
-} from "../ui/components/index.js";
-import { renderModuleCard } from "../ui/rendering/moduleRenderer.js";
-import { layoutModuleMasonry } from "../ui/layout/masonryLayout.js";
-import { createSelectControl } from "../ui/controls/index.js";
+} from "../ui/components";
+import { renderModuleCard } from "../ui/rendering/moduleRenderer";
+import { layoutModuleMasonry } from "../ui/layout/masonryLayout";
+import { createSelectControl } from "../ui/controls";
 import {
   deepClone,
   getByPath,
@@ -48,12 +48,75 @@ import {
   getAddableModuleOptions,
   clamp,
   getModuleDefinition,
-} from "../utils/helpers.js";
-import { formatDb } from "../core/formatters.js";
+} from "../utils/helpers";
+import { formatDb } from "../core/formatters";
+import type {
+  Preset,
+  ChainState,
+  ModuleConfig,
+  ModulationConnection,
+  ControlBinding,
+  ModuleCategory,
+  ModuleType,
+} from "../types";
 
 const CHAIN_COUNT = 4;
 
+interface ModularSynthAppElements {
+  statusText: HTMLElement | null;
+  statusDot: HTMLElement | null;
+  signalFlow: HTMLElement | null;
+  signalFlowShell: HTMLElement | null;
+  addModuleCard: HTMLElement | null;
+  addModuleDropdown: HTMLElement | null;
+  keyboard: HTMLElement | null;
+  oscilloscope: HTMLCanvasElement | null;
+  presetFileInput: HTMLInputElement | null;
+  transportInfo: HTMLElement | null;
+  presetSelect: HTMLSelectElement | null;
+  importBtn: HTMLElement | null;
+  exportBtn: HTMLElement | null;
+  resetBtn: HTMLElement | null;
+  randomBtn: HTMLElement | null;
+  midiBtn: HTMLElement | null;
+  masterReadout: HTMLElement | null;
+  midiSelecter: HTMLElement | null;
+}
+
+interface PresetWithName extends Preset {
+  name?: string;
+}
+
 export class ModularSynthApp {
+  state: Preset;
+  selectedPresetId: string | null;
+  hasUnsavedChanges: boolean;
+  audioBooted: boolean;
+
+  heldPointerNotes: Set<string>;
+  keyboardResizeObserver: ResizeObserver | null;
+  _keyboardLastWidth: number;
+
+  controlBindings: Map<string, ControlBinding>;
+
+  scopeMode: "scope" | "spectrum";
+
+  macroManager: MacroManager;
+  gestureManager: GestureManager;
+  modulationManager: ModulationManager;
+  dragManager: ModuleDragManager;
+  keyboardNavigation: KeyboardNavigationManager;
+  engine: AudioEngine;
+
+  inputManager: InputManager;
+
+  elements: ModularSynthAppElements;
+  scopeContext: CanvasRenderingContext2D | null;
+
+  sourceMonitor: SourceOutputMonitor | undefined;
+
+  selectedChainIndex: number;
+
   constructor() {
     this.state = createBasePreset();
     this.ensureChainsState();
@@ -69,16 +132,16 @@ export class ModularSynthApp {
 
     this.scopeMode = "scope";
 
-    this.macroManager = new MacroManager(this);
-    this.gestureManager = new GestureManager(this);
+    this.macroManager = new MacroManager(this as unknown as any);
+    this.gestureManager = new GestureManager(this as unknown as GestureManagerApp);
     this.modulationManager = new ModulationManager(this);
-    this.dragManager = new ModuleDragManager(this);
+    this.dragManager = new ModuleDragManager(this as unknown as Record<string, unknown>);
     this.keyboardNavigation = new KeyboardNavigationManager();
-    this.engine = new AudioEngine(this);
+    this.engine = new AudioEngine(this as unknown as Record<string, unknown>);
 
     this.inputManager = new InputManager({
-      onAttack: (note, velocity) => this.engine.attack(note, velocity),
-      onRelease: (note) => this.engine.release(note),
+      onAttack: (note, velocity) => this.engine.attack(note as unknown as number, velocity),
+      onRelease: (note) => this.engine.release(note as unknown as number),
       onEnsureAudioStarted: () => this.ensureAudioStarted(),
       onOctaveChange: (octave) => {
         this.state.global.octave = octave;
@@ -107,34 +170,33 @@ export class ModularSynthApp {
       this.macroManager.renderMacroOverlay();
     });
 
-    // Debug: 启动 Source 输出监控（如已启用）
     if (SOURCE_MONITOR_ENABLED) {
-      this.sourceMonitor = new SourceOutputMonitor(this);
+      this.sourceMonitor = new SourceOutputMonitor(this as unknown as Record<string, unknown>);
       this.sourceMonitor.start();
     }
   }
 
-  ensureChainsState() {
+  ensureChainsState(): void {
     this.state = normalizePreset(this.state);
     this.selectedChainIndex = clamp(Number(this.state.selectedChainIndex ?? 0), 0, CHAIN_COUNT - 1);
     this.state.selectedChainIndex = this.selectedChainIndex;
   }
 
-  getChainCount() {
+  getChainCount(): number {
     return CHAIN_COUNT;
   }
 
-  getSelectedChainIndex() {
+  getSelectedChainIndex(): number {
     return this.selectedChainIndex;
   }
 
-  setSelectedChainIndex(index) {
+  setSelectedChainIndex(index: number): void {
     this.selectedChainIndex = clamp(Number(index || 0), 0, CHAIN_COUNT - 1);
     this.state.selectedChainIndex = this.selectedChainIndex;
-    this.engine?.refreshCurrentRuntimeAlias?.();
+    this.engine.refreshCurrentRuntimeAlias();
   }
 
-  getChain(chainIndex = this.selectedChainIndex) {
+  getChain(chainIndex = this.selectedChainIndex): ChainState {
     const index = clamp(Number(chainIndex || 0), 0, CHAIN_COUNT - 1);
     if (!Array.isArray(this.state.chains)) {
       this.state.chains = [];
@@ -153,32 +215,32 @@ export class ModularSynthApp {
     return chain;
   }
 
-  getCurrentChain() {
+  getCurrentChain(): ChainState {
     return this.getChain(this.selectedChainIndex);
   }
 
-  getCurrentModules() {
+  getCurrentModules(): ModuleConfig[] {
     return this.getCurrentChain().modules;
   }
 
-  getCurrentModulations() {
+  getCurrentModulations(): ModulationConnection[] {
     return this.getCurrentChain().modulations;
   }
 
-  setCurrentModulations(nextModulations) {
+  setCurrentModulations(nextModulations: ModulationConnection[]): void {
     this.getCurrentChain().modulations = Array.isArray(nextModulations) ? nextModulations : [];
   }
 
-  isChainEnabled(chainIndex) {
+  isChainEnabled(chainIndex: number): boolean {
     return Boolean(this.getChain(chainIndex).enabled);
   }
 
-  setChainEnabled(chainIndex, enabled) {
+  setChainEnabled(chainIndex: number, enabled: boolean): void {
     const chain = this.getChain(chainIndex);
     chain.enabled = Boolean(enabled);
   }
 
-  cacheElements() {
+  cacheElements(): void {
     this.elements = {
       statusText: document.getElementById("statusText"),
       statusDot: document.getElementById("statusDot"),
@@ -187,10 +249,10 @@ export class ModularSynthApp {
       addModuleCard: document.getElementById("addModuleCard"),
       addModuleDropdown: document.getElementById("addModuleDropdown"),
       keyboard: document.getElementById("virtualKeyboard"),
-      oscilloscope: document.getElementById("oscilloscope"),
-      presetFileInput: document.getElementById("presetFileInput"),
+      oscilloscope: document.getElementById("oscilloscope") as HTMLCanvasElement | null,
+      presetFileInput: document.getElementById("presetFileInput") as HTMLInputElement | null,
       transportInfo: document.getElementById("transportInfo"),
-      presetSelect: document.getElementById("presetSelect"),
+      presetSelect: document.getElementById("presetSelect") as HTMLSelectElement | null,
       importBtn: document.getElementById("importBtn"),
       exportBtn: document.getElementById("exportBtn"),
       resetBtn: document.getElementById("resetBtn"),
@@ -202,7 +264,7 @@ export class ModularSynthApp {
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
   }
 
-  bindEvents() {
+  bindEvents(): void {
     const wakeAudio = () => {
       this.ensureAudioStarted();
     };
@@ -215,19 +277,19 @@ export class ModularSynthApp {
 
     this.populateAddModuleDropdown();
     this.elements.addModuleCard?.addEventListener("click", (e) => {
-      if (e.target.closest(".add-module-dropdown-item")) {
+      if (e.target instanceof Element && e.target.closest(".add-module-dropdown-item")) {
         return;
       }
       this.toggleAddModuleDropdown();
     });
     document.addEventListener("click", (e) => {
-      if (!e.target.closest(".add-module-card")) {
+      if (e.target instanceof Element && !e.target.closest(".add-module-card")) {
         this.hideAddModuleDropdown();
       }
     });
 
     this.elements.presetFileInput?.addEventListener("change", async (event) => {
-      const file = event.target.files?.[0];
+      const file = (event.target as HTMLInputElement).files?.[0];
       if (!file) {
         return;
       }
@@ -241,8 +303,8 @@ export class ModularSynthApp {
           this.setSelectedChainIndex(this.state.selectedChainIndex ?? 0);
         } else {
           const chain = this.getCurrentChain();
-          chain.modules = imported.chain.modules;
-          chain.modulations = imported.chain.modulations;
+          chain.modules = imported.chain.modules as unknown as ModuleConfig[];
+          chain.modulations = imported.chain.modulations as unknown as ModulationConnection[];
 
           this.macroManager.ensureMacroState();
           this.state.macro.chains[this.getSelectedChainIndex()] = imported.chain.macro || createDefaultMacroChainState();
@@ -263,10 +325,10 @@ export class ModularSynthApp {
             : `Imported current chain from ${file.name}.`,
           "live",
         );
-      } catch (error) {
-        this.setStatus(`Import failed: ${error.message}`, "error");
+      } catch (error: unknown) {
+        this.setStatus(`Import failed: ${error instanceof Error ? error.message : String(error)}`, "error");
       } finally {
-        event.target.value = "";
+        (event.target as HTMLInputElement).value = "";
       }
     });
 
@@ -274,7 +336,7 @@ export class ModularSynthApp {
     this.macroManager.bindEvents();
   }
 
-  setStatus(message, tone = "neutral") {
+  setStatus(message: string, tone = "neutral"): void {
     if (this.elements.statusText) {
       this.elements.statusText.textContent = message;
     }
@@ -289,7 +351,7 @@ export class ModularSynthApp {
     }
   }
 
-  async ensureAudioStarted() {
+  async ensureAudioStarted(): Promise<void> {
     if (this.audioBooted) {
       return;
     }
@@ -297,12 +359,12 @@ export class ModularSynthApp {
       await this.engine.start(this.state);
       this.audioBooted = true;
       this.setStatus("Audio ready.", "live");
-    } catch (error) {
-      this.setStatus(`Audio failed: ${error.message}`, "error");
+    } catch (error: unknown) {
+      this.setStatus(`Audio failed: ${error instanceof Error ? error.message : String(error)}`, "error");
     }
   }
 
-  populateAddModuleDropdown() {
+  populateAddModuleDropdown(): void {
     const dropdown = this.elements.addModuleDropdown;
     if (!dropdown) {
       return;
@@ -312,7 +374,7 @@ export class ModularSynthApp {
 
     const options = getAddableModuleOptions();
 
-    const groups = {
+    const groups: Record<string, { title: string; items: ReturnType<typeof getAddableModuleOptions> }> = {
       input: { title: "输入", items: [] },
       source: { title: "声源", items: [] },
       component: { title: "包络", items: [] },
@@ -356,7 +418,7 @@ export class ModularSynthApp {
     });
   }
 
-  toggleAddModuleDropdown() {
+  toggleAddModuleDropdown(): void {
     const dropdown = this.elements.addModuleDropdown;
     const card = this.elements.addModuleCard;
     if (!dropdown || !card) {
@@ -373,7 +435,7 @@ export class ModularSynthApp {
     }
   }
 
-  positionDropdown(dropdown, anchor) {
+  positionDropdown(dropdown: HTMLElement, anchor: HTMLElement): void {
     const rect = anchor.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const viewportWidth = window.innerWidth;
@@ -387,7 +449,7 @@ export class ModularSynthApp {
     dropdown.style.bottom = "";
     dropdown.classList.remove("above");
 
-    let top;
+    let top: number;
     const spaceBelow = viewportHeight - rect.bottom - gap;
     const spaceAbove = rect.top - gap;
 
@@ -411,7 +473,7 @@ export class ModularSynthApp {
     dropdown.style.width = `${Math.max(rect.width, dropdownWidth)}px`;
   }
 
-  hideAddModuleDropdown() {
+  hideAddModuleDropdown(): void {
     const dropdown = this.elements.addModuleDropdown;
     const card = this.elements.addModuleCard;
     if (dropdown) {
@@ -423,26 +485,26 @@ export class ModularSynthApp {
     }
   }
 
-  handleAddModule(value) {
+  handleAddModule(value: string): void {
     if (!value) {
       return;
     }
 
     const [category, type] = value.split(":");
-    const newModule = createModule(category, type);
+    const newModule = createModule(category as ModuleCategory, type as ModuleType);
     this.getCurrentModules().push(newModule);
     this.markUnsaved();
     this.renderAll();
     this.engine.fullSync(this.state);
   }
 
-  renderAll(previousState = null) {
+  renderAll(previousState: Preset | null = null): void {
     this.keyboardNavigation.saveFocusState();
     this.populateAddModuleDropdown();
     this.controlBindings = new Map();
     this.macroManager.applyAllMappings();
 
-    const sections = [
+    const sections: [string, () => void][] = [
       ["main-card content", () => this.updateMainCardContent()],
       ["modules", () => this.renderModulesRack()],
       ["keyboard", () => this.renderKeyboard()],
@@ -452,9 +514,9 @@ export class ModularSynthApp {
     for (const [label, task] of sections) {
       try {
         task();
-      } catch (error) {
+      } catch (error: unknown) {
         console.error(`Render error in ${label}:`, error);
-        this.setStatus(`Render error in ${label}: ${error.message}`, "error");
+        this.setStatus(`Render error in ${label}: ${error instanceof Error ? error.message : String(error)}`, "error");
       }
     }
 
@@ -482,7 +544,7 @@ export class ModularSynthApp {
     this.keyboardNavigation.restoreFocusState(this.elements.signalFlow);
   }
 
-  layoutModuleMasonry() {
+  layoutModuleMasonry(): void {
     const container = this.elements.signalFlow;
     if (!container) {
       return;
@@ -491,10 +553,10 @@ export class ModularSynthApp {
     const addCard = container.querySelector(".add-module-card");
     const mainCard = container.querySelector('.module-card[data-main-card="true"]');
 
-    layoutModuleMasonry({ container, modules: this.getCurrentModules(), addCard, mainCard });
+    layoutModuleMasonry({ container, modules: this.getCurrentModules(), addCard: addCard as HTMLElement | null, mainCard: mainCard as HTMLElement | null });
   }
 
-  updateMainCardContent() {
+  updateMainCardContent(): void {
     renderMainCardContent({
       updatePresetSelect: () => this.updatePresetSelect(),
       updateMasterReadout: (value) => this.updateMasterReadout(value),
@@ -503,19 +565,19 @@ export class ModularSynthApp {
     });
   }
 
-  updatePresetSelect() {
+  updatePresetSelect(): void {
     if (this.elements.presetSelect) {
-      this.elements.presetSelect.value = this.selectedPresetId;
+      this.elements.presetSelect.value = this.selectedPresetId ?? "";
     }
   }
 
-  updateMasterReadout(value) {
+  updateMasterReadout(value: number): void {
     if (this.elements.masterReadout) {
       this.elements.masterReadout.textContent = formatDb(value);
     }
   }
 
-  updateMidiStatus() {
+  updateMidiStatus(): void {
     const container = this.elements.midiSelecter;
     if (!container) return;
 
@@ -546,14 +608,14 @@ export class ModularSynthApp {
     selectControl.classList.add("midi-selecter-control");
     const selectEl = selectControl.querySelector(".select-input");
     if (!supported || inputs.length === 0) {
-      selectEl.disabled = true;
+      (selectEl as HTMLSelectElement).disabled = true;
     }
 
     container.innerHTML = "";
     container.appendChild(selectControl);
   }
 
-  renderModulesRack() {
+  renderModulesRack(): void {
     const container = this.elements.signalFlow;
     if (!container) {
       return;
@@ -562,118 +624,114 @@ export class ModularSynthApp {
     const addCard = container.querySelector(".add-module-card");
     const existingMainCard = container.querySelector('.module-card[data-main-card="true"]');
 
-    // 删除所有普通模块卡（保留主卡和添加卡）
     const oldModuleCards = container.querySelectorAll('.module-card:not([data-main-card="true"])');
     oldModuleCards.forEach((card) => card.remove());
 
-    // 主卡包含动态内容（preset select、删除按钮等），每次重建以确保状态正确
     if (existingMainCard) {
       existingMainCard.remove();
     }
 
-    // 创建主卡
-      const mainCardOptions = {
-        selectedPresetId: this.selectedPresetId,
-        hasUnsavedChanges: this.hasUnsavedChanges,
-        builtinPresets: getBuiltinPresets(),
-        userPresets: getUserPresets(),
-        state: this.state,
-        selectedChainIndex: this.getSelectedChainIndex(),
-        chains: this.state.chains,
-        macro: this.macroManager.getMainCardViewModel(),
-        audioBooted: this.audioBooted,
-        onPresetChange: (value) => this.applyPresetById(value),
-        onChainIndexClick: (chainIndex, isSelected) => {
-          if (!isSelected) {
-            this.setSelectedChainIndex(chainIndex);
-            this.renderAll();
-            return;
-          }
-
-          this.setChainEnabled(chainIndex, !this.isChainEnabled(chainIndex));
-          this.markUnsaved();
+    const mainCardOptions = {
+      selectedPresetId: this.selectedPresetId,
+      hasUnsavedChanges: this.hasUnsavedChanges,
+      builtinPresets: getBuiltinPresets(),
+      userPresets: getUserPresets(),
+      state: this.state,
+      selectedChainIndex: this.getSelectedChainIndex(),
+      chains: this.state.chains,
+      macro: this.macroManager.getMainCardViewModel(),
+      audioBooted: this.audioBooted,
+      onPresetChange: (value: string) => this.applyPresetById(value),
+      onChainIndexClick: (chainIndex: number, isSelected: boolean) => {
+        if (!isSelected) {
+          this.setSelectedChainIndex(chainIndex);
           this.renderAll();
-          this.engine.fullSync(this.state);
-        },
-        onImportClick: () => this.elements.presetFileInput?.click(),
-        onExportCurrentClick: () => {
-          const currentPreset = getPresetById(this.selectedPresetId);
-          const presetName = currentPreset?.name || this.selectedPresetId || "preset";
-          const filename = exportCurrentPresetToFile(this.state, this.getSelectedChainIndex(), presetName);
-          this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
-        },
-        onExportAllClick: () => {
-          const currentPreset = getPresetById(this.selectedPresetId);
-          const presetName = currentPreset?.name || this.selectedPresetId || "preset";
-          const filename = exportAllPresetToFile(this.state, presetName);
-          this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
-        },
-        onResetClick: () => {
+          return;
+        }
+
+        this.setChainEnabled(chainIndex, !this.isChainEnabled(chainIndex));
+        this.markUnsaved();
+        this.renderAll();
+        this.engine.fullSync(this.state);
+      },
+      onImportClick: () => this.elements.presetFileInput?.click(),
+      onExportCurrentClick: () => {
+        const currentPreset = getPresetById(this.selectedPresetId) as PresetWithName | null;
+        const presetName = currentPreset?.name || this.selectedPresetId || "preset";
+        const filename = exportCurrentPresetToFile(this.state, this.getSelectedChainIndex(), presetName);
+        this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
+      },
+      onExportAllClick: () => {
+        const currentPreset = getPresetById(this.selectedPresetId) as PresetWithName | null;
+        const presetName = currentPreset?.name || this.selectedPresetId || "preset";
+        const filename = exportAllPresetToFile(this.state, presetName);
+        this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
+      },
+      onResetClick: () => {
+        const builtins = getBuiltinPresets();
+        const firstId = Object.keys(builtins)[0];
+        if (firstId) this.applyPresetById(firstId);
+      },
+      onRandomClick: () => this.randomizeCurrentPatch(),
+      onMidiClick: () => {
+        if (this.inputManager.getMidiInputs().length > 0) {
+          this.inputManager.closeMidi();
+        } else {
+          this.inputManager.requestMidiAccess();
+        }
+      },
+      onMasterVolumeChange: (value: number) => {
+        this.state.global.volume = value;
+        this.markUnsaved();
+        this.engine.updateGlobal(this.state.global);
+      },
+      onVelocityEnabledChange: (value: boolean) => {
+        this.state.global.velocityEnabled = value;
+        this.markUnsaved();
+        this.engine.updateGlobal(this.state.global);
+      },
+      onPolyVoiceChange: (value: number) => {
+        this.state.global.polyVoice = clamp(Number(value), 2, 8);
+        this.markUnsaved();
+        this.engine.updateGlobal(this.state.global);
+      },
+      onMacroPointPointerDown: (event: PointerEvent, chainIndex: number, padElement: HTMLElement) => {
+        this.macroManager.startPointDrag({ event, chainIndex, padElement });
+      },
+      onMacroAxisPointerDown: (event: PointerEvent, axis: string) => {
+        this.macroManager.startAxisBindingDrag({
+          event,
+          axis: axis as "x" | "y" | "z",
+          chainIndex: this.getSelectedChainIndex(),
+        });
+      },
+      onGestureClick: () => {
+        this.gestureManager.activate();
+      },
+      onDeleteUserPreset: (id: string) => {
+        removeUserPreset(id);
+        if (this.selectedPresetId === id) {
           const builtins = getBuiltinPresets();
           const firstId = Object.keys(builtins)[0];
           if (firstId) this.applyPresetById(firstId);
-        },
-        onRandomClick: () => this.randomizeCurrentPatch(),
-        onMidiClick: () => {
-          if (this.inputManager.getMidiInputs().length > 0) {
-            this.inputManager.closeMidi();
-          } else {
-            this.inputManager.requestMidiAccess();
-          }
-        },
-        onMasterVolumeChange: (value) => {
-          this.state.global.volume = value;
-          this.markUnsaved();
-          this.engine.updateGlobal(this.state.global);
-        },
-        onVelocityEnabledChange: (value) => {
-          this.state.global.velocityEnabled = value;
-          this.markUnsaved();
-          this.engine.updateGlobal(this.state.global);
-        },
-        onPolyVoiceChange: (value) => {
-          this.state.global.polyVoice = clamp(Number(value), 2, 8);
-          this.markUnsaved();
-          this.engine.updateGlobal(this.state.global);
-        },
-        onMacroPointPointerDown: (event, chainIndex, padElement) => {
-          this.macroManager.startPointDrag({ event, chainIndex, padElement });
-        },
-        onMacroAxisPointerDown: (event, axis) => {
-          this.macroManager.startAxisBindingDrag({
-            event,
-            axis,
-            chainIndex: this.getSelectedChainIndex(),
-          });
-        },
-        onGestureClick: () => {
-          this.gestureManager.activate();
-        },
-        onDeleteUserPreset: (id) => {
-          removeUserPreset(id);
-          if (this.selectedPresetId === id) {
-            const builtins = getBuiltinPresets();
-            const firstId = Object.keys(builtins)[0];
-            if (firstId) this.applyPresetById(firstId);
-          } else {
-            this.renderAll();
-          }
-        },
-      };
-
-      const mainCard = renderMainCard(mainCardOptions);
-      if (mainCard) {
-        if (addCard) {
-          container.insertBefore(mainCard, addCard);
         } else {
-          container.appendChild(mainCard);
+          this.renderAll();
         }
-      }
+      },
+    };
 
-    // 重建普通模块
+    const mainCard = renderMainCard(mainCardOptions);
+    if (mainCard) {
+      if (addCard) {
+        container.insertBefore(mainCard, addCard);
+      } else {
+        container.appendChild(mainCard);
+      }
+    }
+
     const modules = this.getCurrentModules();
     modules.forEach((module, index) => {
-      const card = renderModuleCard(module, index, this);
+      const card = renderModuleCard(module, index, this as unknown as any);
       if (card) {
         if (addCard) {
           container.insertBefore(card, addCard);
@@ -684,13 +742,13 @@ export class ModularSynthApp {
     });
   }
 
-  renderKeyboard() {
+  renderKeyboard(): void {
     const keyboard = document.getElementById("virtualKeyboard");
     if (!keyboard) {
       return;
     }
 
-    const onOctaveChange = (octave) => {
+    const onOctaveChange = (octave: number) => {
       this.state.global.octave = octave;
       this.renderKeyboard();
       this.inputManager.updateTransportInfo();
@@ -734,7 +792,7 @@ export class ModularSynthApp {
     this.keyboardResizeObserver.observe(keyboard);
   }
 
-  resizeScopeCanvas() {
+  resizeScopeCanvas(): void {
     const canvas = this.elements.oscilloscope;
     const context = this.scopeContext;
     if (canvas && context) {
@@ -742,59 +800,59 @@ export class ModularSynthApp {
     }
   }
 
-  drawOscilloscope() {
+  drawOscilloscope(): void {
     stopScopeRendering();
     startScopeRendering({
       getCanvasFn: () => this.elements.oscilloscope,
       getContextFn: () => this.scopeContext,
-      getAnalyserFn: () => this.engine.getAnalyser(),
-      getSpectrumAnalyserFn: () => this.engine.getSpectrumAnalyser(),
+      getAnalyserFn: () => this.engine.getAnalyser() as unknown as AnalyserNode,
+      getSpectrumAnalyserFn: () => this.engine.getSpectrumAnalyser() as unknown as AnalyserNode,
       getAudioBootedFn: () => this.audioBooted,
       getModeFn: () => this.scopeMode,
     });
   }
 
-  toggleScopeMode() {
+  toggleScopeMode(): void {
     this.scopeMode = this.scopeMode === "scope" ? "spectrum" : "scope";
   }
 
-  isModulationSource(module) {
+  isModulationSource(module: ModuleConfig): boolean {
     return this.modulationManager.isModulationSource(module);
   }
 
-  getModulations() {
+  getModulations(): ModulationConnection[] {
     return this.modulationManager.getModulations();
   }
 
-  getOutgoingModulations(sourceModuleId) {
+  getOutgoingModulations(sourceModuleId: string): ModulationConnection[] {
     return this.modulationManager.getOutgoingModulations(sourceModuleId);
   }
 
-  getModulationByTarget(targetModuleId, targetParamPath) {
+  getModulationByTarget(targetModuleId: string, targetParamPath: string): ModulationConnection | undefined {
     return this.modulationManager.getModulationByTarget(targetModuleId, targetParamPath);
   }
 
-  startModulationDrag(options) {
-    this.modulationManager.startModulationDrag(options);
+  startModulationDrag(options: unknown): void {
+    this.modulationManager.startModulationDrag(options as any);
   }
 
-  removeModulationById(connectionId) {
+  removeModulationById(connectionId: string): void {
     this.modulationManager.removeModulationById(connectionId);
   }
 
-  removeOutgoingModulations(sourceModuleId) {
+  removeOutgoingModulations(sourceModuleId: string): void {
     this.modulationManager.removeOutgoingModulations(sourceModuleId);
   }
 
-  removeModuleModulations(moduleId) {
+  removeModuleModulations(moduleId: string): void {
     this.modulationManager.removeModuleModulations(moduleId);
   }
 
-  initModuleDrag(event, card, moduleIndex) {
+  initModuleDrag(event: PointerEvent, card: HTMLElement, moduleIndex: number): void {
     this.dragManager.initModuleDrag(event, card, moduleIndex);
   }
 
-  async init() {
+  async init(): Promise<void> {
     await loadAllPresets();
 
     const lastId = getLastSelectedId();
@@ -813,14 +871,14 @@ export class ModularSynthApp {
 
     const scopeEl = document.getElementById("oscilloscope");
     if (scopeEl) {
-      this.elements.oscilloscope = scopeEl;
-      this.scopeContext = scopeEl.getContext("2d") || null;
+      this.elements.oscilloscope = scopeEl as HTMLCanvasElement;
+      this.scopeContext = (scopeEl as HTMLCanvasElement).getContext("2d") || null;
     }
     this.resizeScopeCanvas();
     this.drawOscilloscope();
   }
 
-  applyPresetById(presetId, shouldRender = true) {
+  applyPresetById(presetId: string, shouldRender = true): void {
     const preset = getPresetById(presetId);
     if (!preset) {
       return;
@@ -832,11 +890,11 @@ export class ModularSynthApp {
       this.state = normalizePreset(preset);
       this.setSelectedChainIndex(this.state.selectedChainIndex ?? 0);
     } else {
-      const chainPreset = normalizeCurrentPresetData(preset);
+      const chainPreset = normalizeCurrentPresetData(preset as any);
       const chain = this.getCurrentChain();
 
-      chain.modules = chainPreset.modules;
-      chain.modulations = chainPreset.modulations;
+      chain.modules = chainPreset.modules as unknown as ModuleConfig[];
+      chain.modulations = chainPreset.modulations as unknown as ModulationConnection[];
       chain.enabled = true;
       this.state.macro.chains[this.getSelectedChainIndex()] = chainPreset.macro || createDefaultMacroChainState();
     }
@@ -850,33 +908,33 @@ export class ModularSynthApp {
       this.engine.fullSync(this.state);
     }
 
-    const loadedPreset = getPresetById(presetId);
+    const loadedPreset = getPresetById(presetId) as PresetWithName | null;
     const presetName = loadedPreset?.name || presetId;
     this.setStatus(`LOADED PRESET: ${presetName}.`, this.audioBooted ? "live" : "neutral");
   }
 
-  markUnsaved() {
+  markUnsaved(): void {
     if (!this.hasUnsavedChanges) {
       this.hasUnsavedChanges = true;
       this.renderAll();
     }
   }
 
-  syncControlsFromState() {
+  syncControlsFromState(): void {
     this.controlBindings.forEach((binding, path) => {
-      const value = getByPath(this.state, path);
+      const value = getByPath(this.state as unknown as Record<string, unknown>, path);
       if (typeof value === "number" && Number.isFinite(value)) {
         binding.setVisual(value);
       }
     });
   }
 
-  animateControlTransition(fromState, toState) {
-    const animations = [];
+  animateControlTransition(fromState: Preset, toState: Preset): void {
+    const animations: Array<{ binding: ControlBinding; startValue: number; endValue: number }> = [];
 
     this.controlBindings.forEach((binding, path) => {
-      const startValue = getByPath(fromState, path);
-      const endValue = getByPath(toState, path);
+      const startValue = getByPath(fromState as unknown as Record<string, unknown>, path);
+      const endValue = getByPath(toState as unknown as Record<string, unknown>, path);
 
       if (
         typeof startValue === "number" &&
@@ -895,9 +953,9 @@ export class ModularSynthApp {
 
     const duration = 360;
     const startTime = performance.now();
-    const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+    const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
-    const frame = (now) => {
+    const frame = (now: number) => {
       const progress = clamp((now - startTime) / duration, 0, 1);
       const eased = easeOut(progress);
 
@@ -913,9 +971,9 @@ export class ModularSynthApp {
     requestAnimationFrame(frame);
   }
 
-  randomizeCurrentPatch() {
-    const randomChoice = (list) => list[Math.floor(Math.random() * list.length)];
-    const randomRange = (min, max, step = 0.01) => {
+  randomizeCurrentPatch(): void {
+    const randomChoice = <T>(list: T[]): T => list[Math.floor(Math.random() * list.length)];
+    const randomRange = (min: number, max: number, step = 0.01): number => {
       const steps = Math.round((max - min) / step);
       return min + Math.floor(Math.random() * (steps + 1)) * step;
     };
@@ -933,9 +991,9 @@ export class ModularSynthApp {
       }
       definition.controls.forEach((control) => {
         if (control.kind === "select") {
-          setByPath(module, control.path, randomChoice(control.options).value);
+          setByPath(module, control.path, randomChoice(control.options!).value);
         } else {
-          setByPath(module, control.path, randomRange(control.min, control.max, control.step));
+          setByPath(module, control.path, randomRange(control.min!, control.max!, control.step!));
         }
       });
     });
@@ -946,11 +1004,11 @@ export class ModularSynthApp {
     this.setStatus("Randomized the current patch.", this.audioBooted ? "live" : "neutral");
   }
 
-  updateKeyboardKeyState(boundKey, active) {
-    const visualKey = this.elements.keyboard.querySelector(`[data-key="${boundKey}"]`);
+  updateKeyboardKeyState(boundKey: string, active: boolean): void {
+    const visualKey = this.elements.keyboard?.querySelector(`[data-key="${boundKey}"]`);
     if (!visualKey) {
       return;
     }
-    visualKey.classList.toggle("active", active);
+    (visualKey as HTMLElement).classList.toggle("active", active);
   }
 }

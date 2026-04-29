@@ -1,9 +1,22 @@
-export function layoutModuleMasonry({ container, modules, addCard, mainCard }) {
+/**
+ * Masonry layout for module cards
+ */
+
+import type { ModuleConfig } from "../../types";
+
+export interface MasonryLayoutOptions {
+  container: HTMLElement;
+  modules: ModuleConfig[];
+  addCard: HTMLElement | null;
+  mainCard: HTMLElement | null;
+}
+
+export function layoutModuleMasonry({ container, modules, addCard, mainCard }: MasonryLayoutOptions): void {
   if (!container) {
     return;
   }
 
-  const moduleCards = [...container.querySelectorAll(".module-card")];
+  const moduleCards = [...container.querySelectorAll(".module-card")] as HTMLElement[];
   const cards = [...moduleCards];
   if (addCard) {
     cards.push(addCard);
@@ -49,7 +62,6 @@ export function layoutModuleMasonry({ container, modules, addCard, mainCard }) {
     const cardHeight = card.offsetHeight;
     const isAddCard = card === addCard;
 
-    // 没有任何模块时（仅剩 addCard），add-module-card 显示在第二列（Main 卡片右侧）
     if (isAddCard && cards.length === 1 && columnCount > 1) {
       currentColumn = 1;
       const left = currentColumn * (columnWidth + gap);
