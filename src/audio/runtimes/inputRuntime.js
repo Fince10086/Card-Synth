@@ -27,7 +27,7 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
     active: false,
   }));
 
-  // Note 状态映射：note -> { pressed, voiceIndex, stolenAt, pendingRelease }
+  // Note 状态映射：note -> { pressed, voiceIndex, stolenAt, pendingRelease, velocity }
   const noteStates = new Map();
 
   // 被 steal 的 note 队列（FIFO，按 steal 时间排序）
@@ -81,12 +81,12 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
 
   const tryRecoverStolenNote = (freedVoiceIndex) => {
     // 从 stolenQueue 中找最早被 steal、且 key 还按着的 note
-    for (let i = 0; i < stolenQueue.length; i++) {
-      const note = stolenQueue[i];
+    // 使用 shift 自动清理无效条目
+    while (stolenQueue.length > 0) {
+      const note = stolenQueue.shift();
       const state = noteStates.get(note);
       
       if (state && state.pressed) {
-        stolenQueue.splice(i, 1);
         state.voiceIndex = freedVoiceIndex;
         state.stolenAt = 0;
         
@@ -98,6 +98,7 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
         
         return note;
       }
+      // 无效的 note（已被释放或不存在）自动被丢弃
     }
     return null;
   };
@@ -153,11 +154,13 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
         voiceIndex: -1,
         stolenAt: 0,
         pendingRelease: false,
+        velocity: velocity ?? 1,
       };
       noteState.pressed = true;
       noteState.voiceIndex = voiceIndex;
       noteState.stolenAt = 0;
       noteState.pendingRelease = false;
+      noteState.velocity = velocity ?? 1;
       noteStates.set(note, noteState);
 
       return { voiceIndex, isRetrigger: false, stolenNote };
@@ -171,20 +174,21 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
 
       noteState.pressed = false;
       noteState.pendingRelease = false;
+      const originalVelocity = noteState.velocity ?? 1;
 
       // 如果已经被 steal，从 stolenQueue 移除
       if (noteState.voiceIndex === -1) {
         const idx = stolenQueue.indexOf(note);
         if (idx >= 0) stolenQueue.splice(idx, 1);
         noteStates.delete(note);
-        return { voiceIndex: -1, released: false, recoveredNote: null };
+        return { voiceIndex: -1, released: false, recoveredNote: null, originalVelocity };
       }
 
       const voiceIndex = noteState.voiceIndex;
 
       if (pedal) {
         noteState.pendingRelease = true;
-        return { voiceIndex, released: false, recoveredNote: null };
+        return { voiceIndex, released: false, recoveredNote: null, originalVelocity };
       }
 
       // 释放 voice
@@ -195,7 +199,7 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
       // 尝试恢复 stolen note
       const recoveredNote = tryRecoverStolenNote(voiceIndex);
 
-      return { voiceIndex, released: true, recoveredNote };
+      return { voiceIndex, released: true, recoveredNote, originalVelocity };
     },
 
     releaseAll: () => {
@@ -280,7 +284,24 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
             }
           }
           voiceStates.length = newPolyVoice;
-          stolenQueue.length = 0; // 清空 stolenQueue，因为 voice 被强制释放了
+          
+          // 尝试将 stolenQueue 中的 note 恢复到保留的 voice 中
+          while (stolenQueue.length > 0) {
+            const availableVoice = findAvailableVoice();
+            if (availableVoice < 0 || availableVoice >= newPolyVoice) break;
+            
+            const recovered = tryRecoverStolenNote(availableVoice);
+            if (!recovered) break;
+          }
+          
+          // 清空无法恢复的 stolenQueue，并清理对应的 noteStates
+          stolenQueue.length = 0;
+          noteStates.forEach((state, note) => {
+            if (state.voiceIndex === -1) {
+              noteStates.delete(note);
+            }
+          });
+          
           if (released.length > 0) {
             runtime.pendingReleasedNotes = (runtime.pendingReleasedNotes || []).concat(released);
           }

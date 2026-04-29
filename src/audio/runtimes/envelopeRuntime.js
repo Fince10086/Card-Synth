@@ -170,22 +170,18 @@ export function createEnvelopeRuntime(module) {
 
       const now = Tone.now();
 
+      const resetEnv = (env) => {
+        if (!env) return;
+        env.cancel(now);
+        if (env.output && env.output.gain) {
+          env.output.gain.setValueAtTime(0, now);
+        }
+      };
+
       if (isModulation) {
-        const env = modVoices[voiceIndex];
-        if (env) {
-          env.cancel(now);
-          if (env.output && env.output.gain) {
-            env.output.gain.setValueAtTime(0, now);
-          }
-        }
+        resetEnv(modVoices[voiceIndex]);
       } else {
-        const env = ampVoices[voiceIndex];
-        if (env) {
-          env.cancel(now);
-          if (env.output && env.output.gain) {
-            env.output.gain.setValueAtTime(0, now);
-          }
-        }
+        resetEnv(ampVoices[voiceIndex]);
         voiceRefCount[voiceIndex] = 0;
       }
     },

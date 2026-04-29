@@ -326,12 +326,13 @@ export class AudioEngine {
    * 获取链的 VoiceManager（显式或隐藏）
    */
   getVoiceManager(runtimeMap) {
+    let lastVoiceManager = null;
     for (const [id, runtime] of runtimeMap) {
       if (runtime.isVoiceManager) {
-        return runtime;
+        lastVoiceManager = runtime;
       }
     }
-    return null;
+    return lastVoiceManager;
   }
 
   /**
@@ -545,12 +546,10 @@ export class AudioEngine {
         return;
       }
 
-      // 3. 处理 voice stealing：先 hard release 被 steal 的 note，然后 reset voice
+      // 3. 处理 voice stealing：释放被 steal 的 note，让新 note 的 attack 自然覆盖
       if (stolenNote) {
         this.notifySourcesAndEnvelopesRelease(stolenNote, voiceIndex, runtimeMap);
-        
-        // 重置 voice，确保新 note 的 attack 从 0 开始渐变
-        this.resetVoices(voiceIndex, runtimeMap);
+        // 不强制 reset voice，让 hiddenEnv 自然从 release 过渡到新 attack
       }
 
       // 4. 触发新 note 的 attack
@@ -585,7 +584,7 @@ export class AudioEngine {
         return;
       }
 
-      const { voiceIndex, recoveredNote } = releaseResult;
+      const { voiceIndex, recoveredNote, originalVelocity } = releaseResult;
 
       // 3. 遍历所有 Pitch，释放其控制范围内的 Source 和 Envelope
       const inputs = this.getChainInputs(chainIndex, runtimeMap);
@@ -625,11 +624,16 @@ export class AudioEngine {
       if (recoveredNote) {
         const recoveredVoiceIndex = voiceManager.getVoiceForNote(recoveredNote);
         if (recoveredVoiceIndex >= 0) {
+          const recoveredVelocity = originalVelocity ?? 1;
           // 使用 requestAnimationFrame 确保 release 先执行
           requestAnimationFrame(() => {
+            // 防御性检查：确认 recoveredNote 仍然有效（未被再次 steal 或释放）
+            const currentVoiceIndex = voiceManager.getVoiceForNote(recoveredNote);
+            if (currentVoiceIndex < 0) return;
+            
             this._triggerAttackForNote(
               recoveredNote, 
-              1, // 恢复时使用默认 velocity
+              recoveredVelocity,
               recoveredVoiceIndex, 
               runtimeMap, 
               chainIndex

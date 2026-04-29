@@ -1041,6 +1041,11 @@ export function createSourceRuntime({
 
       const now = Tone.now();
 
+      // 如果 voice 处于 ACTIVE 状态，先执行完整的 release 逻辑
+      if (voice.state === VOICE_STATE.ACTIVE) {
+        releaseVoice(voice, index, now);
+      }
+
       // 重置 hiddenEnv
       if (voice.hiddenEnv) {
         voice.hiddenEnv.cancel(now);
