@@ -47,7 +47,7 @@ npm run build
 
 ### 信号流区域 (Signal Flow)
 
-中央区域显示当前链的所有音频模块，信号从左到右流动，模块可以放在任意位置：
+中央区域显示当前链的所有模块，信号从左到右流动，模块可以放在任意位置：
 
 ```
 [输入] → [源] → [效果] → [输出]
@@ -78,14 +78,48 @@ npm run build
 
 ### 输入模块 (Input) [绿色]
 
-控制链中所有后续 Source 和 Envelope 的触发方式：
+输入模块控制链中 Source 和 Envelope 的触发方式，每个模块独立工作：
 
 | 模块 | 说明 | 关键参数 |
 |------|------|----------|
-| **MIDI** | MIDI/键盘输入控制 | Transpose(移调), Octave(八度), Poly Voice(复音数), Pedal(延音踏板) |
-| **Frequency** | 固定频率控制 | Mode(低/高频范围), Frequency(频率), Poly Voice, Pedal |
+| **Pitch** | 音高计算与变换 | Transpose(移调), Octave(八度), Mode(MIDI/固定频率), Frequency(频率) |
+| **Voices** | Voice 分配管理 | Mono(单音)/Poly(复音) |
+| **Pedal** | 延音踏板控制 | Pedal(开关) |
 
-每个链的开头默认有一个**隐藏的 MIDI 输入**（不占用模块位），如果没有显式添加 Input 模块，所有 Source 都会接收来自 MIDI/键盘的输入。
+#### Voice 分配系统
+
+**Voices** 模块是链中唯一的 Voice 分配器，负责：
+- 分配音符到 voice（复音/单音模式）
+- 管理 voice stealing（当 voice 不足时自动释放最早的音符）
+- 处理 Pedal 延音
+
+如果没有显式添加 Voices 模块，链的开头会自动创建一个**隐藏的 Voices**（默认 Poly 模式）。
+
+#### Pitch 控制范围
+
+每个 Pitch 模块独立控制其后直到**下一个 Pitch 模块**之前的 Source 和 Envelope：
+
+```
+Pitch A → Oscillator → Filter → Pitch B → Oscillator → Envelope
+  ↑                        ↑         ↑                        ↑
+控制范围 A               控制范围 A   控制范围 B                控制范围 B
+```
+
+#### Mono/Poly 行为
+
+Source 根据**最近的 Voices 配置**决定 Mono/Poly：
+
+```
+Pitch → Oscillator → Voices=Mono → Oscillator → Envelope
+        ↑                    ↑
+     Poly (复音)        Mono (单音)
+```
+
+- 第一个 Oscillator = Poly（使用全局复音数）
+- 第二个 Oscillator = Mono（所有音符共享同一个 voice）
+- Envelope = Mono（跟随第二个 Oscillator 的配置）
+
+如果没有显式添加 Pitch 模块，链的开头会自动创建一个**隐藏的 Pitch**（默认 MIDI 模式）。
 
 ### 源模块 (Source) [青色]
 
@@ -242,7 +276,7 @@ npm run build
 3. 从下拉菜单选择 MIDI 输入设备。
 4. 直接弹奏 MIDI 键盘即可控制合成器。
 
-**注意**：MIDI 键盘的输入不受 Z/X 键的八度控制影响，八度/移调由链中的 **MIDI Input 模块**控制。
+**注意**：MIDI 键盘的输入不受 Z/X 键的八度控制影响，八度/移调由链中的 **Pitch 模块**控制。
 
 ---
 
@@ -260,7 +294,7 @@ npm run build
 ### 预设文件格式
 
 预设文件为 JSON 格式，包含：
-- `global`: 全局设置（音量、力度）
+- `global`: 全局设置（音量、力度、复音数）
 - `chains`: 多条链的状态
   - `modules`: 模块列表及其参数
   - `modulations`: 调制连接
@@ -338,9 +372,9 @@ src/
   app/           # 主应用逻辑
   audio/         # 音频引擎 (Tone.js)
     runtimes/    # 模块运行时
-      sourceRuntime.js      # 源模块运行时
+      sourceRuntime.js      # 源模块运行时（支持动态 Mono/Poly）
       envelopeRuntime.js    # 统一包络运行时（振幅/调制双模式）
-      inputRuntime.js       # 输入模块运行时（统一分配 voice）
+      inputRuntime.js       # 输入模块运行时（Voices/Pitch/Pedal 独立）
       effectRuntime.js      # 效果模块运行时
     chain/         # 信号链连接
       signalChain.js        # 音频信号路由
