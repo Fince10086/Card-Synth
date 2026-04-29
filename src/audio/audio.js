@@ -379,6 +379,21 @@ export class AudioEngine {
     });
   }
 
+  /**
+   * 重置指定 voiceIndex 的所有 Source 和 Envelope
+   * 用于 voice stealing 后，确保新 note 的 attack 从 0 开始渐变
+   */
+  resetVoices(voiceIndex, runtimeMap) {
+    runtimeMap.forEach((runtime) => {
+      if (runtime.category === "source" && typeof runtime.resetVoice === "function") {
+        runtime.resetVoice(voiceIndex);
+      }
+      if (runtime.type === "Envelope" && typeof runtime.resetVoice === "function") {
+        runtime.resetVoice(voiceIndex);
+      }
+    });
+  }
+
   forEachRuntime(callback) {
     this.chainRuntimes.forEach((runtimeMap, chainIndex) => {
       runtimeMap.forEach((runtime, moduleId) => {
@@ -455,6 +470,49 @@ export class AudioEngine {
     this.updateComponent(module, chainIndex);
   }
 
+  /**
+   * 触发指定 note 的 attack，通知所有 Pitch 控制范围内的 Source 和 Envelope
+   */
+  _triggerAttackForNote(note, velocity, voiceIndex, runtimeMap, chainIndex) {
+    const inputs = this.getChainInputs(chainIndex, runtimeMap);
+    inputs.forEach((input) => {
+      if (input.runtime.type !== "Pitch") {
+        return;
+      }
+
+      const result = input.runtime.triggerAttack(note, velocity, voiceIndex);
+      if (!result) {
+        return;
+      }
+
+      const { noteData, controlledSources, controlledEnvelopes } = result;
+
+      // 触发控制范围内的所有 Source
+      controlledSources.forEach((sourceId) => {
+        const sourceRuntime = runtimeMap.get(sourceId);
+        if (sourceRuntime && typeof sourceRuntime.triggerAttack === "function") {
+          sourceRuntime.triggerAttack(noteData, velocity, voiceIndex);
+        }
+      });
+
+      // 触发控制范围内的所有 Envelope
+      controlledEnvelopes.forEach((envInfo) => {
+        const envRuntime = runtimeMap.get(envInfo.id);
+        if (!envRuntime) {
+          return;
+        }
+
+        if (envRuntime.modulationMode) {
+          envRuntime.triggerVoiceAttack(voiceIndex, velocity);
+        } else if (envRuntime.hasPerVoiceConnection) {
+          envRuntime.triggerVoiceAttack(voiceIndex, velocity);
+        } else {
+          envRuntime.triggerAttack(note, velocity);
+        }
+      });
+    });
+  }
+
   attack(note, velocity) {
     if (!this.ready) {
       return;
@@ -487,49 +545,16 @@ export class AudioEngine {
         return;
       }
 
-      // 3. 处理 voice stealing
+      // 3. 处理 voice stealing：先 hard release 被 steal 的 note，然后 reset voice
       if (stolenNote) {
         this.notifySourcesAndEnvelopesRelease(stolenNote, voiceIndex, runtimeMap);
+        
+        // 重置 voice，确保新 note 的 attack 从 0 开始渐变
+        this.resetVoices(voiceIndex, runtimeMap);
       }
 
-      // 4. 遍历所有 Pitch，触发其控制范围内的 Source 和 Envelope
-      const inputs = this.getChainInputs(chainIndex, runtimeMap);
-      inputs.forEach((input) => {
-        if (input.runtime.type !== "Pitch") {
-          return;
-        }
-
-        const result = input.runtime.triggerAttack(note, velocity, voiceIndex);
-        if (!result) {
-          return;
-        }
-
-        const { noteData, controlledSources, controlledEnvelopes } = result;
-
-        // 触发控制范围内的所有 Source
-        controlledSources.forEach((sourceId) => {
-          const sourceRuntime = runtimeMap.get(sourceId);
-          if (sourceRuntime && typeof sourceRuntime.triggerAttack === "function") {
-            sourceRuntime.triggerAttack(noteData, velocity, voiceIndex);
-          }
-        });
-
-        // 触发控制范围内的所有 Envelope
-        controlledEnvelopes.forEach((envInfo) => {
-          const envRuntime = runtimeMap.get(envInfo.id);
-          if (!envRuntime) {
-            return;
-          }
-
-          if (envRuntime.modulationMode) {
-            envRuntime.triggerVoiceAttack(voiceIndex, velocity);
-          } else if (envRuntime.hasPerVoiceConnection) {
-            envRuntime.triggerVoiceAttack(voiceIndex, velocity);
-          } else {
-            envRuntime.triggerAttack(note, velocity);
-          }
-        });
-      });
+      // 4. 触发新 note 的 attack
+      this._triggerAttackForNote(note, velocity, voiceIndex, runtimeMap, chainIndex);
     });
   }
 
@@ -560,7 +585,7 @@ export class AudioEngine {
         return;
       }
 
-      const { voiceIndex } = releaseResult;
+      const { voiceIndex, recoveredNote } = releaseResult;
 
       // 3. 遍历所有 Pitch，释放其控制范围内的 Source 和 Envelope
       const inputs = this.getChainInputs(chainIndex, runtimeMap);
@@ -595,6 +620,23 @@ export class AudioEngine {
           }
         });
       });
+
+      // 4. 如果有恢复的 note，延迟触发 re-attack
+      if (recoveredNote) {
+        const recoveredVoiceIndex = voiceManager.getVoiceForNote(recoveredNote);
+        if (recoveredVoiceIndex >= 0) {
+          // 使用 requestAnimationFrame 确保 release 先执行
+          requestAnimationFrame(() => {
+            this._triggerAttackForNote(
+              recoveredNote, 
+              1, // 恢复时使用默认 velocity
+              recoveredVoiceIndex, 
+              runtimeMap, 
+              chainIndex
+            );
+          });
+        }
+      }
     });
   }
 

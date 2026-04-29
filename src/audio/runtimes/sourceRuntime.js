@@ -862,10 +862,8 @@ export function createSourceRuntime({
       const voice = voices[index];
       const now = Tone.now();
 
-      // Mono 模式下，如果 voice 0 已经有其他 note，先释放
-      if (isMono && voice.note && voice.note !== noteData.originalNote) {
-        releaseVoice(voice, index, now);
-      }
+      // Mono 模式下，voice stealing 由 VoiceManager 处理
+      // 这里只负责 voiceIndex 映射
 
       // 清除可能存在的 release 定时器
       if (voice.disposeTimeoutId) {
@@ -1028,6 +1026,40 @@ export function createSourceRuntime({
           ? noteOrFrequency
           : Tone.Frequency(noteOrFrequency).toFrequency();
         voice.frequencyBaseSignal.rampTo(nextFrequency, 0.02);
+      }
+    },
+
+    /**
+     * 强制重置指定 voice 的 hiddenEnv 值到 0
+     * 用于 voice stealing 场景，确保新 note 的 attack 从 0 开始渐变
+     */
+    resetVoice: (voiceIndex) => {
+      const isMono = getIsMono();
+      const index = isMono ? 0 : voiceIndex;
+      const voice = voices[index];
+      if (!voice || !voice.initialized) return;
+
+      const now = Tone.now();
+
+      // 重置 hiddenEnv
+      if (voice.hiddenEnv) {
+        voice.hiddenEnv.cancel(now);
+        if (voice.hiddenEnv.output && voice.hiddenEnv.output.gain) {
+          voice.hiddenEnv.output.gain.setValueAtTime(0, now);
+        }
+      }
+
+      // 取消 dispose 定时器
+      if (voice.disposeTimeoutId) {
+        clearTimeout(voice.disposeTimeoutId);
+        voice.disposeTimeoutId = null;
+      }
+
+      // 重置 voice 状态
+      if (voice.state === VOICE_STATE.RELEASING) {
+        voice.state = VOICE_STATE.IDLE;
+        voice.releaseEndTime = 0;
+        voice.idleSince = 0;
       }
     },
 

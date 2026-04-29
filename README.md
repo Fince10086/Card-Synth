@@ -86,12 +86,22 @@ npm run build
 | **Voices** | Voice 分配管理 | Mono(单音)/Poly(复音) |
 | **Pedal** | 延音踏板控制 | Pedal(开关) |
 
-#### Voice 分配系统
+#### Voice 分配系统（Note-Centric）
 
-**Voices** 模块是链中唯一的 Voice 分配器，负责：
-- 分配音符到 voice（复音/单音模式）
-- 管理 voice stealing（当 voice 不足时自动释放最早的音符）
-- 处理 Pedal 延音
+**Voices** 模块是链中唯一的 Voice 分配器，采用 **Note-Centric** 设计：
+
+- **Note 状态与 Voice 分离**：每个 note 有独立的 `pressed`/`stolen`/`pendingRelease` 状态
+- **Voice Stealing 带恢复**：当 voice 不足时，新 note 会 steal 最旧的 voice，但被 steal 的 note 只要按键还按着就会进入 **stolen 状态**，等待 voice 空闲后自动恢复
+- **硬 Release + 重新 Attack**：steal 发生时，被 steal 的 note 立即执行完整 envelope release，新 note 重新触发 attack
+
+**Steal & Recovery 示例**（Poly=2）：
+```
+按下 C4 → Voice 0 (C4)
+按下 E4 → Voice 1 (E4)  
+按下 G4 → Steal Voice 0 from C4 → Voice 0 (G4), C4 进入 stolen 状态
+松开 G4 → Release Voice 0 → **自动恢复 C4 到 Voice 0** → 重新触发 C4 attack
+松开 C4 → Release Voice 0
+```
 
 如果没有显式添加 Voices 模块，链的开头会自动创建一个**隐藏的 Voices**（默认 Poly 模式）。
 

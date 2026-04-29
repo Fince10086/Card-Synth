@@ -161,6 +161,35 @@ export function createEnvelopeRuntime(module) {
       }
     },
 
+    /**
+     * 强制重置指定 voice 的 envelope 值到 0
+     * 用于 voice stealing 场景，确保新 note 的 attack 从 0 开始渐变
+     */
+    resetVoice: (voiceIndex) => {
+      if (voiceIndex < 0 || voiceIndex >= VOICE_COUNT) return;
+
+      const now = Tone.now();
+
+      if (isModulation) {
+        const env = modVoices[voiceIndex];
+        if (env) {
+          env.cancel(now);
+          if (env.output && env.output.gain) {
+            env.output.gain.setValueAtTime(0, now);
+          }
+        }
+      } else {
+        const env = ampVoices[voiceIndex];
+        if (env) {
+          env.cancel(now);
+          if (env.output && env.output.gain) {
+            env.output.gain.setValueAtTime(0, now);
+          }
+        }
+        voiceRefCount[voiceIndex] = 0;
+      }
+    },
+
     dispose: () => {
       if (isModulation) {
         modVoices.forEach((env) => env.dispose());
