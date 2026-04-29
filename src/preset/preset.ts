@@ -127,17 +127,22 @@ function normalizeMacroMappings(items: Partial<MacroMappingItem>[] = []): MacroM
   return Array.from(deduped.values());
 }
 
-export function normalizeMacroChain(chainMacro: Partial<MacroChainState> = {}): MacroChainState {
+export function normalizeMacroChain(chainMacro: Partial<MacroChainState> & { point?: { x?: number; y?: number; z?: number }; mappings?: Record<string, unknown[]> } = {}): MacroChainState {
   const fallback = createDefaultMacroChainState();
 
+  // Support both persisted format ({ x, y, z, bindings }) and runtime format ({ point, mappings })
+  const x = typeof chainMacro.point?.x === "number" ? chainMacro.point.x : chainMacro.x;
+  const y = typeof chainMacro.point?.y === "number" ? chainMacro.point.y : chainMacro.y;
+  const z = typeof chainMacro.point?.z === "number" ? chainMacro.point.z : chainMacro.z;
+
   return {
-    x: clamp(Number(chainMacro.x ?? fallback.x), 0, 1),
-    y: clamp(Number(chainMacro.y ?? fallback.y), 0, 1),
-    z: clamp(Number(chainMacro.z ?? fallback.z), 0, 1),
+    x: clamp(Number(x ?? fallback.x), 0, 1),
+    y: clamp(Number(y ?? fallback.y), 0, 1),
+    z: clamp(Number(z ?? fallback.z), 0, 1),
     bindings: {
-      x: normalizeMacroMappings(chainMacro.bindings?.x),
-      y: normalizeMacroMappings(chainMacro.bindings?.y),
-      z: normalizeMacroMappings(chainMacro.bindings?.z),
+      x: normalizeMacroMappings(chainMacro.mappings?.x ?? chainMacro.bindings?.x),
+      y: normalizeMacroMappings(chainMacro.mappings?.y ?? chainMacro.bindings?.y),
+      z: normalizeMacroMappings(chainMacro.mappings?.z ?? chainMacro.bindings?.z),
     },
   };
 }

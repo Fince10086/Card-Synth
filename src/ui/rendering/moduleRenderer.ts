@@ -47,7 +47,7 @@ interface MacroManagerLike {
     moduleId: string,
     paramPath: string,
     chainIndex: number
-  ): void;
+  ): boolean;
   updateBindingRange(options: {
     chainIndex: number;
     axis: string;
@@ -155,8 +155,7 @@ function getMacroSliderProps(
   return {
     macroBinding: (binding as unknown as unknown as Record<string, unknown> | null) ?? null,
     onManualMacroInput: () => {
-      app.macroManager.removeBindingsForTarget(moduleId, paramPath, chainIndex);
-      return false;
+      return app.macroManager.removeBindingsForTarget(moduleId, paramPath, chainIndex);
     },
     onMacroRangeChange: (rangeStart: number, rangeEnd: number) => {
       if (!binding) {

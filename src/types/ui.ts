@@ -3,16 +3,6 @@
  */
 import type { ModuleConfig, Preset, ChainState, MacroChainState } from './core';
 
-// Main card view model
-export interface MacroMainCardViewModel {
-  chains: Array<{
-    x: number;
-    y: number;
-    z: number;
-    bindings: Record<string, unknown>;
-  }>;
-}
-
 // Main card options
 export interface MainCardOptions {
   selectedPresetId: string | null;
@@ -22,7 +12,17 @@ export interface MainCardOptions {
   state: Preset;
   selectedChainIndex: number;
   chains: ChainState[];
-  macro: MacroMainCardViewModel;
+  macro: {
+    selectedChainEnabled: boolean;
+    points: Array<{
+      chainIndex: number;
+      visible: boolean;
+      selected: boolean;
+      x: number;
+      y: number;
+      color: string;
+    }>;
+  };
   audioBooted: boolean;
   onPresetChange: (value: string) => void;
   onChainIndexClick: (chainIndex: number, isSelected: boolean) => void;
