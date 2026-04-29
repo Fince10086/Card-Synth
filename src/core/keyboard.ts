@@ -1,6 +1,17 @@
-export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+/**
+ * Keyboard layout and note utilities
+ */
 
-export const KEYBOARD_LAYOUT = [
+export const NOTE_NAMES: readonly string[] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+export interface KeyboardLayoutItem {
+  key: string;
+  offset: number;
+  whiteIndex: number;
+  black: boolean;
+}
+
+export const KEYBOARD_LAYOUT: readonly KeyboardLayoutItem[] = [
   { key: "a", offset: 0, whiteIndex: 0, black: false },
   { key: "w", offset: 1, whiteIndex: 0, black: true },
   { key: "s", offset: 2, whiteIndex: 1, black: false },
@@ -21,9 +32,11 @@ export const KEYBOARD_LAYOUT = [
   { key: "'", offset: 17, whiteIndex: 10, black: false },
 ];
 
-export const KEY_MAP = new Map(KEYBOARD_LAYOUT.map((item) => [item.key, item]));
+export const KEY_MAP: ReadonlyMap<string, KeyboardLayoutItem> = new Map(
+  KEYBOARD_LAYOUT.map((item) => [item.key, item])
+);
 
-export function noteFromOffset(baseOctave, offset) {
+export function noteFromOffset(baseOctave: number, offset: number): string {
   const pitchClass = NOTE_NAMES[offset % 12];
   const octaveShift = Math.floor(offset / 12);
   return `${pitchClass}${baseOctave + octaveShift}`;

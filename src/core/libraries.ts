@@ -1,3 +1,8 @@
+/**
+ * Module library definitions
+ * Contains all available module types and their configurations
+ */
+
 import {
   formatPlain,
   formatSeconds,
@@ -8,39 +13,39 @@ import {
   formatHertz,
   formatFrequency,
   formatMultiplier,
-} from "./formatters.js";
+} from "./formatters";
 
-import { NOTE_NAMES } from "./keyboard.js";
+import { NOTE_NAMES } from "./keyboard";
+import { DEFAULT_SAMPLE_LIBRARY } from "./samples";
+import type { ModuleDefinition, ControlOption } from "../types";
 
-import { DEFAULT_SAMPLE_LIBRARY } from "./samples.js";
-
-export const SHARED_WAVE_OPTIONS = [
+export const SHARED_WAVE_OPTIONS: ControlOption[] = [
   { label: "Sine", value: "sine" },
   { label: "Triangle", value: "triangle" },
   { label: "Saw", value: "sawtooth" },
   { label: "Square", value: "square" },
 ];
 
-export const NOISE_TYPE_OPTIONS = [
+export const NOISE_TYPE_OPTIONS: ControlOption[] = [
   { label: "White", value: "white" },
   { label: "Pink", value: "pink" },
   { label: "Brown", value: "brown" },
 ];
 
-export const ROOT_NOTE_OPTIONS = Array.from({ length: 6 * 12 }, (_, index) => {
+export const ROOT_NOTE_OPTIONS: ControlOption[] = Array.from({ length: 6 * 12 }, (_, index) => {
   const octave = 1 + Math.floor(index / 12);
   const note = `${NOTE_NAMES[index % 12]}${octave}`;
   return { label: note, value: note };
 });
 
-export const SOURCE_LIBRARY = {
+export const SOURCE_LIBRARY: Record<string, ModuleDefinition> = {
   Noise: {
     accent: "source",
     tag: "Osc",
     runtime: "noise",
     options: { type: "pink", playbackRate: 1 },
     controls: [
-      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
+      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value: number) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
       { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "options.type", kind: "select", label: "Color", options: NOISE_TYPE_OPTIONS },
       { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.1, max: 1, step: 0.01, formatter: formatMultiplier },
@@ -52,13 +57,13 @@ export const SOURCE_LIBRARY = {
     runtime: "pitchedSource",
     options: { type: "sawtooth", detune: 0, phase: 0, octave: 0, frequency: 1, frequencyOffset: 1 },
     controls: [
-      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
+      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value: number) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
       { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "options.type", kind: "select", label: "Wave", options: SHARED_WAVE_OPTIONS },
-      { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
+      { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value: number) => `${Math.round(value)}deg` },
       { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
-      { path: "options.octave", kind: "range", label: "Octave", min: -3, max: 3, step: 1, formatter: (value) => `Oct ${value > 0 ? "+" : ""}${value}` },
-      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 100, step: 0.01, formatter: formatHertz, conditional: (module) => !module.midiOn },
+      { path: "options.octave", kind: "range", label: "Octave", min: -3, max: 3, step: 1, formatter: (value: number) => `Oct ${value > 0 ? "+" : ""}${value}` },
+      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 100, step: 0.01, formatter: formatHertz, conditional: (module) => !(module.options as Record<string, unknown>)?.midiOn },
       { path: "options.frequencyOffset", kind: "range", label: "Frequency Offset", min: 0, max: 2, step: 0.01, formatter: formatMultiplier },
     ],
   },
@@ -69,7 +74,7 @@ export const SOURCE_LIBRARY = {
     moduleDefaults: { rootNote: "C4", assetName: "Factory Pluck" },
     options: { url: DEFAULT_SAMPLE_LIBRARY.pluck, playbackRate: 1, loop: false, reverse: false, loopStart: 0, loopEnd: 0 },
     controls: [
-      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
+      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value: number) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
       { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "rootNote", kind: "select", label: "Root", options: ROOT_NOTE_OPTIONS },
       { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.1, max: 3, step: 0.01, formatter: formatMultiplier },
@@ -85,19 +90,19 @@ export const SOURCE_LIBRARY = {
     runtime: "pitchedSource",
     options: { width: 0.22, detune: 0, phase: 0, octave: 0, frequency: 1, frequencyOffset: 1 },
     controls: [
-      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
+      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value: number) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
       { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
       { path: "options.width", kind: "range", label: "Width", min: 0.01, max: 0.99, step: 0.001, formatter: formatPercent },
-      { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value) => `${Math.round(value)}deg` },
+      { path: "options.phase", kind: "range", label: "Phase", min: 0, max: 360, step: 1, formatter: (value: number) => `${Math.round(value)}deg` },
       { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
-      { path: "options.octave", kind: "range", label: "Octave", min: -3, max: 3, step: 1, formatter: (value) => `Oct ${value > 0 ? "+" : ""}${value}` },
-      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 100, step: 0.01, formatter: formatHertz, conditional: (module) => !module.midiOn },
+      { path: "options.octave", kind: "range", label: "Octave", min: -3, max: 3, step: 1, formatter: (value: number) => `Oct ${value > 0 ? "+" : ""}${value}` },
+      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 100, step: 0.01, formatter: formatHertz, conditional: (module) => !(module.options as Record<string, unknown>)?.midiOn },
       { path: "options.frequencyOffset", kind: "range", label: "Frequency Offset", min: 0, max: 2, step: 0.01, formatter: formatMultiplier },
     ],
   },
 };
 
-export const EFFECT_LIBRARY = {
+export const EFFECT_LIBRARY: Record<string, ModuleDefinition> = {
   AutoFilter: {
     accent: "fx",
     tag: "Effect",
@@ -147,7 +152,7 @@ export const EFFECT_LIBRARY = {
     tag: "Effect",
     options: { bits: 4, wet: 0.14 },
     controls: [
-      { path: "options.bits", kind: "range", label: "Bits", min: 1, max: 8, step: 1, formatter: (value) => `${Math.round(value)} bit` },
+      { path: "options.bits", kind: "range", label: "Bits", min: 1, max: 8, step: 1, formatter: (value: number) => `${Math.round(value)} bit` },
       { path: "options.wet", kind: "range", label: "Wet", min: 0, max: 1, step: 0.01, formatter: formatPercent },
     ],
   },
@@ -166,7 +171,7 @@ export const EFFECT_LIBRARY = {
     options: { frequency: 1.2, delayTime: 2.2, depth: 0.48, type: "sine", spread: 180, feedback: 0.2, wet: 0.42 },
     controls: [
       { path: "options.frequency", kind: "range", label: "Rate", min: 0.1, max: 12, step: 0.1, formatter: formatHertz },
-      { path: "options.delayTime", kind: "range", label: "Delay", min: 0.5, max: 10, step: 0.1, formatter: (value) => `${Math.round(value)} ms` },
+      { path: "options.delayTime", kind: "range", label: "Delay", min: 0.5, max: 10, step: 0.1, formatter: (value: number) => `${Math.round(value)} ms` },
       { path: "options.depth", kind: "range", label: "Depth", min: 0, max: 1, step: 0.01, formatter: formatPercent },
       { path: "options.type", kind: "select", label: "Type", options: SHARED_WAVE_OPTIONS },
       { path: "options.feedback", kind: "range", label: "Feedback", min: 0, max: 0.95, step: 0.01, formatter: formatPercent },
@@ -252,7 +257,7 @@ export const EFFECT_LIBRARY = {
     tag: "Effect",
     options: { pitch: 0, windowSize: 0.1, feedback: 0, wet: 1 },
     controls: [
-      { path: "options.pitch", kind: "range", label: "Pitch", min: -24, max: 24, step: 1, formatter: (value) => `${value > 0 ? "+" : ""}${value} st` },
+      { path: "options.pitch", kind: "range", label: "Pitch", min: -24, max: 24, step: 1, formatter: (value: number) => `${value > 0 ? "+" : ""}${value} st` },
       { path: "options.windowSize", kind: "range", label: "Window", min: 0.01, max: 0.5, step: 0.01, formatter: formatSeconds },
       { path: "options.feedback", kind: "range", label: "Feedback", min: 0, max: 0.9, step: 0.01, formatter: formatPercent },
       { path: "options.wet", kind: "range", label: "Wet", min: 0, max: 1, step: 0.01, formatter: formatPercent },
@@ -284,7 +289,7 @@ export const EFFECT_LIBRARY = {
     controls: [
       { path: "options.frequency", kind: "range", label: "Rate", min: 0.1, max: 18, step: 0.1, formatter: formatHertz },
       { path: "options.depth", kind: "range", label: "Depth", min: 0, max: 1, step: 0.01, formatter: formatPercent },
-      { path: "options.spread", kind: "range", label: "Spread", min: 0, max: 180, step: 1, formatter: (value) => `${Math.round(value)}°` },
+      { path: "options.spread", kind: "range", label: "Spread", min: 0, max: 180, step: 1, formatter: (value: number) => `${Math.round(value)}°` },
       { path: "options.wet", kind: "range", label: "Wet", min: 0, max: 1, step: 0.01, formatter: formatPercent },
     ],
   },
@@ -360,13 +365,13 @@ export const EFFECT_LIBRARY = {
     tag: "Effect",
     options: { pan: 0, volume: 0 },
     controls: [
-      { path: "options.pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
+      { path: "options.pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value: number) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
       { path: "options.volume", kind: "range", label: "Volume", min: -24, max: 12, step: 0.1, formatter: formatDb },
     ],
   },
 };
 
-export const COMPONENT_LIBRARY = {
+export const COMPONENT_LIBRARY: Record<string, ModuleDefinition> = {
   Envelope: {
     accent: "env",
     tag: "Envelope",
@@ -376,12 +381,12 @@ export const COMPONENT_LIBRARY = {
       { path: "options.decay", kind: "range", label: "Decay", min: 0.01, max: 4, step: 0.01, formatter: formatSeconds },
       { path: "options.sustain", kind: "range", label: "Sustain", min: 0, max: 1, step: 0.01, formatter: formatPercent },
       { path: "options.release", kind: "range", label: "Release", min: 0.01, max: 4, step: 0.01, formatter: formatSeconds },
-      { path: "options.gain", kind: "range", label: "Depth", min: 0, max: 100, step: 0.01, formatter: formatMultiplier, conditional: (module) => module.modulationMode },
+      { path: "options.gain", kind: "range", label: "Depth", min: 0, max: 100, step: 0.01, formatter: formatMultiplier, conditional: (module) => module.modulationMode === true },
     ],
   },
 };
 
-export const INPUT_LIBRARY = {
+export const INPUT_LIBRARY: Record<string, ModuleDefinition> = {
   Pitch: {
     accent: "input",
     tag: "Pitch",
@@ -391,9 +396,9 @@ export const INPUT_LIBRARY = {
         { label: "MIDI", value: "midi" },
         { label: "Freq", value: "frequency" },
       ]},
-      { path: "options.transpose", kind: "range", label: "Transpose", min: -12, max: 12, step: 1, conditional: (m) => m.options?.mode === "midi", formatter: (value) => `${value > 0 ? "+" : ""}${value} st` },
-      { path: "options.octave", kind: "range", label: "Octave", min: -4, max: 4, step: 1, conditional: (m) => m.options?.mode === "midi", formatter: (value) => `Oct ${value > 0 ? "+" : ""}${value}` },
-      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 20000, step: 0.01, conditional: (m) => m.options?.mode === "frequency", formatter: formatHertz },
+      { path: "options.transpose", kind: "range", label: "Transpose", min: -12, max: 12, step: 1, conditional: (m) => (m.options as Record<string, unknown>)?.mode === "midi", formatter: (value: number) => `${value > 0 ? "+" : ""}${value} st` },
+      { path: "options.octave", kind: "range", label: "Octave", min: -4, max: 4, step: 1, conditional: (m) => (m.options as Record<string, unknown>)?.mode === "midi", formatter: (value: number) => `Oct ${value > 0 ? "+" : ""}${value}` },
+      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 20000, step: 0.01, conditional: (m) => (m.options as Record<string, unknown>)?.mode === "frequency", formatter: formatHertz },
     ],
   },
   Voices: {

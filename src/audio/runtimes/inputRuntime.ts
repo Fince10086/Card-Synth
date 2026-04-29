@@ -1,49 +1,88 @@
-import { clamp, deepClone } from "../../utils/helpers.js";
-import * as Tone from "tone";
-
 /**
- * 创建 Voices 输入模块运行时
- * Note-Centric Voice Allocation with Recovery
- * 
- * 核心设计：
- * - Note 状态与 Voice 状态分离
- * - 被 Steal 的 Note 进入 stolen 状态，只要按键还按着就会尝试恢复
- * - 统一处理 Mono/Poly（Mono 是 polyVoice=1 的特例）
+ * Input runtime - Voices, Pitch, and Pedal modules
  */
-function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
+
+import { clamp, deepClone } from "../../utils/helpers";
+import * as Tone from "tone";
+import type { ModuleConfig } from "../../types";
+
+export interface VoiceAllocationResult {
+  voiceIndex: number;
+  isRetrigger: boolean;
+  stolenNote: number | null;
+}
+
+export interface VoiceReleaseResult {
+  voiceIndex: number;
+  released: boolean;
+  recoveredNote: number | null;
+  originalVelocity: number;
+}
+
+export interface InputRuntime {
+  type: string;
+  category: string;
+  isVoiceManager?: boolean;
+  moduleState: ModuleConfig;
+  triggerAttack(note: number, velocity: number): VoiceAllocationResult | null;
+  triggerRelease(note: number, pedal: boolean): VoiceReleaseResult | null;
+  releaseAll(): Array<{ note: number; voiceIndex: number }>;
+  releaseAllPending(): Array<{ note: number; voiceIndex: number }>;
+  getVoiceForNote(note: number): number;
+  getActiveNotes(): Array<{ note: number; voiceIndex: number }>;
+  getStolenNotes(): number[];
+  apply(nextModule: ModuleConfig): void;
+  dispose(): void;
+  pendingReleasedNotes?: Array<{ note: number; voiceIndex: number }>;
+  pedalOff?: boolean;
+}
+
+interface NoteState {
+  note: number;
+  pressed: boolean;
+  voiceIndex: number;
+  stolenAt: number;
+  pendingRelease: boolean;
+  velocity: number;
+}
+
+interface VoiceState {
+  note: number | null;
+  startTime: number;
+  active: boolean;
+}
+
+function createVoicesRuntime(
+  module: ModuleConfig,
+  getGlobalPolyVoice: () => number = () => 8
+): InputRuntime {
   let moduleState = deepClone(module);
 
-  const getPolyVoice = () => {
-    if (moduleState.options?.mono) {
+  const getPolyVoice = (): number => {
+    if ((moduleState.options as Record<string, unknown>)?.mono) {
       return 1;
     }
     return clamp(getGlobalPolyVoice(), 2, 8);
   };
 
-  // Voice 状态数组
-  let voiceStates = Array.from({ length: getPolyVoice() }, () => ({
+  let voiceStates: VoiceState[] = Array.from({ length: getPolyVoice() }, () => ({
     note: null,
     startTime: 0,
     active: false,
   }));
 
-  // Note 状态映射：note -> { pressed, voiceIndex, stolenAt, pendingRelease, velocity }
-  const noteStates = new Map();
+  const noteStates = new Map<number, NoteState>();
+  const stolenQueue: number[] = [];
 
-  // 被 steal 的 note 队列（FIFO，按 steal 时间排序）
-  const stolenQueue = [];
-
-  const findAvailableVoice = () => {
+  const findAvailableVoice = (): number => {
     const polyVoice = getPolyVoice();
 
-    // 优先找完全空闲的
     for (let i = 0; i < polyVoice; i++) {
       if (!voiceStates[i].active) {
         return i;
       }
     }
 
-    // 找最旧的 active voice
     let oldestIndex = -1;
     let oldestTime = Infinity;
     for (let i = 0; i < polyVoice; i++) {
@@ -56,10 +95,8 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
     return oldestIndex;
   };
 
-  const stealVoice = (voiceIndex, stolenNote) => {
+  const stealVoice = (voiceIndex: number, stolenNote: number): void => {
     const state = voiceStates[voiceIndex];
-    
-    // 被 steal 的 note 进入 stolen 状态
     const stolenNoteState = noteStates.get(stolenNote);
     if (stolenNoteState) {
       stolenNoteState.voiceIndex = -1;
@@ -72,60 +109,56 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
     state.startTime = 0;
   };
 
-  const releaseVoice = (voiceIndex) => {
+  const releaseVoice = (voiceIndex: number): void => {
     const state = voiceStates[voiceIndex];
     state.note = null;
     state.active = false;
     state.startTime = 0;
   };
 
-  const tryRecoverStolenNote = (freedVoiceIndex) => {
-    // 从 stolenQueue 中找最早被 steal、且 key 还按着的 note
-    // 使用 shift 自动清理无效条目
+  const tryRecoverStolenNote = (freedVoiceIndex: number): number | null => {
     while (stolenQueue.length > 0) {
-      const note = stolenQueue.shift();
+      const note = stolenQueue.shift()!;
       const state = noteStates.get(note);
-      
+
       if (state && state.pressed) {
         state.voiceIndex = freedVoiceIndex;
         state.stolenAt = 0;
-        
+
         voiceStates[freedVoiceIndex] = {
           note,
           active: true,
           startTime: Tone.now(),
         };
-        
+
         return note;
       }
-      // 无效的 note（已被释放或不存在）自动被丢弃
     }
     return null;
   };
 
-  const getNoteState = (note) => {
+  const getNoteState = (note: number): NoteState | undefined => {
     return noteStates.get(note);
   };
 
-  const getVoiceForNote = (note) => {
+  const getVoiceForNote = (note: number): number => {
     const state = noteStates.get(note);
     return state ? state.voiceIndex : -1;
   };
 
-  const runtime = {
-    type: module.type,
+  const runtime: InputRuntime = {
+    type: module.type as string,
     category: "input",
     isVoiceManager: true,
     moduleState,
 
-    triggerAttack: (note, velocity) => {
-      // 已存在且 active = legato/retrigger
+    triggerAttack: (note: number, velocity: number): VoiceAllocationResult | null => {
       const existingState = noteStates.get(note);
       if (existingState && existingState.voiceIndex >= 0) {
-        return { 
-          voiceIndex: existingState.voiceIndex, 
-          isRetrigger: true, 
-          stolenNote: null 
+        return {
+          voiceIndex: existingState.voiceIndex,
+          isRetrigger: true,
+          stolenNote: null,
         };
       }
 
@@ -134,20 +167,18 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
         return null;
       }
 
-      let stolenNote = null;
+      let stolenNote: number | null = null;
       if (voiceStates[voiceIndex].active) {
         stolenNote = voiceStates[voiceIndex].note;
-        stealVoice(voiceIndex, stolenNote);
+        stealVoice(voiceIndex, stolenNote!);
       }
 
-      // 分配 voice 给新 note
       voiceStates[voiceIndex] = {
         note,
         active: true,
         startTime: Tone.now(),
       };
 
-      // 更新 note 状态
       const noteState = existingState || {
         note,
         pressed: true,
@@ -166,7 +197,7 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
       return { voiceIndex, isRetrigger: false, stolenNote };
     },
 
-    triggerRelease: (note, pedal) => {
+    triggerRelease: (note: number, pedal: boolean): VoiceReleaseResult | null => {
       const noteState = noteStates.get(note);
       if (!noteState) {
         return null;
@@ -176,7 +207,6 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
       noteState.pendingRelease = false;
       const originalVelocity = noteState.velocity ?? 1;
 
-      // 如果已经被 steal，从 stolenQueue 移除
       if (noteState.voiceIndex === -1) {
         const idx = stolenQueue.indexOf(note);
         if (idx >= 0) stolenQueue.splice(idx, 1);
@@ -191,24 +221,22 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
         return { voiceIndex, released: false, recoveredNote: null, originalVelocity };
       }
 
-      // 释放 voice
       releaseVoice(voiceIndex);
       noteState.voiceIndex = -1;
       noteStates.delete(note);
 
-      // 尝试恢复 stolen note
       const recoveredNote = tryRecoverStolenNote(voiceIndex);
 
       return { voiceIndex, released: true, recoveredNote, originalVelocity };
     },
 
-    releaseAll: () => {
-      const released = [];
+    releaseAll: (): Array<{ note: number; voiceIndex: number }> => {
+      const released: Array<{ note: number; voiceIndex: number }> = [];
       for (let i = 0; i < getPolyVoice(); i++) {
         if (voiceStates[i].active) {
           const note = voiceStates[i].note;
           releaseVoice(i);
-          if (note) {
+          if (note !== null) {
             released.push({ note, voiceIndex: i });
             noteStates.delete(note);
           }
@@ -218,17 +246,17 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
       return released;
     },
 
-    releaseAllPending: () => {
-      const released = [];
+    releaseAllPending: (): Array<{ note: number; voiceIndex: number }> => {
+      const released: Array<{ note: number; voiceIndex: number }> = [];
       for (let i = 0; i < getPolyVoice(); i++) {
         if (voiceStates[i].active) {
           const note = voiceStates[i].note;
-          const state = noteStates.get(note);
+          const state = noteStates.get(note!);
           if (state && state.pendingRelease) {
             releaseVoice(i);
             state.voiceIndex = -1;
-            noteStates.delete(note);
-            released.push({ note, voiceIndex: i });
+            noteStates.delete(note!);
+            released.push({ note: note!, voiceIndex: i });
           }
         }
       }
@@ -239,7 +267,7 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
     getVoiceForNote,
 
     getActiveNotes: () => {
-      const result = [];
+      const result: Array<{ note: number; voiceIndex: number }> = [];
       noteStates.forEach((state, note) => {
         if (state.voiceIndex >= 0) {
           result.push({ note, voiceIndex: state.voiceIndex });
@@ -249,18 +277,17 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
     },
 
     getStolenNotes: () => {
-      return stolenQueue.filter(note => {
+      return stolenQueue.filter((note) => {
         const state = noteStates.get(note);
         return state && state.pressed;
       });
     },
 
-    apply: (nextModule) => {
+    apply: (nextModule: ModuleConfig) => {
       const prevPolyVoice = voiceStates.length;
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
 
-      // PolyVoice 变化时调整数组大小
       const newPolyVoice = getPolyVoice();
       if (newPolyVoice !== prevPolyVoice) {
         if (newPolyVoice > prevPolyVoice) {
@@ -272,36 +299,34 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
             });
           }
         } else {
-          const released = [];
+          const released: Array<{ note: number; voiceIndex: number }> = [];
           for (let i = newPolyVoice; i < prevPolyVoice; i++) {
             if (voiceStates[i].active) {
               const note = voiceStates[i].note;
               releaseVoice(i);
-              if (note) {
+              if (note !== null) {
                 released.push({ note, voiceIndex: i });
                 noteStates.delete(note);
               }
             }
           }
           voiceStates.length = newPolyVoice;
-          
-          // 尝试将 stolenQueue 中的 note 恢复到保留的 voice 中
+
           while (stolenQueue.length > 0) {
             const availableVoice = findAvailableVoice();
             if (availableVoice < 0 || availableVoice >= newPolyVoice) break;
-            
+
             const recovered = tryRecoverStolenNote(availableVoice);
             if (!recovered) break;
           }
-          
-          // 清空无法恢复的 stolenQueue，并清理对应的 noteStates
+
           stolenQueue.length = 0;
           noteStates.forEach((state, note) => {
             if (state.voiceIndex === -1) {
               noteStates.delete(note);
             }
           });
-          
+
           if (released.length > 0) {
             runtime.pendingReleasedNotes = (runtime.pendingReleasedNotes || []).concat(released);
           }
@@ -318,19 +343,28 @@ function createVoicesRuntime(module, getGlobalPolyVoice = () => 8) {
   return runtime;
 }
 
-/**
- * 创建 Pitch 输入模块运行时
- * 负责音高变换（transpose/octave/frequency）和控制范围计算
- */
-function createPitchRuntime(module, chainModules, inputIndex) {
+interface NoteData {
+  type: string;
+  note?: string;
+  frequency?: number;
+  originalNote: number;
+  velocity: number;
+}
+
+interface PitchRuntime extends InputRuntime {
+  getControlledModules(): { sources: string[]; envelopes: Array<{ id: string; type: string }> };
+}
+
+function createPitchRuntime(
+  module: ModuleConfig,
+  chainModules: ModuleConfig[],
+  inputIndex: number
+): PitchRuntime {
   let moduleState = deepClone(module);
 
-  /**
-   * 确定此 Pitch 的控制范围（到下一个 Pitch 之前）
-   */
   const getControlledModules = () => {
-    const sources = [];
-    const envelopes = [];
+    const sources: string[] = [];
+    const envelopes: Array<{ id: string; type: string }> = [];
 
     for (let i = inputIndex + 1; i < chainModules.length; i++) {
       const m = chainModules[i];
@@ -348,72 +382,71 @@ function createPitchRuntime(module, chainModules, inputIndex) {
     return { sources, envelopes };
   };
 
-  const applyMidiTransforms = (note) => {
-    const transpose = clamp(Number(moduleState.options?.transpose) || 0, -12, 12);
-    const octave = clamp(Number(moduleState.options?.octave) || 0, -4, 4);
+  const applyMidiTransforms = (note: number): string => {
+    const transpose = clamp(Number((moduleState.options as Record<string, unknown>)?.transpose) || 0, -12, 12);
+    const octave = clamp(Number((moduleState.options as Record<string, unknown>)?.octave) || 0, -4, 4);
 
     if (transpose === 0 && octave === 0) {
-      return note;
+      return Tone.Frequency(note).toNote();
     }
 
     let midiNum = Tone.Frequency(note).toMidi();
-    midiNum += transpose + (octave * 12);
+    midiNum += transpose + octave * 12;
     return Tone.Frequency(midiNum, "midi").toNote();
   };
 
-  const getFrequencyValue = () => {
-    return clamp(Number(moduleState.options?.frequency) || 440, 0.1, 20000);
+  const getFrequencyValue = (): number => {
+    return clamp(Number((moduleState.options as Record<string, unknown>)?.frequency) || 440, 0.1, 20000);
   };
 
-  const runtime = {
-    type: module.type,
+  const runtime: PitchRuntime = {
+    type: module.type as string,
     category: "input",
     moduleState,
     getControlledModules,
 
-    triggerAttack: (note, velocity, voiceIndex) => {
-      const noteData = moduleState.options?.mode === "midi"
-        ? { type: "midi", note: applyMidiTransforms(note), originalNote: note, velocity }
-        : { type: "frequency", frequency: getFrequencyValue(), originalNote: note, velocity };
+    triggerAttack: (note: number, velocity: number, _voiceIndex: number) => {
+      const noteData: NoteData =
+        (moduleState.options as Record<string, unknown>)?.mode === "midi"
+          ? { type: "midi", note: applyMidiTransforms(note), originalNote: note, velocity }
+          : { type: "frequency", frequency: getFrequencyValue(), originalNote: note, velocity };
 
       const controlled = getControlledModules();
 
       return {
-        voiceIndex,
+        voiceIndex: _voiceIndex,
         noteData,
         controlledSources: controlled.sources,
         controlledEnvelopes: controlled.envelopes,
       };
     },
 
-    triggerRelease: (note) => {
-      // Pitch 不再管理 voice，直接返回 true
+    triggerRelease: (_note: number) => {
       return { released: true };
     },
 
     releaseAll: () => [],
     releaseAllPending: () => [],
 
-    apply: (nextModule) => {
+    apply: (nextModule: ModuleConfig) => {
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
     },
 
     dispose: () => {},
+    getVoiceForNote: () => -1,
+    getActiveNotes: () => [],
+    getStolenNotes: () => [],
   };
 
   return runtime;
 }
 
-/**
- * 创建 Pedal 输入模块运行时
- * 维护 pedal 状态，在 AudioEngine 中统一处理延音逻辑
- */
-function createPedalRuntime(module) {
+function createPedalRuntime(module: ModuleConfig): InputRuntime {
   let moduleState = deepClone(module);
 
-  const runtime = {
-    type: module.type,
+  const runtime: InputRuntime = {
+    type: module.type as string,
     category: "input",
     moduleState,
 
@@ -424,28 +457,32 @@ function createPedalRuntime(module) {
     releaseAll: () => [],
     releaseAllPending: () => [],
 
-    apply: (nextModule) => {
-      const prevPedal = Boolean(moduleState.options?.pedal);
+    apply: (nextModule: ModuleConfig) => {
+      const prevPedal = Boolean((moduleState.options as Record<string, unknown>)?.pedal);
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
 
-      // Pedal 从 on 变为 off：标记 pedalOff
-      const newPedal = Boolean(moduleState.options?.pedal);
+      const newPedal = Boolean((moduleState.options as Record<string, unknown>)?.pedal);
       if (prevPedal && !newPedal) {
         runtime.pedalOff = true;
       }
     },
 
     dispose: () => {},
+    getVoiceForNote: () => -1,
+    getActiveNotes: () => [],
+    getStolenNotes: () => [],
   };
 
   return runtime;
 }
 
-/**
- * Input Runtime 工厂函数
- */
-export function createInputRuntime(module, chainModules, inputIndex, getGlobalPolyVoice = () => 8) {
+export function createInputRuntime(
+  module: ModuleConfig,
+  chainModules: ModuleConfig[] = [],
+  inputIndex: number = -1,
+  getGlobalPolyVoice: () => number = () => 8
+): InputRuntime {
   if (module.type === "Voices") {
     return createVoicesRuntime(module, getGlobalPolyVoice);
   }

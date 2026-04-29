@@ -17,7 +17,9 @@ export type SourceType =
 export type InputType = 
   | 'Voices' 
   | 'Pitch' 
-  | 'Pedal';
+  | 'Pedal'
+  | 'MIDI'      // Legacy type, migrated to Pitch
+  | 'Frequency'; // Legacy type, migrated to Pitch
 
 // Envelope type
 export type EnvelopeType = 'Envelope';
@@ -31,22 +33,35 @@ export type EffectType =
   | 'Chorus' 
   | 'Reverb' 
   | 'AutoFilter' 
-  | 'Delay' 
-  | 'Distortion' 
+  | 'AutoPanner'
+  | 'AutoWah'
+  | 'BitCrusher'
+  | 'Chebyshev'
+  | 'FeedbackDelay'
+  | 'Freeverb'
+  | 'FrequencyShifter'
+  | 'JCReverb'
   | 'Phaser' 
+  | 'PingPongDelay'
+  | 'PitchShift'
+  | 'StereoWidener'
   | 'Tremolo' 
-  | 'Vibrato';
+  | 'Vibrato'
+  | 'Limiter'
+  | 'PanVol';
 
 // All module types
 export type ModuleType = SourceType | InputType | EnvelopeType | EffectType;
 
-// Control types for UI
-export type ControlKind = 'slider' | 'select' | 'toggle' | 'switch' | 'audioImport';
+// Control types for UI (matches the actual values used in libraries)
+export type ControlKind = 'range' | 'select' | 'toggle' | 'switch' | 'audioImport';
 
 export interface ControlOption {
   value: string | number | boolean;
   label: string;
 }
+
+export type FormatterFunction = (value: number) => string;
 
 export interface ControlDefinition {
   kind: ControlKind;
@@ -57,17 +72,22 @@ export interface ControlDefinition {
   step?: number;
   options?: ControlOption[];
   defaultValue?: unknown;
+  formatter?: FormatterFunction | ((value: number) => string);
+  conditional?: (module: ModuleConfig) => boolean;
 }
 
 // Module definition from library
 export interface ModuleDefinition {
-  type: ModuleType;
-  category: ModuleCategory;
-  label: string;
-  color: string;
+  type?: ModuleType;
+  category?: ModuleCategory;
+  label?: string;
+  color?: string;
+  accent?: string;
+  tag?: string;
   controls: ControlDefinition[];
   options: Record<string, unknown>;
-  runtime: string;
+  runtime?: string;
+  moduleDefaults?: Record<string, unknown>;
 }
 
 // Module instance in state
