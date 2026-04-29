@@ -233,7 +233,25 @@ export class AudioEngine {
         }
       });
 
-      // 4. 连接信号链
+      // 4. 绑定 voiceManagerId：每个 Source/Envelope 归属最近的 Voices
+      let currentVoiceManagerId = hasExplicitVoices ? null : HIDDEN_VOICES_ID;
+      modules.forEach((module) => {
+        if (module.type === "Voices" && module.enabled) {
+          currentVoiceManagerId = module.id;
+        }
+        if (
+          (module.category === "source" || module.type === "Envelope") &&
+          module.enabled &&
+          currentVoiceManagerId
+        ) {
+          const runtime = runtimeMap.get(module.id);
+          if (runtime) {
+            runtime.voiceManagerId = currentVoiceManagerId;
+          }
+        }
+      });
+
+      // 5. 连接信号链
       connectSignalChain({
         modules,
         runtimeMap,
@@ -323,16 +341,25 @@ export class AudioEngine {
   }
 
   /**
-   * 获取链的 VoiceManager（显式或隐藏）
+   * 获取链的所有 VoiceManager（显式或隐藏）
    */
-  getVoiceManager(runtimeMap) {
-    let lastVoiceManager = null;
+  getVoiceManagers(runtimeMap) {
+    const managers = [];
     for (const [id, runtime] of runtimeMap) {
       if (runtime.isVoiceManager) {
-        lastVoiceManager = runtime;
+        managers.push({ id, runtime });
       }
     }
-    return lastVoiceManager;
+    // 按模块位置排序（需要在构建时记录位置，这里先按插入顺序）
+    return managers;
+  }
+
+  /**
+   * 获取链的 VoiceManager（显式或隐藏）- 兼容旧代码，返回最后一个
+   */
+  getVoiceManager(runtimeMap) {
+    const managers = this.getVoiceManagers(runtimeMap);
+    return managers.length > 0 ? managers[managers.length - 1].runtime : null;
   }
 
   /**
@@ -348,23 +375,27 @@ export class AudioEngine {
   }
 
   /**
-   * 通知所有 Pitch 范围内的 Source 和 Envelope 释放
+   * 通知指定 VoiceManager zone 内的 Source 和 Envelope 释放
    */
-  notifySourcesAndEnvelopesRelease(note, voiceIndex, runtimeMap) {
+  notifySourcesAndEnvelopesRelease(note, voiceIndex, runtimeMap, voiceManagerId) {
     runtimeMap.forEach((runtime) => {
       if (runtime.type === "Pitch" && runtime.getControlledModules) {
         const controlled = runtime.getControlledModules();
 
         controlled.sources.forEach((sourceId) => {
           const sourceRuntime = runtimeMap.get(sourceId);
-          if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
+          if (
+            sourceRuntime &&
+            sourceRuntime.voiceManagerId === voiceManagerId &&
+            typeof sourceRuntime.triggerRelease === "function"
+          ) {
             sourceRuntime.triggerRelease(note, voiceIndex);
           }
         });
 
         controlled.envelopes.forEach((envInfo) => {
           const envRuntime = runtimeMap.get(envInfo.id);
-          if (!envRuntime) {
+          if (!envRuntime || envRuntime.voiceManagerId !== voiceManagerId) {
             return;
           }
 
@@ -409,22 +440,31 @@ export class AudioEngine {
       const pendingNotes = runtime.pendingReleasedNotes;
       runtime.pendingReleasedNotes = []; // 清空队列
 
+      // 找到该 VoiceManager 的 id
+      let vmId = null;
+      for (const [id, rt] of runtimeMap) {
+        if (rt === runtime) {
+          vmId = id;
+          break;
+        }
+      }
+
       pendingNotes.forEach(({ note, voiceIndex }) => {
-        this.notifySourcesAndEnvelopesRelease(note, voiceIndex, runtimeMap);
+        this.notifySourcesAndEnvelopesRelease(note, voiceIndex, runtimeMap, vmId);
       });
     }
 
-    // Pedal 关闭：通知 VoiceManager 释放 pending notes，然后通知所有 Source 和 Envelope
+    // Pedal 关闭：通知所有 VoiceManager 释放 pending notes
     if (runtime.type === "Pedal" && runtime.pedalOff) {
       runtime.pedalOff = false;
 
-      const voiceManager = this.getVoiceManager(runtimeMap);
-      if (voiceManager) {
+      const voiceManagers = this.getVoiceManagers(runtimeMap);
+      voiceManagers.forEach(({ id: vmId, runtime: voiceManager }) => {
         const released = voiceManager.releaseAllPending();
         released.forEach(({ note, voiceIndex }) => {
-          this.notifySourcesAndEnvelopesRelease(note, voiceIndex, runtimeMap);
+          this.notifySourcesAndEnvelopesRelease(note, voiceIndex, runtimeMap, vmId);
         });
-      }
+      });
     }
   }
 
@@ -472,9 +512,9 @@ export class AudioEngine {
   }
 
   /**
-   * 触发指定 note 的 attack，通知所有 Pitch 控制范围内的 Source 和 Envelope
+   * 触发指定 note 的 attack，通知指定 VoiceManager zone 内的 Source 和 Envelope
    */
-  _triggerAttackForNote(note, velocity, voiceIndex, runtimeMap, chainIndex) {
+  _triggerAttackForNote(note, velocity, voiceIndex, runtimeMap, chainIndex, voiceManagerId) {
     const inputs = this.getChainInputs(chainIndex, runtimeMap);
     inputs.forEach((input) => {
       if (input.runtime.type !== "Pitch") {
@@ -488,18 +528,22 @@ export class AudioEngine {
 
       const { noteData, controlledSources, controlledEnvelopes } = result;
 
-      // 触发控制范围内的所有 Source
+      // 只触发属于指定 VoiceManager zone 的 Source
       controlledSources.forEach((sourceId) => {
         const sourceRuntime = runtimeMap.get(sourceId);
-        if (sourceRuntime && typeof sourceRuntime.triggerAttack === "function") {
+        if (
+          sourceRuntime &&
+          sourceRuntime.voiceManagerId === voiceManagerId &&
+          typeof sourceRuntime.triggerAttack === "function"
+        ) {
           sourceRuntime.triggerAttack(noteData, velocity, voiceIndex);
         }
       });
 
-      // 触发控制范围内的所有 Envelope
+      // 只触发属于指定 VoiceManager zone 的 Envelope
       controlledEnvelopes.forEach((envInfo) => {
         const envRuntime = runtimeMap.get(envInfo.id);
-        if (!envRuntime) {
+        if (!envRuntime || envRuntime.voiceManagerId !== voiceManagerId) {
           return;
         }
 
@@ -527,33 +571,34 @@ export class AudioEngine {
         return;
       }
 
-      // 1. 获取 VoiceManager
-      const voiceManager = this.getVoiceManager(runtimeMap);
-      if (!voiceManager) {
+      // 1. 获取所有 VoiceManager
+      const voiceManagers = this.getVoiceManagers(runtimeMap);
+      if (!voiceManagers.length) {
         return;
       }
 
-      // 2. Voice 分配
-      const voiceResult = voiceManager.triggerAttack(note, velocity);
-      if (!voiceResult) {
-        return;
-      }
+      // 2. 每个 VoiceManager 独立分配 voice
+      voiceManagers.forEach(({ id: vmId, runtime: voiceManager }) => {
+        const voiceResult = voiceManager.triggerAttack(note, velocity);
+        if (!voiceResult) {
+          return;
+        }
 
-      const { voiceIndex, isRetrigger, stolenNote } = voiceResult;
+        const { voiceIndex, isRetrigger, stolenNote } = voiceResult;
 
-      // 延续音：不重新触发 Attack
-      if (isRetrigger) {
-        return;
-      }
+        // 延续音：不重新触发 Attack
+        if (isRetrigger) {
+          return;
+        }
 
-      // 3. 处理 voice stealing：释放被 steal 的 note，让新 note 的 attack 自然覆盖
-      if (stolenNote) {
-        this.notifySourcesAndEnvelopesRelease(stolenNote, voiceIndex, runtimeMap);
-        // 不强制 reset voice，让 hiddenEnv 自然从 release 过渡到新 attack
-      }
+        // 3. 处理 voice stealing：只释放该 VoiceManager zone 内的 note
+        if (stolenNote) {
+          this.notifySourcesAndEnvelopesRelease(stolenNote, voiceIndex, runtimeMap, vmId);
+        }
 
-      // 4. 触发新 note 的 attack
-      this._triggerAttackForNote(note, velocity, voiceIndex, runtimeMap, chainIndex);
+        // 4. 触发该 VoiceManager zone 内新 note 的 attack
+        this._triggerAttackForNote(note, velocity, voiceIndex, runtimeMap, chainIndex, vmId);
+      });
     });
   }
 
@@ -570,77 +615,84 @@ export class AudioEngine {
         return;
       }
 
-      // 1. 获取 VoiceManager 和 Pedal 状态
-      const voiceManager = this.getVoiceManager(runtimeMap);
-      if (!voiceManager) {
+      // 1. 获取所有 VoiceManager 和 Pedal 状态
+      const voiceManagers = this.getVoiceManagers(runtimeMap);
+      if (!voiceManagers.length) {
         return;
       }
 
       const pedal = this.getPedalState(runtimeMap);
 
-      // 2. Voice 释放
-      const releaseResult = voiceManager.triggerRelease(note, pedal);
-      if (!releaseResult || !releaseResult.released) {
-        return;
-      }
-
-      const { voiceIndex, recoveredNote, originalVelocity } = releaseResult;
-
-      // 3. 遍历所有 Pitch，释放其控制范围内的 Source 和 Envelope
-      const inputs = this.getChainInputs(chainIndex, runtimeMap);
-      inputs.forEach((input) => {
-        if (input.runtime.type !== "Pitch") {
+      // 2. 每个 VoiceManager 独立释放
+      voiceManagers.forEach(({ id: vmId, runtime: voiceManager }) => {
+        const releaseResult = voiceManager.triggerRelease(note, pedal);
+        if (!releaseResult || !releaseResult.released) {
           return;
         }
 
-        const controlled = input.runtime.getControlledModules();
+        const { voiceIndex, recoveredNote, originalVelocity } = releaseResult;
 
-        // 通知 Source release
-        controlled.sources.forEach((sourceId) => {
-          const sourceRuntime = runtimeMap.get(sourceId);
-          if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
-            sourceRuntime.triggerRelease(note, voiceIndex);
-          }
-        });
-
-        // 通知 Envelope release
-        controlled.envelopes.forEach((envInfo) => {
-          const envRuntime = runtimeMap.get(envInfo.id);
-          if (!envRuntime) {
+        // 3. 遍历所有 Pitch，只释放该 VoiceManager zone 内的 Source 和 Envelope
+        const inputs = this.getChainInputs(chainIndex, runtimeMap);
+        inputs.forEach((input) => {
+          if (input.runtime.type !== "Pitch") {
             return;
           }
 
-          if (envRuntime.modulationMode) {
-            envRuntime.triggerVoiceRelease(voiceIndex);
-          } else if (envRuntime.hasPerVoiceConnection) {
-            envRuntime.triggerVoiceRelease(voiceIndex);
-          } else {
-            envRuntime.triggerRelease(note);
-          }
-        });
-      });
+          const controlled = input.runtime.getControlledModules();
 
-      // 4. 如果有恢复的 note，延迟触发 re-attack
-      if (recoveredNote) {
-        const recoveredVoiceIndex = voiceManager.getVoiceForNote(recoveredNote);
-        if (recoveredVoiceIndex >= 0) {
-          const recoveredVelocity = originalVelocity ?? 1;
-          // 使用 requestAnimationFrame 确保 release 先执行
-          requestAnimationFrame(() => {
-            // 防御性检查：确认 recoveredNote 仍然有效（未被再次 steal 或释放）
-            const currentVoiceIndex = voiceManager.getVoiceForNote(recoveredNote);
-            if (currentVoiceIndex < 0) return;
-            
-            this._triggerAttackForNote(
-              recoveredNote, 
-              recoveredVelocity,
-              recoveredVoiceIndex, 
-              runtimeMap, 
-              chainIndex
-            );
+          // 只通知该 VoiceManager zone 内的 Source release
+          controlled.sources.forEach((sourceId) => {
+            const sourceRuntime = runtimeMap.get(sourceId);
+            if (
+              sourceRuntime &&
+              sourceRuntime.voiceManagerId === vmId &&
+              typeof sourceRuntime.triggerRelease === "function"
+            ) {
+              sourceRuntime.triggerRelease(note, voiceIndex);
+            }
           });
+
+          // 只通知该 VoiceManager zone 内的 Envelope release
+          controlled.envelopes.forEach((envInfo) => {
+            const envRuntime = runtimeMap.get(envInfo.id);
+            if (!envRuntime || envRuntime.voiceManagerId !== vmId) {
+              return;
+            }
+
+            if (envRuntime.modulationMode) {
+              envRuntime.triggerVoiceRelease(voiceIndex);
+            } else if (envRuntime.hasPerVoiceConnection) {
+              envRuntime.triggerVoiceRelease(voiceIndex);
+            } else {
+              envRuntime.triggerRelease(note);
+            }
+          });
+        });
+
+        // 4. 如果有恢复的 note，延迟触发该 VoiceManager zone 的 re-attack
+        if (recoveredNote) {
+          const recoveredVoiceIndex = voiceManager.getVoiceForNote(recoveredNote);
+          if (recoveredVoiceIndex >= 0) {
+            const recoveredVelocity = originalVelocity ?? 1;
+            // 使用 requestAnimationFrame 确保 release 先执行
+            requestAnimationFrame(() => {
+              // 防御性检查：确认 recoveredNote 仍然有效
+              const currentVoiceIndex = voiceManager.getVoiceForNote(recoveredNote);
+              if (currentVoiceIndex < 0) return;
+              
+              this._triggerAttackForNote(
+                recoveredNote, 
+                recoveredVelocity,
+                recoveredVoiceIndex, 
+                runtimeMap, 
+                chainIndex,
+                vmId
+              );
+            });
+          }
         }
-      }
+      });
     });
   }
 
@@ -656,45 +708,51 @@ export class AudioEngine {
         return;
       }
 
-      // 1. 获取 VoiceManager
-      const voiceManager = this.getVoiceManager(runtimeMap);
-      if (!voiceManager) {
+      // 1. 获取所有 VoiceManager
+      const voiceManagers = this.getVoiceManagers(runtimeMap);
+      if (!voiceManagers.length) {
         return;
       }
 
-      // 2. VoiceManager 释放所有 voice
-      const released = voiceManager.releaseAll();
+      // 2. 每个 VoiceManager 独立释放所有 voice
+      voiceManagers.forEach(({ id: vmId, runtime: voiceManager }) => {
+        const released = voiceManager.releaseAll();
 
-      // 3. 遍历所有 Pitch，释放其控制范围内的 Source 和 Envelope
-      released.forEach(({ note, voiceIndex }) => {
-        const inputs = this.getChainInputs(chainIndex, runtimeMap);
-        inputs.forEach((input) => {
-          if (input.runtime.type !== "Pitch") {
-            return;
-          }
-
-          const controlled = input.runtime.getControlledModules();
-
-          controlled.sources.forEach((sourceId) => {
-            const sourceRuntime = runtimeMap.get(sourceId);
-            if (sourceRuntime && typeof sourceRuntime.triggerRelease === "function") {
-              sourceRuntime.triggerRelease(note, voiceIndex);
-            }
-          });
-
-          controlled.envelopes.forEach((envInfo) => {
-            const envRuntime = runtimeMap.get(envInfo.id);
-            if (!envRuntime) {
+        // 3. 遍历所有 Pitch，只释放该 VoiceManager zone 内的 Source 和 Envelope
+        released.forEach(({ note, voiceIndex }) => {
+          const inputs = this.getChainInputs(chainIndex, runtimeMap);
+          inputs.forEach((input) => {
+            if (input.runtime.type !== "Pitch") {
               return;
             }
 
-            if (envRuntime.modulationMode) {
-              envRuntime.triggerVoiceRelease(voiceIndex);
-            } else if (envRuntime.hasPerVoiceConnection) {
-              envRuntime.triggerVoiceRelease(voiceIndex);
-            } else {
-              envRuntime.triggerRelease(note);
-            }
+            const controlled = input.runtime.getControlledModules();
+
+            controlled.sources.forEach((sourceId) => {
+              const sourceRuntime = runtimeMap.get(sourceId);
+              if (
+                sourceRuntime &&
+                sourceRuntime.voiceManagerId === vmId &&
+                typeof sourceRuntime.triggerRelease === "function"
+              ) {
+                sourceRuntime.triggerRelease(note, voiceIndex);
+              }
+            });
+
+            controlled.envelopes.forEach((envInfo) => {
+              const envRuntime = runtimeMap.get(envInfo.id);
+              if (!envRuntime || envRuntime.voiceManagerId !== vmId) {
+                return;
+              }
+
+              if (envRuntime.modulationMode) {
+                envRuntime.triggerVoiceRelease(voiceIndex);
+              } else if (envRuntime.hasPerVoiceConnection) {
+                envRuntime.triggerVoiceRelease(voiceIndex);
+              } else {
+                envRuntime.triggerRelease(note);
+              }
+            });
           });
         });
       });
