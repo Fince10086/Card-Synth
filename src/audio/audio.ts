@@ -482,6 +482,41 @@ export class AudioEngine {
     }
   }
 
+  _updatePitchForActiveNotes(
+    pitchRuntime: AnyRecord,
+    runtimeMap: Map<string, AnyRecord>
+  ): void {
+    if (!this.activeNotes.size) return;
+
+    const voiceManagers = this.getVoiceManagers(runtimeMap);
+    if (!voiceManagers.length) return;
+
+    const controlled = pitchRuntime.getControlledModules?.() as { sources: string[] } | undefined;
+    if (!controlled?.sources?.length) return;
+
+    voiceManagers.forEach(({ runtime: voiceManager }) => {
+      const activeNotes = voiceManager.getActiveNotes?.() as Array<{ note: number; voiceIndex: number }> | undefined;
+      if (!activeNotes?.length) return;
+
+      activeNotes.forEach(({ note, voiceIndex }) => {
+        const result = pitchRuntime.triggerAttack?.(note, 1, voiceIndex) as {
+          noteData: { type: string; note?: string; frequency?: number };
+        } | undefined;
+        if (!result?.noteData) return;
+
+        const noteData = result.noteData;
+        const noteOrFrequency = noteData.type === "midi" ? noteData.note! : noteData.frequency!;
+
+        controlled.sources.forEach((sourceId: string) => {
+          const sourceRuntime = runtimeMap.get(sourceId);
+          if (sourceRuntime && typeof sourceRuntime.updateVoiceFrequency === "function") {
+            sourceRuntime.updateVoiceFrequency(voiceIndex, noteOrFrequency);
+          }
+        });
+      });
+    });
+  }
+
   updateModule(
     moduleId: string,
     updates: Partial<ModuleConfig>,
@@ -504,6 +539,9 @@ export class AudioEngine {
     const runtimeMap = this.getChainRuntimeMap(chainIndex);
     if (runtime && runtime.apply) {
       runtime.apply(modules[moduleIndex]);
+      if (runtime.type === "Pitch") {
+        this._updatePitchForActiveNotes(runtime, runtimeMap!);
+      }
       this._flushInputPendingNotes(runtime, runtimeMap!, modules, moduleIndex);
     }
   }
