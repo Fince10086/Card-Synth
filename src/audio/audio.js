@@ -233,11 +233,15 @@ export class AudioEngine {
         }
       });
 
-      // 4. 绑定 voiceManagerId：每个 Source/Envelope 归属最近的 Voices
+      // 4. 绑定 voiceManagerId 和 pedalId
       let currentVoiceManagerId = hasExplicitVoices ? null : HIDDEN_VOICES_ID;
+      let currentPedalId = null;
       modules.forEach((module) => {
         if (module.type === "Voices" && module.enabled) {
           currentVoiceManagerId = module.id;
+        }
+        if (module.type === "Pedal" && module.enabled) {
+          currentPedalId = module.id;
         }
         if (
           (module.category === "source" || module.type === "Envelope") &&
@@ -247,6 +251,7 @@ export class AudioEngine {
           const runtime = runtimeMap.get(module.id);
           if (runtime) {
             runtime.voiceManagerId = currentVoiceManagerId;
+            runtime.pedalId = currentPedalId;
           }
         }
       });
@@ -363,7 +368,7 @@ export class AudioEngine {
   }
 
   /**
-   * 获取链的 Pedal 状态
+   * 获取链的 Pedal 状态（全局）
    */
   getPedalState(runtimeMap) {
     for (const [id, runtime] of runtimeMap) {
@@ -372,6 +377,15 @@ export class AudioEngine {
       }
     }
     return false;
+  }
+
+  /**
+   * 获取指定 Pedal 的状态
+   */
+  getPedalStateById(runtimeMap, pedalId) {
+    if (!pedalId) return false;
+    const pedal = runtimeMap.get(pedalId);
+    return pedal?.type === "Pedal" && pedal.moduleState?.options?.pedal;
   }
 
   /**
@@ -615,17 +629,24 @@ export class AudioEngine {
         return;
       }
 
-      // 1. 获取所有 VoiceManager 和 Pedal 状态
+      // 1. 获取所有 VoiceManager
       const voiceManagers = this.getVoiceManagers(runtimeMap);
       if (!voiceManagers.length) {
         return;
       }
 
-      const pedal = this.getPedalState(runtimeMap);
-
-      // 2. 每个 VoiceManager 独立释放
+      // 2. 每个 VoiceManager 独立释放，使用 zone 对应的 pedal 状态
       voiceManagers.forEach(({ id: vmId, runtime: voiceManager }) => {
-        const releaseResult = voiceManager.triggerRelease(note, pedal);
+        // 获取该 VoiceManager zone 对应的 pedal 状态
+        let zonePedal = false;
+        for (const [id, runtime] of runtimeMap) {
+          if (runtime.voiceManagerId === vmId && runtime.pedalId) {
+            zonePedal = this.getPedalStateById(runtimeMap, runtime.pedalId);
+            break;
+          }
+        }
+
+        const releaseResult = voiceManager.triggerRelease(note, zonePedal);
         if (!releaseResult || !releaseResult.released) {
           return;
         }
