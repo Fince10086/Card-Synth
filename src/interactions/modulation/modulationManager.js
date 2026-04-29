@@ -552,9 +552,12 @@ export class ModulationManager {
       sourceTargetProfile.set(mod.sourceModuleId, profile);
 
       targets.forEach(({ param, voiceIndex }, targetIndex) => {
-        const sourceVoiceIndex = Number.isFinite(voiceIndex)
-          ? voiceIndex
-          : Number(mod.sourceVoiceIndex ?? 0);
+        // Mono source 只有一个 voice，调制所有 target voice
+        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId);
+        const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
+        const sourceVoiceIndex = isSourceMono
+          ? 0
+          : (Number.isFinite(voiceIndex) ? voiceIndex : Number(mod.sourceVoiceIndex ?? 0));
 
         this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, param, targetIndex, voiceIndex);
       });
@@ -659,15 +662,20 @@ export class ModulationManager {
       // 情况1：该 voice 是调制源
       if (mod.sourceModuleId === moduleId) {
         const targets = this.getModulationTargetParams(mod, chainIndex);
+        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId);
+        const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
+
         targets.forEach(({ param, voiceIndex: targetVoiceIndex }, targetIndex) => {
-          const sourceVoiceIndex = Number.isFinite(targetVoiceIndex)
+          const expectedSourceVoiceIndex = Number.isFinite(targetVoiceIndex)
             ? targetVoiceIndex
             : Number(mod.sourceVoiceIndex ?? 0);
 
-          if (sourceVoiceIndex !== voiceIndex) {
+          // Mono source 只有一个 voice，调制所有 target voice
+          if (!isSourceMono && expectedSourceVoiceIndex !== voiceIndex) {
             return;
           }
 
+          const sourceVoiceIndex = isSourceMono ? 0 : expectedSourceVoiceIndex;
           const created = this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, param, targetIndex, targetVoiceIndex);
           if (created) {
             connectedCount++;
@@ -684,10 +692,14 @@ export class ModulationManager {
           return;
         }
 
-        // 对于 source-to-source 调制，sourceVoiceIndex 应该与 targetVoiceIndex 对齐
-        const sourceVoiceIndex = Number.isFinite(target.voiceIndex)
-          ? target.voiceIndex
-          : Number(mod.sourceVoiceIndex ?? 0);
+        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId);
+        const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
+
+        // 对于 source-to-source 调制，sourceVoiceIndex 与 targetVoiceIndex 对齐
+        // Mono source 固定使用 voice 0
+        const sourceVoiceIndex = isSourceMono
+          ? 0
+          : (Number.isFinite(target.voiceIndex) ? target.voiceIndex : Number(mod.sourceVoiceIndex ?? 0));
         const targetIndex = targets.findIndex((t) => t.voiceIndex === voiceIndex);
 
         const created = this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, target.param, targetIndex, voiceIndex);
@@ -711,8 +723,16 @@ export class ModulationManager {
         return;
       }
 
-      const isSourceMatch = runtime.sourceVoiceIndex === voiceIndex &&
-        this.getModulations(chainIndex).some((m) => m.id === runtime.modulationId && m.sourceModuleId === moduleId);
+      // 检查该调制是否属于当前 module
+      const mod = this.getModulations(chainIndex).find((m) => m.id === runtime.modulationId);
+      if (!mod) return;
+
+      // Mono source 的 voice 0 dispose 时，断开所有该 source 的连接
+      const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId);
+      const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
+
+      const isSourceMatch = (runtime.sourceVoiceIndex === voiceIndex || (isSourceMono && voiceIndex === 0))
+        && mod.sourceModuleId === moduleId;
 
       const isTargetMatch = runtime.targetVoiceIndex === voiceIndex && runtime.targetModuleId === moduleId;
 

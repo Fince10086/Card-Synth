@@ -764,6 +764,10 @@ export function createSourceRuntime({
     needsExtendedRelease: false,
     preserveVoiceSlotsForSourceTargets: false,
 
+    get isMono() {
+      return getIsMono();
+    },
+
     /**
      * 获取指定声音的调制输出节点
      *
@@ -773,7 +777,9 @@ export function createSourceRuntime({
      * @returns {Object|null} 输出节点
      */
     getModulationOutput: (voiceIndex) => {
-      const voice = getOrInitVoice(voiceIndex);
+      const isMono = getIsMono();
+      const index = isMono ? 0 : voiceIndex;
+      const voice = getOrInitVoice(index);
       if (!voice || !voice.initialized) {
         return null;
       }
