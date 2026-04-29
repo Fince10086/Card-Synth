@@ -12,7 +12,8 @@ import {
   getLastSelectedPresetId,
   setLastSelectedPresetId,
 } from "./presetStorage";
-import type { Preset } from "../types";
+import type { Preset, GlobalState, ModuleConfig, MacroChainState } from "../types";
+import type { ModulationItem } from "./preset";
 
 let builtinPresets: Record<string, Preset> = {};
 let userPresets: Record<string, Preset> = {};
@@ -35,11 +36,11 @@ function slugToName(slug: string): string {
 }
 
 function normalizeWithName(data: unknown, id: string): Preset {
-  const normalized = normalizeCurrentPresetData(data as Partial<Preset>);
+  const normalized = normalizeCurrentPresetData(data as unknown as Partial<{ global: Partial<GlobalState>; modules: ModuleConfig[]; modulations: ModulationItem[]; macro: Partial<MacroChainState>; name?: string }>);
   if (!normalized.name) {
-    (normalized as Record<string, unknown>).name = slugToName(toSlug(id));
+    (normalized as unknown as Record<string, unknown>).name = slugToName(toSlug(id));
   }
-  return normalized as Preset;
+  return normalized as unknown as Preset;
 }
 
 export async function loadBuiltinPresets(): Promise<Record<string, Preset>> {

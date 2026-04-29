@@ -1,3 +1,4 @@
+import type { Analyser } from "tone";
 import {
   createBasePreset,
   createDefaultMacroChainState,
@@ -135,9 +136,9 @@ export class ModularSynthApp {
     this.macroManager = new MacroManager(this as unknown as any);
     this.gestureManager = new GestureManager(this as unknown as GestureManagerApp);
     this.modulationManager = new ModulationManager(this);
-    this.dragManager = new ModuleDragManager(this as unknown as Record<string, unknown>);
+    this.dragManager = new ModuleDragManager(this as unknown as unknown as Record<string, unknown>);
     this.keyboardNavigation = new KeyboardNavigationManager();
-    this.engine = new AudioEngine(this as unknown as Record<string, unknown>);
+    this.engine = new AudioEngine(this as unknown as unknown as Record<string, unknown>);
 
     this.inputManager = new InputManager({
       onAttack: (note, velocity) => this.engine.attack(note as unknown as number, velocity),
@@ -171,7 +172,7 @@ export class ModularSynthApp {
     });
 
     if (SOURCE_MONITOR_ENABLED) {
-      this.sourceMonitor = new SourceOutputMonitor(this as unknown as Record<string, unknown>);
+      this.sourceMonitor = new SourceOutputMonitor(this as unknown as unknown as Record<string, unknown>);
       this.sourceMonitor.start();
     }
   }
@@ -805,8 +806,8 @@ export class ModularSynthApp {
     startScopeRendering({
       getCanvasFn: () => this.elements.oscilloscope,
       getContextFn: () => this.scopeContext,
-      getAnalyserFn: () => this.engine.getAnalyser() as unknown as AnalyserNode,
-      getSpectrumAnalyserFn: () => this.engine.getSpectrumAnalyser() as unknown as AnalyserNode,
+      getAnalyserFn: () => this.engine.getAnalyser() as unknown as Analyser,
+      getSpectrumAnalyserFn: () => this.engine.getSpectrumAnalyser() as unknown as Analyser,
       getAudioBootedFn: () => this.audioBooted,
       getModeFn: () => this.scopeMode,
     });
@@ -922,7 +923,7 @@ export class ModularSynthApp {
 
   syncControlsFromState(): void {
     this.controlBindings.forEach((binding, path) => {
-      const value = getByPath(this.state as unknown as Record<string, unknown>, path);
+      const value = getByPath(this.state as unknown as unknown as Record<string, unknown>, path);
       if (typeof value === "number" && Number.isFinite(value)) {
         binding.setVisual(value);
       }
@@ -933,8 +934,8 @@ export class ModularSynthApp {
     const animations: Array<{ binding: ControlBinding; startValue: number; endValue: number }> = [];
 
     this.controlBindings.forEach((binding, path) => {
-      const startValue = getByPath(fromState as unknown as Record<string, unknown>, path);
-      const endValue = getByPath(toState as unknown as Record<string, unknown>, path);
+      const startValue = getByPath(fromState as unknown as unknown as Record<string, unknown>, path);
+      const endValue = getByPath(toState as unknown as unknown as Record<string, unknown>, path);
 
       if (
         typeof startValue === "number" &&

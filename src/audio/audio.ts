@@ -20,12 +20,15 @@ import type { ModuleConfig, Preset, GlobalState } from "../types";
 const HIDDEN_MIDI_INPUT_ID = "__hidden_midi_input__";
 const HIDDEN_VOICES_ID = "__hidden_voices__";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<string, any>;
+
 export class AudioEngine {
-  app: Record<string, unknown>;
+  app: AnyRecord;
   ready: boolean;
   state: Preset | null;
-  chainRuntimes: Map<number, Map<string, Record<string, unknown>>>;
-  moduleRuntimes: Map<string, Record<string, unknown>>;
+  chainRuntimes: Map<number, Map<string, AnyRecord>>;
+  moduleRuntimes: Map<string, AnyRecord>;
   activeNotes: Set<number>;
   masterVolume!: Tone.Volume;
   limiter!: Tone.Limiter;
@@ -33,7 +36,7 @@ export class AudioEngine {
   spectrumAnalyser!: Tone.Analyser;
   scopeMonoMix!: Tone.Gain;
 
-  constructor(app: Record<string, unknown>) {
+  constructor(app: AnyRecord) {
     this.app = app;
     this.ready = false;
     this.state = null;
@@ -62,7 +65,7 @@ export class AudioEngine {
 
     this.scopeMonoMix = new Tone.Gain(1);
     this.scopeMonoMix.input.channelCount = 1;
-    (this.scopeMonoMix.input as Record<string, unknown>).channelCountMode = "explicit";
+    (this.scopeMonoMix.input as unknown as AnyRecord).channelCountMode = "explicit";
 
     this.masterVolume.connect(this.scopeMonoMix);
     this.scopeMonoMix.connect(this.analyser);
@@ -71,7 +74,7 @@ export class AudioEngine {
     this.rebuildSignalChains();
 
     if (this.app && this.app.modulationManager) {
-      (this.app.modulationManager as Record<string, unknown>).connectAllModulations?.();
+      (this.app.modulationManager as unknown as AnyRecord).connectAllModulations?.();
     }
   }
 
@@ -94,7 +97,7 @@ export class AudioEngine {
     this.rebuildSignalChains();
 
     if (this.app && this.app.modulationManager) {
-      (this.app.modulationManager as Record<string, unknown>).connectAllModulations?.();
+      (this.app.modulationManager as unknown as AnyRecord).connectAllModulations?.();
     }
   }
 
@@ -135,16 +138,16 @@ export class AudioEngine {
     return chains[chainIndex] || { enabled: false, modules: [], modulations: [] };
   }
 
-  getChainRuntimeMap(chainIndex: number): Map<string, Record<string, unknown>> | null {
+  getChainRuntimeMap(chainIndex: number): Map<string, AnyRecord> | null {
     return this.chainRuntimes.get(chainIndex) || null;
   }
 
-  getModuleRuntime(chainIndex: number, moduleId: string): Record<string, unknown> | null {
+  getModuleRuntime(chainIndex: number, moduleId: string): AnyRecord | null {
     const map = this.getChainRuntimeMap(chainIndex);
     return map ? map.get(moduleId) || null : null;
   }
 
-  disposeRuntimeMap(runtimeMap: Map<string, Record<string, unknown>> | null): void {
+  disposeRuntimeMap(runtimeMap: Map<string, AnyRecord> | null): void {
     if (!runtimeMap) {
       return;
     }
@@ -178,7 +181,7 @@ export class AudioEngine {
         return;
       }
 
-      const runtimeMap = new Map<string, Record<string, unknown>>();
+      const runtimeMap = new Map<string, AnyRecord>();
 
       // 1. Create runtimes for all non-Input explicit modules
       modules.forEach((module, index) => {
@@ -211,7 +214,7 @@ export class AudioEngine {
           -1,
           () => clamp(Number(this.state?.global?.polyVoice) || 8, 2, 8),
         );
-        runtimeMap.set(HIDDEN_VOICES_ID, hiddenVoicesRuntime as unknown as Record<string, unknown>);
+        runtimeMap.set(HIDDEN_VOICES_ID, hiddenVoicesRuntime as unknown as unknown as AnyRecord);
       }
 
       // Create hidden Pitch if needed
@@ -229,7 +232,7 @@ export class AudioEngine {
           -1,
           () => clamp(Number(this.state?.global?.polyVoice) || 8, 2, 8),
         );
-        runtimeMap.set(HIDDEN_MIDI_INPUT_ID, hiddenInputRuntime as unknown as Record<string, unknown>);
+        runtimeMap.set(HIDDEN_MIDI_INPUT_ID, hiddenInputRuntime as unknown as unknown as AnyRecord);
       }
 
       // 3. Create runtimes for all explicit Input modules
@@ -241,7 +244,7 @@ export class AudioEngine {
             index,
             () => clamp(Number(this.state?.global?.polyVoice) || 8, 2, 8),
           );
-          runtimeMap.set(module.id, inputRuntime as unknown as Record<string, unknown>);
+          runtimeMap.set(module.id, inputRuntime as unknown as unknown as AnyRecord);
         }
       });
 
@@ -284,17 +287,17 @@ export class AudioEngine {
     this.refreshCurrentRuntimeAlias();
   }
 
-  createModuleRuntime(module: ModuleConfig, chainIndex: number, chainModules: ModuleConfig[], moduleIndex: number): Record<string, unknown> {
+  createModuleRuntime(module: ModuleConfig, chainIndex: number, chainModules: ModuleConfig[], moduleIndex: number): AnyRecord {
     if (module.type === "Envelope") {
-      return createEnvelopeRuntime(module) as unknown as Record<string, unknown>;
+      return createEnvelopeRuntime(module) as unknown as unknown as AnyRecord;
     }
     if (this.isSourceModule(module)) {
       return this.createSourceRuntime(module, chainIndex);
     }
-    return createEffectRuntime(module) as unknown as Record<string, unknown>;
+    return createEffectRuntime(module) as unknown as unknown as AnyRecord;
   }
 
-  createSourceRuntime(module: ModuleConfig, chainIndex: number): Record<string, unknown> {
+  createSourceRuntime(module: ModuleConfig, chainIndex: number): AnyRecord {
     const chain = this.getChainState(chainIndex);
     const modules = Array.isArray(chain?.modules) ? chain.modules : [];
     const moduleIndex = modules.findIndex((m) => m.id === module.id);
@@ -305,7 +308,7 @@ export class AudioEngine {
         if (!m.enabled) continue;
         if (m.category === "source") break;
         if (m.type === "Voices") {
-          return Boolean((m.options as Record<string, unknown>)?.mono);
+          return Boolean((m.options as unknown as AnyRecord)?.mono);
         }
       }
       return false;
@@ -317,19 +320,19 @@ export class AudioEngine {
       getIsMono,
       onAllVoicesIdle: () => this.rebuildSignalChains(),
       onVoiceDisposed: (voiceIndex: number) => {
-        (this.app?.modulationManager as Record<string, unknown>)?.disconnectVoiceModulations?.(chainIndex, module.id, voiceIndex);
+        (this.app?.modulationManager as unknown as AnyRecord)?.disconnectVoiceModulations?.(chainIndex, module.id, voiceIndex);
       },
       onVoiceInitialized: (voiceIndex: number) => {
-        (this.app?.modulationManager as Record<string, unknown>)?.connectVoiceModulations?.(chainIndex, module.id, voiceIndex);
+        (this.app?.modulationManager as unknown as AnyRecord)?.connectVoiceModulations?.(chainIndex, module.id, voiceIndex);
       },
-    }) as unknown as Record<string, unknown>;
+    }) as unknown as unknown as AnyRecord;
   }
 
-  getChainInputs(chainIndex: number, runtimeMap: Map<string, Record<string, unknown>>): Array<{ runtime: Record<string, unknown>; index: number; id: string }> {
+  getChainInputs(chainIndex: number, runtimeMap: Map<string, AnyRecord>): Array<{ runtime: AnyRecord; index: number; id: string }> {
     const chain = this.getChainState(chainIndex);
     const modules = Array.isArray(chain?.modules) ? chain.modules : [];
 
-    const inputs: Array<{ runtime: Record<string, unknown>; index: number; id: string }> = [];
+    const inputs: Array<{ runtime: AnyRecord; index: number; id: string }> = [];
 
     const hiddenInput = runtimeMap.get(HIDDEN_MIDI_INPUT_ID);
     if (hiddenInput) {
@@ -350,7 +353,7 @@ export class AudioEngine {
     return inputs;
   }
 
-  getVoiceManagers(runtimeMap: Map<string, Record<string, unknown>>): Array<{ id: string; runtime: InputRuntime }> {
+  getVoiceManagers(runtimeMap: Map<string, AnyRecord>): Array<{ id: string; runtime: InputRuntime }> {
     const managers: Array<{ id: string; runtime: InputRuntime }> = [];
     for (const [id, runtime] of runtimeMap) {
       if (runtime.isVoiceManager) {
@@ -360,30 +363,30 @@ export class AudioEngine {
     return managers;
   }
 
-  getVoiceManager(runtimeMap: Map<string, Record<string, unknown>>): InputRuntime | null {
+  getVoiceManager(runtimeMap: Map<string, AnyRecord>): InputRuntime | null {
     const managers = this.getVoiceManagers(runtimeMap);
     return managers.length > 0 ? managers[managers.length - 1].runtime : null;
   }
 
-  getPedalState(runtimeMap: Map<string, Record<string, unknown>>): boolean {
+  getPedalState(runtimeMap: Map<string, AnyRecord>): boolean {
     for (const [id, runtime] of runtimeMap) {
-      if (runtime.type === "Pedal" && (runtime.moduleState as Record<string, unknown>)?.options?.pedal) {
+      if (runtime.type === "Pedal" && (runtime.moduleState as unknown as AnyRecord)?.options?.pedal) {
         return true;
       }
     }
     return false;
   }
 
-  getPedalStateById(runtimeMap: Map<string, Record<string, unknown>>, pedalId: string | null): boolean {
+  getPedalStateById(runtimeMap: Map<string, AnyRecord>, pedalId: string | null): boolean {
     if (!pedalId) return false;
     const pedal = runtimeMap.get(pedalId);
-    return pedal?.type === "Pedal" && (pedal.moduleState as Record<string, unknown>)?.options?.pedal;
+    return pedal?.type === "Pedal" && (pedal.moduleState as unknown as AnyRecord)?.options?.pedal;
   }
 
   notifySourcesAndEnvelopesRelease(
     note: number,
     voiceIndex: number,
-    runtimeMap: Map<string, Record<string, unknown>>,
+    runtimeMap: Map<string, AnyRecord>,
     voiceManagerId: string | null
   ): void {
     runtimeMap.forEach((runtime) => {
@@ -422,7 +425,7 @@ export class AudioEngine {
     });
   }
 
-  resetVoices(voiceIndex: number, runtimeMap: Map<string, Record<string, unknown>>): void {
+  resetVoices(voiceIndex: number, runtimeMap: Map<string, AnyRecord>): void {
     runtimeMap.forEach((runtime) => {
       if (runtime.category === "source" && typeof runtime.resetVoice === "function") {
         runtime.resetVoice(voiceIndex);
@@ -434,7 +437,7 @@ export class AudioEngine {
   }
 
   forEachRuntime(
-    callback: (runtime: Record<string, unknown>, chainIndex: number, moduleId: string) => void
+    callback: (runtime: AnyRecord, chainIndex: number, moduleId: string) => void
   ): void {
     this.chainRuntimes.forEach((runtimeMap, chainIndex) => {
       runtimeMap.forEach((runtime, moduleId) => {
@@ -444,8 +447,8 @@ export class AudioEngine {
   }
 
   _flushInputPendingNotes(
-    runtime: Record<string, unknown>,
-    runtimeMap: Map<string, Record<string, unknown>>,
+    runtime: AnyRecord,
+    runtimeMap: Map<string, AnyRecord>,
     _chainModules: ModuleConfig[],
     _moduleIndex: number
   ): void {
@@ -518,7 +521,7 @@ export class AudioEngine {
     }
     if (this.ready) {
       this.rebuildSignalChains();
-      (this.app?.modulationManager as Record<string, unknown>)?.connectAllModulations?.();
+      (this.app?.modulationManager as unknown as AnyRecord)?.connectAllModulations?.();
     }
   }
 
@@ -530,7 +533,7 @@ export class AudioEngine {
     note: number,
     velocity: number,
     voiceIndex: number,
-    runtimeMap: Map<string, Record<string, unknown>>,
+    runtimeMap: Map<string, AnyRecord>,
     chainIndex: number,
     voiceManagerId: string | null
   ): void {
@@ -603,7 +606,7 @@ export class AudioEngine {
           return;
         }
 
-        const { voiceIndex, isRetrigger, stolenNote } = voiceResult;
+        const { voiceIndex, isRetrigger, stolenNote } = voiceResult as { voiceIndex: number; isRetrigger: boolean; stolenNote: number | null };
 
         if (isRetrigger) {
           return;
@@ -645,7 +648,7 @@ export class AudioEngine {
           }
         }
 
-        const releaseResult = voiceManager.triggerRelease(note, zonePedal);
+        const releaseResult = voiceManager.triggerRelease(note, zonePedal) as { released: boolean; voiceIndex: number; recoveredNote: number | null; originalVelocity: number } | null;
         if (!releaseResult || !releaseResult.released) {
           return;
         }

@@ -3,6 +3,7 @@
  */
 
 import * as Tone from "tone";
+import type { ToneAudioBuffer, ToneAudioNode } from "tone";
 import {
   deepClone,
   safeSet,
@@ -43,10 +44,12 @@ export interface SourceRuntime {
   needsExtendedRelease: boolean;
   preserveVoiceSlotsForSourceTargets: boolean;
   readonly isMono: boolean;
-  getModulationOutput(voiceIndex: number): AudioNode | null;
+  targetNode?: unknown;
+  chainedEnvRuntime?: unknown;
+  getModulationOutput(voiceIndex: number): ToneAudioNode | null;
   apply(nextModule: ModuleConfig): void;
   triggerAttack(noteData: NoteData, velocity: number, voiceIndex: number): number;
-  triggerRelease(note: string, voiceIndex: number): void;
+  triggerRelease(note: string | number, voiceIndex: number): void;
   releaseAll(): void;
   getOutputValue(): number;
   updateVoiceFrequency(voiceIndex: number, noteOrFrequency: string | number): void;
@@ -82,13 +85,13 @@ export function createSourceRuntime({
   onVoiceDisposed = null,
   onVoiceInitialized = null,
 }: SourceRuntimeOptions): SourceRuntime {
-  const definition = SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
+  const definition = (SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator) as unknown as Record<string, unknown>;
   let moduleState = deepClone(module);
 
-  let sharedPlayerBuffer: Tone.Buffer | null = null;
-  if ((definition as Record<string, unknown>).runtime === "player" && (moduleState.options as Record<string, unknown>)?.url) {
+  let sharedPlayerBuffer: ToneAudioBuffer | null = null;
+  if ((definition as unknown as Record<string, unknown>).runtime === "player" && (moduleState.options as unknown as Record<string, unknown>)?.url) {
     try {
-      sharedPlayerBuffer = new Tone.Buffer((moduleState.options as Record<string, unknown>).url as string);
+      sharedPlayerBuffer = new Tone.Buffer((moduleState.options as unknown as Record<string, unknown>).url as string) as ToneAudioBuffer;
     } catch {
       // Silently ignore buffer preload failure
     }
@@ -127,7 +130,7 @@ export function createSourceRuntime({
   };
 
   const getFrequencyOffset = (): number => {
-    const offset = Number((moduleState?.options as Record<string, unknown>)?.frequencyOffset);
+    const offset = Number((moduleState?.options as unknown as Record<string, unknown>)?.frequencyOffset);
     if (!Number.isFinite(offset)) {
       return 1;
     }
@@ -146,12 +149,12 @@ export function createSourceRuntime({
   };
 
   const getModulationFrequency = (): number => {
-    const configuredFrequency = Number((moduleState?.options as Record<string, unknown>)?.frequency);
+    const configuredFrequency = Number((moduleState?.options as unknown as Record<string, unknown>)?.frequency);
     if (Number.isFinite(configuredFrequency) && configuredFrequency > 0) {
       return configuredFrequency;
     }
 
-    const legacyFrequency = Number((moduleState as Record<string, unknown>)?.modulationFrequency);
+    const legacyFrequency = Number((moduleState as unknown as Record<string, unknown>)?.modulationFrequency);
     if (Number.isFinite(legacyFrequency) && legacyFrequency > 0) {
       return legacyFrequency;
     }
@@ -170,7 +173,7 @@ export function createSourceRuntime({
       if (!moduleState.enabled) {
         return 0;
       }
-      const depth = Number((moduleState?.options as Record<string, unknown>)?.gain);
+      const depth = Number((moduleState?.options as unknown as Record<string, unknown>)?.gain);
       return Number.isFinite(depth) ? Math.max(0, depth) : 1;
     }
     return Tone.dbToGain(moduleState.enabled ? (moduleState.volume as number) : -48);
@@ -197,30 +200,30 @@ export function createSourceRuntime({
   const createSourceNode = (connectTarget: Tone.Gain): Tone.ToneAudioNode => {
     let node: Tone.ToneAudioNode;
 
-    const runtime = (definition as Record<string, unknown>).runtime;
-    const options = getNodeOptions((moduleState.options || {}) as Record<string, unknown>, ["gain", "frequencyOffset", "frequency"]);
+    const runtime = (definition as unknown as Record<string, unknown>).runtime;
+    const options = getNodeOptions((moduleState.options || {}) as unknown as Record<string, unknown>, ["gain", "frequencyOffset", "frequency"]);
 
     if (runtime === "pitchedSource") {
-      const Ctor = (Tone as Record<string, unknown>)[module.type] as new (opts?: unknown) => Tone.ToneAudioNode;
+      const Ctor = (Tone as unknown as Record<string, (...args: unknown[]) => unknown>)[module.type] as unknown as new (opts?: unknown) => Tone.ToneAudioNode;
       node = new Ctor(options);
       node.connect(connectTarget);
-      (node as Record<string, unknown>).start?.();
+      (node as unknown as Record<string, (...args: unknown[]) => unknown>).start?.();
     } else if (runtime === "noise") {
-      node = new Tone.Noise(options as Tone.NoiseOptions);
+      node = new Tone.Noise(options as unknown as Tone.NoiseOptions);
       node.connect(connectTarget);
-      node.start();
+      (node as unknown as Record<string, (...args: unknown[]) => unknown>).start();
     } else if (runtime === "player") {
       if (sharedPlayerBuffer) {
         node = new Tone.Player(sharedPlayerBuffer);
       } else {
-        node = new Tone.Player(options as Tone.PlayerOptions);
+        node = new Tone.Player(options as unknown as Tone.PlayerOptions);
       }
-      applyPlayerLikeOptions(node as Record<string, unknown>, options);
+      applyPlayerLikeOptions(node as unknown as Record<string, unknown>, options);
       node.connect(connectTarget);
     } else {
-      node = new Tone.Oscillator(options as Tone.OscillatorOptions);
+      node = new Tone.Oscillator(options as unknown as Partial<unknown>);
       node.connect(connectTarget);
-      node.start();
+      (node as unknown as Record<string, (...args: unknown[]) => unknown>).start();
     }
 
     return node;
@@ -256,16 +259,16 @@ export function createSourceRuntime({
     voice.panNode = panNode;
     voice.hiddenEnv = hiddenEnv;
 
-    if ((definition as Record<string, unknown>).runtime === "pitchedSource" && (node as Record<string, unknown>)?.frequency) {
+    if ((definition as unknown as Record<string, unknown>).runtime === "pitchedSource" && (node as unknown as Record<string, unknown>)?.frequency) {
       const initFreq = getModulationFrequency();
       voice.frequencyBaseSignal = new Tone.Signal(initFreq);
       voice.frequencyOffsetParam = new Tone.Signal(getFrequencyOffset());
       voice.frequencyMultiply = new Tone.Multiply(1);
       voice.frequencyBaseSignal.connect(voice.frequencyMultiply);
       voice.frequencyOffsetParam.connect(voice.frequencyMultiply.factor);
-      const freq = (node as Record<string, unknown>).frequency as { value: number };
+      const freq = (node as unknown as Record<string, unknown>).frequency as { value: number };
       freq.value = 0;
-      voice.frequencyMultiply.connect(freq as unknown as Tone.AudioNode);
+      voice.frequencyMultiply.connect(freq as unknown as ToneAudioNode);
     }
 
     voice.initialized = true;
@@ -302,10 +305,10 @@ export function createSourceRuntime({
     const node = createSourceNode(voice.volumeNode!);
     voice.node = node;
 
-    if ((definition as Record<string, unknown>).runtime === "pitchedSource" && (node as Record<string, unknown>)?.frequency && voice.frequencyMultiply) {
-      const freq = (node as Record<string, unknown>).frequency as { value: number };
+    if ((definition as unknown as Record<string, unknown>).runtime === "pitchedSource" && (node as unknown as Record<string, unknown>)?.frequency && voice.frequencyMultiply) {
+      const freq = (node as unknown as Record<string, unknown>).frequency as { value: number };
       freq.value = 0;
-      voice.frequencyMultiply.connect(freq as unknown as Tone.AudioNode);
+      voice.frequencyMultiply.connect(freq as unknown as ToneAudioNode);
     }
 
     return node;
@@ -328,8 +331,8 @@ export function createSourceRuntime({
       voice.analyser,
     ];
     nodesToDispose.forEach((node) => {
-      if (node && typeof (node as Record<string, unknown>).dispose === "function") {
-        (node as Record<string, unknown>).dispose?.();
+      if (node && typeof (node as unknown as Record<string, unknown>).dispose === "function") {
+        (node as unknown as Record<string, (...args: unknown[]) => unknown>).dispose?.();
       }
     });
 
@@ -353,7 +356,7 @@ export function createSourceRuntime({
 
   const getEnvReleaseTime = (voiceIndex: number): number => {
     const envRuntime = rt.envRuntime || rt.chainedEnvRuntime;
-    const envVoices = envRuntime?.voices as Array<{ release?: number }> | undefined;
+    const envVoices = (envRuntime as unknown as Record<string, unknown>)?.voices as Array<{ release?: number }> | undefined;
     const envVoice = envVoices?.[voiceIndex];
     const release = Number(envVoice?.release);
     return Number.isFinite(release) && release >= 0 ? release : 0.01;
@@ -361,7 +364,7 @@ export function createSourceRuntime({
 
   const getEnvAttackTime = (voiceIndex: number): number => {
     const envRuntime = rt.envRuntime || rt.chainedEnvRuntime;
-    const envVoices = envRuntime?.voices as Array<{ attack?: number }> | undefined;
+    const envVoices = (envRuntime as unknown as Record<string, unknown>)?.voices as Array<{ attack?: number }> | undefined;
     const envVoice = envVoices?.[voiceIndex];
     const attack = Number(envVoice?.attack);
     return Number.isFinite(attack) && attack >= 0 ? attack : 0.01;
@@ -390,9 +393,9 @@ export function createSourceRuntime({
       }
 
       if (voice.node && !moduleState.modulationMode) {
-        if ((definition as Record<string, unknown>).runtime === "player" && voice.node) {
+        if ((definition as unknown as Record<string, unknown>).runtime === "player" && voice.node) {
           try {
-            (voice.node as Record<string, unknown>).stop?.(now);
+            (voice.node as unknown as Record<string, (...args: unknown[]) => unknown>).stop?.(now);
           } catch {
             // ignore
           }
@@ -465,10 +468,10 @@ export function createSourceRuntime({
       voice.hiddenEnv?.triggerRelease(now);
     }
 
-    if ((definition as Record<string, unknown>).runtime === "player" && !moduleState.modulationMode) {
+    if ((definition as unknown as Record<string, unknown>).runtime === "player" && !moduleState.modulationMode) {
       if (voice.node && !rt.hasEnv && !rt.needsExtendedRelease) {
         try {
-          (voice.node as Record<string, unknown>).stop?.(now);
+          (voice.node as unknown as Record<string, (...args: unknown[]) => unknown>).stop?.(now);
         } catch {
           // ignore
         }
@@ -540,7 +543,7 @@ export function createSourceRuntime({
   };
 
   const triggerEnvAttack = (voiceIndex: number, velocity: number): void => {
-    const env = rt.envRuntime as Record<string, unknown> | null;
+    const env = rt.envRuntime as unknown as Record<string, unknown> | null;
     if (!env || typeof env.triggerVoiceAttack !== "function") {
       return;
     }
@@ -548,7 +551,7 @@ export function createSourceRuntime({
   };
 
   const triggerEnvRelease = (voiceIndex: number): void => {
-    const env = rt.envRuntime as Record<string, unknown> | null;
+    const env = rt.envRuntime as unknown as Record<string, unknown> | null;
     if (!env || typeof env.triggerVoiceRelease !== "function") {
       return;
     }
@@ -570,22 +573,22 @@ export function createSourceRuntime({
       return getIsMono();
     },
 
-    getModulationOutput: (voiceIndex: number): AudioNode | null => {
+    getModulationOutput: (voiceIndex: number): ToneAudioNode | null => {
       const isMono = getIsMono();
       const index = isMono ? 0 : voiceIndex;
       const voice = getOrInitVoice(index);
       if (!voice || !voice.initialized) {
         return null;
       }
-      return (voice.panNode || voice.volumeNode) as AudioNode | null;
+      return (voice.panNode || voice.volumeNode) as ToneAudioNode | null;
     },
 
     apply: (nextModule: ModuleConfig) => {
-      const prevUrl = (moduleState.options as Record<string, unknown>)?.url;
+      const prevUrl = (moduleState.options as unknown as Record<string, unknown>)?.url;
       moduleState = deepClone(nextModule);
       rt.moduleState = moduleState;
 
-      if ((definition as Record<string, unknown>).runtime === "player" && (moduleState.options as Record<string, unknown>)?.url !== prevUrl) {
+      if ((definition as unknown as Record<string, unknown>).runtime === "player" && (moduleState.options as unknown as Record<string, unknown>)?.url !== prevUrl) {
         if (sharedPlayerBuffer) {
           sharedPlayerBuffer.dispose();
           sharedPlayerBuffer = null;
@@ -597,7 +600,7 @@ export function createSourceRuntime({
         if (!voice.initialized) {
           return;
         }
-        const nodeOptions = getNodeOptions((moduleState.options || {}) as Record<string, unknown>, ["gain", "frequencyOffset"]);
+        const nodeOptions = getNodeOptions((moduleState.options || {}) as unknown as Record<string, unknown>, ["gain", "frequencyOffset"]);
         if (voice.volumeNode) {
           rampParam(voice.volumeNode.gain, getSourceOutputGain());
         }
@@ -605,7 +608,7 @@ export function createSourceRuntime({
           rampParam(voice.panNode.pan, moduleState.pan as number);
         }
 
-        if ((definition as Record<string, unknown>).runtime === "pitchedSource") {
+        if ((definition as unknown as Record<string, unknown>).runtime === "pitchedSource") {
           const optsForSafeSet = getNodeOptions(nodeOptions, ["frequency"]);
           if (voice.node) {
             safeSet(voice.node, optsForSafeSet);
@@ -613,19 +616,19 @@ export function createSourceRuntime({
           if (voice.frequencyOffsetParam) {
             rampParam(voice.frequencyOffsetParam, getFrequencyOffset());
           }
-          if ((voice.node as Record<string, unknown>)?.frequency && voice.frequencyBaseSignal) {
+          if ((voice.node as unknown as Record<string, unknown>)?.frequency && voice.frequencyBaseSignal) {
             if (moduleState.modulationMode && voice.note) {
               voice.frequencyBaseSignal.rampTo(getBaseFrequencyForNote(voice.note), 0.02);
             }
           }
-        } else if ((definition as Record<string, unknown>).runtime === "noise") {
+        } else if ((definition as unknown as Record<string, unknown>).runtime === "noise") {
           if (voice.node) {
             safeSet(voice.node, nodeOptions);
           }
-        } else if ((definition as Record<string, unknown>).runtime === "player") {
+        } else if ((definition as unknown as Record<string, unknown>).runtime === "player") {
           if (voice.node) {
             safeSet(voice.node, nodeOptions);
-            applyPlayerLikeOptions(voice.node as Record<string, unknown>, nodeOptions);
+            applyPlayerLikeOptions(voice.node as unknown as Record<string, unknown>, nodeOptions);
           }
         }
       });
@@ -695,28 +698,28 @@ export function createSourceRuntime({
         return -1;
       }
 
-      if ((definition as Record<string, unknown>).runtime === "pitchedSource") {
-        if ((sourceNode as Record<string, unknown>).frequency) {
+      if ((definition as unknown as Record<string, unknown>).runtime === "pitchedSource") {
+        if ((sourceNode as unknown as Record<string, unknown>).frequency) {
           const nextFrequency = noteData.type === "midi"
             ? getBaseFrequencyForNote(noteData.note!)
             : noteData.frequency!;
           voice.frequencyBaseSignal?.rampTo(nextFrequency, 0.02);
         }
-      } else if ((definition as Record<string, unknown>).runtime === "player") {
-        if (!(sourceNode as Record<string, unknown>).loaded) {
+      } else if ((definition as unknown as Record<string, unknown>).runtime === "player") {
+        if (!(sourceNode as unknown as Record<string, unknown>).loaded) {
           releaseVoice(voice, index, now);
           return -1;
         }
         if (noteData.type === "midi" && "playbackRate" in sourceNode) {
-          (sourceNode as Record<string, unknown>).playbackRate = getPitchRatio(noteData.note!) * Number((moduleState.options as Record<string, unknown>).playbackRate || 1);
+          (sourceNode as unknown as Record<string, unknown>).playbackRate = getPitchRatio(noteData.note!) * Number((moduleState.options as unknown as Record<string, unknown>).playbackRate || 1);
         }
         if (!moduleState.modulationMode) {
           try {
-            (sourceNode as Record<string, unknown>).stop?.(now);
+            (sourceNode as unknown as Record<string, (...args: unknown[]) => unknown>).stop?.(now);
           } catch {
             // ignore
           }
-          (sourceNode as Record<string, unknown>).start?.(now);
+          (sourceNode as unknown as Record<string, (...args: unknown[]) => unknown>).start?.(now);
         }
       }
 
@@ -767,7 +770,7 @@ export function createSourceRuntime({
     updateVoiceFrequency: (voiceIndex: number, noteOrFrequency: string | number): void => {
       const voice = voices[voiceIndex];
       if (!voice || !voice.initialized) return;
-      if ((definition as Record<string, unknown>).runtime === "pitchedSource" && voice.frequencyBaseSignal) {
+      if ((definition as unknown as Record<string, unknown>).runtime === "pitchedSource" && voice.frequencyBaseSignal) {
         const nextFrequency = typeof noteOrFrequency === "number"
           ? noteOrFrequency
           : Tone.Frequency(noteOrFrequency).toFrequency();
@@ -789,7 +792,7 @@ export function createSourceRuntime({
 
       if (voice.hiddenEnv) {
         voice.hiddenEnv.cancel(now);
-        const output = (voice.hiddenEnv as Record<string, unknown>).output as { gain?: { setValueAtTime(value: number, time: number): void } } | undefined;
+        const output = (voice.hiddenEnv as unknown as Record<string, unknown>).output as { gain?: { setValueAtTime(value: number, time: number): void } } | undefined;
         if (output?.gain) {
           output.gain.setValueAtTime(0, now);
         }

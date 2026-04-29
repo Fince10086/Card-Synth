@@ -31,10 +31,10 @@ export function deepClone<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((item) => deepClone(item)) as unknown as T;
   }
-  const result = {} as Record<string, unknown>;
-  for (const key in value as Record<string, unknown>) {
+  const result = {} as unknown as Record<string, unknown>;
+  for (const key in value as unknown as Record<string, unknown>) {
     if (Object.prototype.hasOwnProperty.call(value, key)) {
-      result[key] = deepClone((value as Record<string, unknown>)[key]);
+      result[key] = deepClone((value as unknown as Record<string, unknown>)[key]);
     }
   }
   return result as T;
@@ -78,7 +78,7 @@ export function clamp(value: number, min: number, max: number): number {
 export function getByPath<T = unknown>(object: Record<string, unknown>, path: string): T | undefined {
   return path.split(".").reduce<unknown>((acc, key) => {
     if (acc == null) return undefined;
-    return (acc as Record<string, unknown>)[key];
+    return (acc as unknown as Record<string, unknown>)[key];
   }, object) as T | undefined;
 }
 
@@ -93,7 +93,7 @@ export function setByPath(object: Record<string, unknown>, path: string, value: 
     if (!isObject(ref[part])) {
       ref[part] = {};
     }
-    ref = ref[part] as Record<string, unknown>;
+    ref = ref[part] as unknown as Record<string, unknown>;
   });
 }
 
@@ -104,7 +104,7 @@ export { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY, INPUT_LIBRARY };
 
 export function createSourceModule(type: ModuleType = "Oscillator"): ModuleConfig {
   const definition = SOURCE_LIBRARY[type] || SOURCE_LIBRARY.Oscillator;
-  const options = deepClone(definition.options) as Record<string, unknown>;
+  const options = deepClone(definition.options) as unknown as Record<string, unknown>;
   const initialFrequencyOffset = Number(options?.frequencyOffset);
   options.frequencyOffset = Number.isFinite(initialFrequencyOffset) ? initialFrequencyOffset : 1;
   return {
@@ -217,15 +217,15 @@ export function normalizeSourceModule(module: ModuleConfig | null | undefined): 
     normalized.options = {};
   }
 
-  const frequencyOffset = Number((normalized.options as Record<string, unknown>)?.frequencyOffset);
-  (normalized.options as Record<string, unknown>).frequencyOffset = Number.isFinite(frequencyOffset) ? frequencyOffset : 1;
+  const frequencyOffset = Number((normalized.options as unknown as Record<string, unknown>)?.frequencyOffset);
+  (normalized.options as unknown as Record<string, unknown>).frequencyOffset = Number.isFinite(frequencyOffset) ? frequencyOffset : 1;
 
   if (normalized.type === "Oscillator" || normalized.type === "PulseOscillator") {
     const nextOptions = isObject(normalized.options) ? normalized.options : {};
     const hasConfiguredFrequency = Number.isFinite(Number(nextOptions.frequency)) && Number(nextOptions.frequency) > 0;
 
     if (!hasConfiguredFrequency) {
-      const legacyFrequency = Number((normalized as Record<string, unknown>).modulationFrequency);
+      const legacyFrequency = Number((normalized as unknown as Record<string, unknown>).modulationFrequency);
       if (Number.isFinite(legacyFrequency) && legacyFrequency > 0) {
         nextOptions.frequency = legacyFrequency;
       }
@@ -235,7 +235,7 @@ export function normalizeSourceModule(module: ModuleConfig | null | undefined): 
   }
 
   if ("modulationFrequency" in normalized) {
-    delete (normalized as Record<string, unknown>).modulationFrequency;
+    delete (normalized as unknown as Record<string, unknown>).modulationFrequency;
   }
 
   return normalized;
@@ -256,30 +256,30 @@ export function normalizeInputModule(module: ModuleConfig | null | undefined): M
   if (baseModule.type === "MIDI") {
     baseModule.type = "Pitch";
     baseModule.options = baseModule.options || {};
-    (baseModule.options as Record<string, unknown>).mode = "midi";
+    (baseModule.options as unknown as Record<string, unknown>).mode = "midi";
   } else if (baseModule.type === "Frequency") {
     baseModule.type = "Pitch";
     baseModule.options = baseModule.options || {};
-    (baseModule.options as Record<string, unknown>).mode = "frequency";
+    (baseModule.options as unknown as Record<string, unknown>).mode = "frequency";
   }
 
   const result = normalizeModule(baseModule, "input", () => createInputModule("Pitch"));
 
   // Ensure mode exists
-  if (!(result.options as Record<string, unknown>)?.mode) {
-    (result.options as Record<string, unknown>).mode = "midi";
+  if (!(result.options as unknown as Record<string, unknown>)?.mode) {
+    (result.options as unknown as Record<string, unknown>).mode = "midi";
   }
 
   // Migrate old `polyVoice` field to `mono` toggle
-  if ((result.options as Record<string, unknown>)?.polyVoice !== undefined) {
-    (result.options as Record<string, unknown>).mono = Number((result.options as Record<string, unknown>).polyVoice) === 1;
-    delete (result.options as Record<string, unknown>).polyVoice;
+  if ((result.options as unknown as Record<string, unknown>)?.polyVoice !== undefined) {
+    (result.options as unknown as Record<string, unknown>).mono = Number((result.options as unknown as Record<string, unknown>).polyVoice) === 1;
+    delete (result.options as unknown as Record<string, unknown>).polyVoice;
   }
 
   // Clean up legacy `mono` and `pedal` from Pitch options (now in Voices/Pedal modules)
   if (result.type === "Pitch") {
-    delete (result.options as Record<string, unknown>).mono;
-    delete (result.options as Record<string, unknown>).pedal;
+    delete (result.options as unknown as Record<string, unknown>).mono;
+    delete (result.options as unknown as Record<string, unknown>).pedal;
   }
 
   return result;
@@ -332,8 +332,8 @@ export function applyPlayerLikeOptions(player: Record<string, unknown>, options:
   ].forEach((key) => {
     if (options[key] !== undefined && key in player) {
       const playerKey = player[key];
-      if (playerKey && typeof playerKey === "object" && "value" in (playerKey as Record<string, unknown>)) {
-        (playerKey as Record<string, unknown>).value = options[key];
+      if (playerKey && typeof playerKey === "object" && "value" in (playerKey as unknown as Record<string, unknown>)) {
+        (playerKey as unknown as Record<string, unknown>).value = options[key];
       } else {
         player[key] = options[key];
       }

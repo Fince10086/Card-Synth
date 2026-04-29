@@ -153,7 +153,7 @@ function getMacroSliderProps(
   const chainIndex = app.getSelectedChainIndex();
   const binding = app.macroManager.getBindingForTarget(moduleId, paramPath, chainIndex);
   return {
-    macroBinding: (binding as unknown as Record<string, unknown> | null) ?? null,
+    macroBinding: (binding as unknown as unknown as Record<string, unknown> | null) ?? null,
     onManualMacroInput: () => {
       app.macroManager.removeBindingsForTarget(moduleId, paramPath, chainIndex);
       return false;
@@ -205,10 +205,10 @@ export function renderModuleCard(
         replacement.volume = module.volume;
         replacement.pan = module.pan;
         const sourceFrequencyOffset = Number(
-          (module.options as Record<string, unknown> | undefined)?.frequencyOffset
+          (module.options as unknown as Record<string, unknown> | undefined)?.frequencyOffset
         );
         if (Number.isFinite(sourceFrequencyOffset)) {
-          (replacement.options as Record<string, unknown>).frequencyOffset =
+          (replacement.options as unknown as Record<string, unknown>).frequencyOffset =
             sourceFrequencyOffset;
         }
       }
@@ -288,10 +288,10 @@ export function renderModuleCard(
     ((module.category === "source" && module.modulationMode) ||
       (module.type === "Envelope" && module.modulationMode)) &&
     !Number.isFinite(
-      Number((module.options as Record<string, unknown> | undefined)?.gain)
+      Number((module.options as unknown as Record<string, unknown> | undefined)?.gain)
     )
   ) {
-    setByPath(module as Record<string, unknown>, "options.gain", 1);
+    setByPath(module as unknown as Record<string, unknown>, "options.gain", 1);
   }
 
   if (module.category === "source") {
@@ -300,7 +300,7 @@ export function renderModuleCard(
         createAudioImportControl({
           label: slot.label,
           value:
-            getByPath(module as Record<string, unknown>, slot.namePath) ||
+            getByPath(module as unknown as Record<string, unknown>, slot.namePath) ||
             slot.fallbackName,
           onSelect: async (file: File) => {
             await importSourceSample(module, index, slot, file, app);
@@ -336,7 +336,7 @@ export function renderModuleControl(
   app: ModuleRendererApp
 ): HTMLElement {
   const path = control.path;
-  const value = getByPath(module as Record<string, unknown>, path);
+  const value = getByPath(module as unknown as Record<string, unknown>, path);
   const macroSliderProps = getMacroSliderProps(app, module.id, path);
 
   if (control.kind === "select") {
@@ -349,7 +349,7 @@ export function renderModuleControl(
         })) ?? [],
       value: String(value ?? ""),
       onChange: (nextValue: string) => {
-        setByPath(module as Record<string, unknown>, path, nextValue);
+        setByPath(module as unknown as Record<string, unknown>, path, nextValue);
         app.markUnsaved();
         onCommit();
       },
@@ -372,7 +372,7 @@ export function renderModuleControl(
       offLabel: controlExt.offLabel,
       onToggle: (nextValue: boolean) => {
         const actualValue = isInverted ? !nextValue : nextValue;
-        setByPath(module as Record<string, unknown>, path, actualValue);
+        setByPath(module as unknown as Record<string, unknown>, path, actualValue);
         app.markUnsaved();
         onCommit();
       },
@@ -386,7 +386,7 @@ export function renderModuleControl(
       options: control.options ?? [],
       value: value as string | number | boolean,
       onChange: (nextValue: string | number | boolean) => {
-        setByPath(module as Record<string, unknown>, path, nextValue);
+        setByPath(module as unknown as Record<string, unknown>, path, nextValue);
         app.markUnsaved();
         onCommit();
         app.renderAll();
@@ -406,10 +406,10 @@ export function renderModuleControl(
     moduleId: module.id,
     paramPath: control.path,
     ...macroSliderProps,
-    modulation: app.getModulationByTarget(module.id, control.path) as unknown as Record<string, unknown> | null,
+    modulation: app.getModulationByTarget(module.id, control.path) as unknown as unknown as Record<string, unknown> | null,
     formatter: control.formatter || formatPlain,
     onInput: (nextValue: number) => {
-      setByPath(module as Record<string, unknown>, path, nextValue);
+      setByPath(module as unknown as Record<string, unknown>, path, nextValue);
       app.markUnsaved();
       onCommit();
     },
@@ -480,8 +480,8 @@ export async function importSourceSample(
   app: ModuleRendererApp
 ): Promise<void> {
   const dataUrl = await readFileAsDataUrl(file);
-  setByPath(module as Record<string, unknown>, slot.path, dataUrl);
-  setByPath(module as Record<string, unknown>, slot.namePath, file.name);
+  setByPath(module as unknown as Record<string, unknown>, slot.path, dataUrl);
+  setByPath(module as unknown as Record<string, unknown>, slot.namePath, file.name);
   app.getCurrentModules()[index] = normalizeSourceModule(module);
   app.markUnsaved();
   app.renderAll();

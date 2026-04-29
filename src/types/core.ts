@@ -106,16 +106,25 @@ export interface ModuleConfig {
 export interface ModulationConnection {
   id: string;
   sourceModuleId: string;
+  sourceVoiceIndex?: number | string;
   targetModuleId: string;
   targetParamPath: string;
-  depth: number;
+  depth?: number;
+  radius?: number;
+  scaleMin?: number;
+  scaleMax?: number;
 }
 
 // Macro axis binding
 export interface MacroAxisBinding {
-  paramPath: string;
+  targetModuleId?: string;
+  targetParamPath?: string;
+  paramPath?: string;
   min: number;
   max: number;
+  step?: number;
+  rangeStart?: number;
+  rangeEnd?: number;
 }
 
 // Macro chain state
@@ -150,6 +159,8 @@ export interface GlobalState {
 
 // Complete preset
 export interface Preset {
+  name?: string;
+  presetType?: string;
   global: GlobalState;
   chains: ChainState[];
   selectedChainIndex: number;

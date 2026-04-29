@@ -44,22 +44,22 @@ export function createEnvelopeRuntime(module: ModuleConfig): EnvelopeRuntime {
   let nodeNoteTracker = null;
 
   if (isModulation) {
-    const { gain: _gain, ...envelopeOptions } = (moduleState.options || {}) as Record<string, unknown>;
+    const { gain: _gain, ...envelopeOptions } = (moduleState.options || {}) as unknown as Record<string, unknown>;
     modVoices = Array.from({ length: VOICE_COUNT }, () => {
-      return new Tone.Envelope(envelopeOptions as Tone.EnvelopeOptions);
+      return new Tone.Envelope(envelopeOptions as unknown as Tone.EnvelopeOptions);
     });
     outputGains = Array.from(
       { length: VOICE_COUNT },
-      () => new Tone.Gain(Number((moduleState.options as Record<string, unknown>)?.gain ?? 1))
+      () => new Tone.Gain(Number((moduleState.options as unknown as Record<string, unknown>)?.gain ?? 1))
     );
     modVoices.forEach((env, index) => env.connect(outputGains![index]));
     modNoteTracker = createNoteVoiceTracker(VOICE_COUNT);
   } else {
     ampVoices = Array.from(
       { length: VOICE_COUNT },
-      () => new Tone.AmplitudeEnvelope((moduleState.options || {}) as Tone.EnvelopeOptions)
+      () => new Tone.AmplitudeEnvelope((moduleState.options || {}) as unknown as Tone.EnvelopeOptions)
     );
-    ampNode = new Tone.AmplitudeEnvelope((moduleState.options || {}) as Tone.EnvelopeOptions);
+    ampNode = new Tone.AmplitudeEnvelope((moduleState.options || {}) as unknown as Tone.EnvelopeOptions);
     voiceRefCount = new Array(VOICE_COUNT).fill(0);
     nodeNoteTracker = createNoteVoiceTracker(VOICE_COUNT);
   }
@@ -101,8 +101,8 @@ export function createEnvelopeRuntime(module: ModuleConfig): EnvelopeRuntime {
       }
 
       if (isModulation) {
-        const { gain: _gain, ...envelopeOptions } = (moduleState.options || {}) as Record<string, unknown>;
-        const gainValue = Number((moduleState.options as Record<string, unknown>)?.gain ?? 1);
+        const { gain: _gain, ...envelopeOptions } = (moduleState.options || {}) as unknown as Record<string, unknown>;
+        const gainValue = Number((moduleState.options as unknown as Record<string, unknown>)?.gain ?? 1);
         modVoices!.forEach((env) => safeSet(env, envelopeOptions));
         outputGains!.forEach((gainNode) => rampParam(gainNode.gain, gainValue));
       } else {
@@ -187,7 +187,7 @@ export function createEnvelopeRuntime(module: ModuleConfig): EnvelopeRuntime {
       const resetEnv = (env: Tone.Envelope | Tone.AmplitudeEnvelope | null) => {
         if (!env) return;
         env.cancel(now);
-        const output = (env as Record<string, unknown>).output as { gain?: { setValueAtTime(value: number, time: number): void } } | undefined;
+        const output = (env as unknown as Record<string, unknown>).output as { gain?: { setValueAtTime(value: number, time: number): void } } | undefined;
         if (output?.gain) {
           output.gain.setValueAtTime(0, now);
         }

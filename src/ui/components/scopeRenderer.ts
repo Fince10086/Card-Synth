@@ -2,6 +2,8 @@
  * Scope renderer - oscilloscope and spectrum analyzer
  */
 
+import type { Analyser } from "tone";
+
 let currentAnimationId: number | null = null;
 let currentMode: string | null = null;
 let canvasMetrics = { width: 0, height: 0 };
@@ -45,8 +47,8 @@ export function resizeScopeCanvas(canvas: HTMLCanvasElement | null, context: Can
 export interface ScopeRenderingOptions {
   getCanvasFn: () => HTMLCanvasElement | null;
   getContextFn: () => CanvasRenderingContext2D | null;
-  getAnalyserFn: () => AnalyserNode | null;
-  getSpectrumAnalyserFn: () => AnalyserNode | null;
+  getAnalyserFn: () => Analyser | null;
+  getSpectrumAnalyserFn: () => Analyser | null;
   getAudioBootedFn: () => boolean;
   getModeFn: () => string;
 }
@@ -104,7 +106,7 @@ function renderOscilloscope(
   context: CanvasRenderingContext2D,
   width: number,
   height: number,
-  analyser: AnalyserNode
+  analyser: Analyser
 ): void {
   const waveform = analyser.getValue() as Float32Array;
   if (!waveform || waveform.length === 0) {
@@ -156,8 +158,8 @@ function renderSpectrum(
   context: CanvasRenderingContext2D,
   width: number,
   height: number,
-  analyser: AnalyserNode,
-  spectrumAnalyser: AnalyserNode | null
+  analyser: Analyser,
+  spectrumAnalyser: Analyser | null
 ): void {
   if (spectrumAnalyser) {
     const fftData = spectrumAnalyser.getValue() as Float32Array;
@@ -166,7 +168,7 @@ function renderSpectrum(
     }
 
     const bufferLength = fftData.length;
-    const sampleRate = (analyser.context as AudioContext).sampleRate || 44100;
+    const sampleRate = (analyser.context as unknown as AudioContext).sampleRate || 44100;
     const nyquist = sampleRate / 2;
     const targetFreq = 12000;
 

@@ -14,7 +14,7 @@ import {
   createEffectModule,
   createInputModule,
 } from "../utils/helpers";
-import type { ModuleConfig, Preset, ChainState, MacroChainState, MacroState, GlobalState } from "../types";
+import type { ModuleConfig, Preset, ChainState, MacroChainState, MacroState, GlobalState, ModulationConnection } from "../types";
 
 const CHAIN_COUNT = 4;
 const DEFAULT_GLOBAL: GlobalState = { volume: -8, octave: 4, velocity: 0.8, velocityEnabled: true, polyVoice: 8 };
@@ -38,6 +38,8 @@ export interface ModulationItem {
   targetModuleId: string;
   targetParamPath: string;
   radius: number;
+  scaleMin?: number;
+  scaleMax?: number;
 }
 
 function createStarterModules(): ModuleConfig[] {
@@ -178,7 +180,7 @@ export function hasAnyMacroSettings(macroState: Partial<MacroState> = {}): boole
   return normalized.chains.some((chainMacro) => hasMacroSettingsInChain(chainMacro));
 }
 
-function normalizeModulations(modulations: Partial<ModulationItem>[] = []): ModulationItem[] {
+function normalizeModulations(modulations: Array<Partial<ModulationItem> | ModulationConnection> = []): ModulationItem[] {
   return Array.isArray(modulations)
     ? modulations
       .map((item) => {
@@ -223,7 +225,7 @@ function emptyChain(): ChainState {
   return { enabled: false, modules: [], modulations: [] };
 }
 
-export function normalizeCurrentPresetData(preset: Partial<{ global: Partial<GlobalState>; modules: ModuleConfig[]; modulations: ModulationItem[]; macro: Partial<MacroChainState> }> = {}): { global: GlobalState; modules: ModuleConfig[]; modulations: ModulationItem[]; macro: MacroChainState } {
+export function normalizeCurrentPresetData(preset: Partial<{ global: Partial<GlobalState>; modules: ModuleConfig[]; modulations: ModulationItem[]; macro: Partial<MacroChainState>; name?: string }> = {}): { global: GlobalState; modules: ModuleConfig[]; modulations: ModulationItem[]; macro: MacroChainState; name?: string } {
   const modules = Array.isArray(preset.modules)
     ? preset.modules.map((module) => normalizeAnyModule(module))
     : createStarterModules();
@@ -268,7 +270,7 @@ export function normalizePreset(preset: Partial<Preset> = {}): Preset {
     };
   }
 
-  const current = normalizeCurrentPresetData(preset);
+  const current = normalizeCurrentPresetData(preset as unknown as Parameters<typeof normalizeCurrentPresetData>[0]);
   const macro = createDefaultMacroState();
   macro.chains[0] = current.macro;
   return {
@@ -296,7 +298,7 @@ function downloadJson(filename: string, data: unknown): void {
 }
 
 export function isAllTypePreset(preset: unknown): boolean {
-  return Array.isArray((preset as Record<string, unknown>)?.chains) || (preset as Record<string, unknown>)?.presetType === "all";
+  return Array.isArray((preset as unknown as Record<string, unknown>)?.chains) || (preset as unknown as Record<string, unknown>)?.presetType === "all";
 }
 
 export async function importPresetFromFile(file: File): Promise<{ type: "all"; preset: Preset } | { type: "current"; chain: ReturnType<typeof normalizeCurrentPresetData> }> {
@@ -351,10 +353,10 @@ export function exportAllPresetToFile(state: Preset, presetName = "preset"): str
   });
 
   if (!hasAnyMacroSettings(payload.macro)) {
-    delete (payload as Record<string, unknown>).macro;
+    delete (payload as unknown as Record<string, unknown>).macro;
   }
 
-  (payload as Record<string, unknown>).presetType = "all";
+  (payload as unknown as Record<string, unknown>).presetType = "all";
   downloadJson(filename, payload);
   return filename;
 }

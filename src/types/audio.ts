@@ -17,6 +17,8 @@ export interface SourceRuntime extends BaseRuntime {
   category: 'source';
   voiceManagerId: string | null;
   pedalId: string | null;
+  targetNode?: unknown;
+  chainedEnvRuntime?: unknown;
   triggerAttack(noteData: NoteData, velocity: number, voiceIndex: number): void;
   triggerRelease(note: number, voiceIndex: number): void;
   resetVoice(voiceIndex: number): void;
@@ -46,12 +48,15 @@ export interface EffectRuntime extends BaseRuntime {
 export interface InputRuntime extends BaseRuntime {
   type: string;
   isVoiceManager?: boolean;
-  triggerAttack?(note: number, velocity: number, voiceIndex: number): { 
+  triggerAttack?(note: number, velocity: number, voiceIndex?: number): { 
+    voiceIndex: number;
     noteData: NoteData; 
     controlledSources: string[]; 
-    controlledEnvelopes: Array<{id: string}> 
+    controlledEnvelopes: Array<{id: string; type: string}> 
   } | null;
-  getControlledModules?(): { sources: string[]; envelopes: Array<{id: string}> };
+  triggerRelease?(note: number, pedal?: boolean): { released: boolean; voiceIndex?: number; recoveredNote?: number; originalVelocity?: number } | void;
+  getNoteState?(note: number): { pressed: boolean; voiceIndex: number } | undefined;
+  getControlledModules?(): { sources: string[]; envelopes: Array<{id: string; type: string}> };
   releaseAll?(): Array<{note: number; voiceIndex: number}>;
   releaseAllPending?(): Array<{note: number; voiceIndex: number}>;
   getVoiceForNote?(note: number): number;

@@ -1,4 +1,5 @@
 import * as Tone from "tone";
+import type { ToneAudioNode } from "tone";
 import { getByPath, getModuleDefinition } from "../../utils/helpers";
 import { MODULATION_BLACKLIST } from "./modulationBlacklist";
 import { EdgeScrollManager } from "../edgeScrollManager";
@@ -29,7 +30,7 @@ interface ModulationRuntime {
   targetParam: unknown;
   targetModuleId: string;
   targetVoiceIndex: number | null;
-  sourceOutput: AudioNode | null;
+  sourceOutput: ToneAudioNode | null;
   audioHalf: Tone.Multiply | null;
   audioOffset: Tone.Add | null;
   scale: Tone.Scale;
@@ -489,7 +490,7 @@ export class ModulationManager {
     const targetModule = this.getModules(chainIndex).find((m) => m.id === mod.targetModuleId);
     let centerValue = 0.5;
     if (targetModule) {
-      const currentSliderValue = getByPath(targetModule as Record<string, unknown>, mod.targetParamPath);
+      const currentSliderValue = getByPath(targetModule as unknown as Record<string, unknown>, mod.targetParamPath);
       if (typeof currentSliderValue === "number" && Number.isFinite(currentSliderValue)) {
         centerValue = currentSliderValue;
       }
@@ -592,7 +593,7 @@ export class ModulationManager {
         continue;
       }
       runtimeMap.forEach((runtime) => {
-        const r = runtime as Record<string, unknown>;
+        const r = runtime as unknown as Record<string, unknown>;
         if (r?.category === "source") {
           r.preserveVoiceSlotsForSourceTargets = false;
         }
@@ -651,7 +652,7 @@ export class ModulationManager {
       if (!sourceRuntime || sourceRuntime.category !== "source") {
         return;
       }
-      const moduleState = (sourceRuntime.moduleState || {}) as Record<string, unknown>;
+      const moduleState = (sourceRuntime.moduleState || {}) as unknown as Record<string, unknown>;
       sourceRuntime.preserveVoiceSlotsForSourceTargets = Boolean(
         profile.hasSourceTargets && !profile.hasNonSourceTargets && moduleState.modulationMode && moduleState.midiOn,
       );
@@ -916,7 +917,7 @@ export class ModulationManager {
     modulation: ChainModulation,
     sourceVoiceIndex: number = 0,
     chainIndex: number = this.app.getSelectedChainIndex(),
-  ): AudioNode | null {
+  ): ToneAudioNode | null {
     const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, modulation.sourceModuleId) as unknown as SourceRuntime | null;
     if (!sourceRuntime) {
       return null;
@@ -945,7 +946,7 @@ export class ModulationManager {
       return [];
     }
 
-    const runtime = this.app.engine.getModuleRuntime(chainIndex, targetModule.id) as Record<string, unknown> | null;
+    const runtime = this.app.engine.getModuleRuntime(chainIndex, targetModule.id) as unknown as Record<string, unknown> | null;
     if (!runtime) {
       return [];
     }
@@ -968,7 +969,7 @@ export class ModulationManager {
       return targets;
     }
 
-    const node = runtime.node as Record<string, unknown> | undefined;
+    const node = runtime.node as unknown as Record<string, unknown> | undefined;
     if (!node) {
       return [];
     }
@@ -1016,7 +1017,7 @@ export class ModulationManager {
     }
 
     const paramPath = targetParamPath.replace(/^options\./, "");
-    const param = getByPath(voice.node as unknown as Record<string, unknown>, paramPath);
+    const param = getByPath(voice.node as unknown as unknown as Record<string, unknown>, paramPath);
     if (!param || typeof param === "number") {
       return null;
     }

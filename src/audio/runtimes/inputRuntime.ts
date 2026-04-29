@@ -24,11 +24,13 @@ export interface InputRuntime {
   category: string;
   isVoiceManager?: boolean;
   moduleState: ModuleConfig;
-  triggerAttack(note: number, velocity: number): VoiceAllocationResult | null;
-  triggerRelease(note: number, pedal: boolean): VoiceReleaseResult | null;
+  triggerAttack(note: number, velocity: number, voiceIndex?: number): unknown;
+  triggerRelease(note: number, pedal?: boolean): unknown;
   releaseAll(): Array<{ note: number; voiceIndex: number }>;
   releaseAllPending(): Array<{ note: number; voiceIndex: number }>;
   getVoiceForNote(note: number): number;
+  getNoteState(note: number): { pressed: boolean; voiceIndex: number } | undefined;
+  getControlledModules(): { sources: string[]; envelopes: Array<{id: string; type: string}> };
   getActiveNotes(): Array<{ note: number; voiceIndex: number }>;
   getStolenNotes(): number[];
   apply(nextModule: ModuleConfig): void;
@@ -59,7 +61,7 @@ function createVoicesRuntime(
   let moduleState = deepClone(module);
 
   const getPolyVoice = (): number => {
-    if ((moduleState.options as Record<string, unknown>)?.mono) {
+    if ((moduleState.options as unknown as Record<string, unknown>)?.mono) {
       return 1;
     }
     return clamp(getGlobalPolyVoice(), 2, 8);
@@ -265,6 +267,7 @@ function createVoicesRuntime(
 
     getNoteState,
     getVoiceForNote,
+    getControlledModules: () => ({ sources: [], envelopes: [] }),
 
     getActiveNotes: () => {
       const result: Array<{ note: number; voiceIndex: number }> = [];
@@ -383,8 +386,8 @@ function createPitchRuntime(
   };
 
   const applyMidiTransforms = (note: number): string => {
-    const transpose = clamp(Number((moduleState.options as Record<string, unknown>)?.transpose) || 0, -12, 12);
-    const octave = clamp(Number((moduleState.options as Record<string, unknown>)?.octave) || 0, -4, 4);
+    const transpose = clamp(Number((moduleState.options as unknown as Record<string, unknown>)?.transpose) || 0, -12, 12);
+    const octave = clamp(Number((moduleState.options as unknown as Record<string, unknown>)?.octave) || 0, -4, 4);
 
     if (transpose === 0 && octave === 0) {
       return Tone.Frequency(note).toNote();
@@ -396,7 +399,7 @@ function createPitchRuntime(
   };
 
   const getFrequencyValue = (): number => {
-    return clamp(Number((moduleState.options as Record<string, unknown>)?.frequency) || 440, 0.1, 20000);
+    return clamp(Number((moduleState.options as unknown as Record<string, unknown>)?.frequency) || 440, 0.1, 20000);
   };
 
   const runtime: PitchRuntime = {
@@ -404,10 +407,11 @@ function createPitchRuntime(
     category: "input",
     moduleState,
     getControlledModules,
+    getNoteState: () => undefined,
 
     triggerAttack: (note: number, velocity: number, _voiceIndex: number) => {
       const noteData: NoteData =
-        (moduleState.options as Record<string, unknown>)?.mode === "midi"
+        (moduleState.options as unknown as Record<string, unknown>)?.mode === "midi"
           ? { type: "midi", note: applyMidiTransforms(note), originalNote: note, velocity }
           : { type: "frequency", frequency: getFrequencyValue(), originalNote: note, velocity };
 
@@ -458,11 +462,11 @@ function createPedalRuntime(module: ModuleConfig): InputRuntime {
     releaseAllPending: () => [],
 
     apply: (nextModule: ModuleConfig) => {
-      const prevPedal = Boolean((moduleState.options as Record<string, unknown>)?.pedal);
+      const prevPedal = Boolean((moduleState.options as unknown as Record<string, unknown>)?.pedal);
       moduleState = deepClone(nextModule);
       runtime.moduleState = moduleState;
 
-      const newPedal = Boolean((moduleState.options as Record<string, unknown>)?.pedal);
+      const newPedal = Boolean((moduleState.options as unknown as Record<string, unknown>)?.pedal);
       if (prevPedal && !newPedal) {
         runtime.pedalOff = true;
       }
@@ -470,6 +474,7 @@ function createPedalRuntime(module: ModuleConfig): InputRuntime {
 
     dispose: () => {},
     getVoiceForNote: () => -1,
+    getNoteState: () => undefined,
     getActiveNotes: () => [],
     getStolenNotes: () => [],
   };

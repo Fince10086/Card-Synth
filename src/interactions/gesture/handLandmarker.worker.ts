@@ -3,6 +3,8 @@
  * Web Worker for MediaPipe HandLandmarker hand detection
  */
 
+declare function importScripts(...urls: string[]): void;
+
 const PINCH_ENTER_THRESHOLD = 0.08;
 const PINCH_EXIT_THRESHOLD = 0.12;
 const COOLDOWN_MS = 10;
@@ -115,9 +117,9 @@ async function ensureVisionLoaded(payload: Record<string, unknown>): Promise<voi
   } catch (importError) {
     if (!looksLikeModuleBundle && typeof importScripts === "function") {
       importScripts(libraryUrl);
-      const visionApi = (self as unknown as Record<string, unknown>).vision || self;
-      FilesetResolverRef = (visionApi as Record<string, unknown>).FilesetResolver;
-      HandLandmarkerRef = (visionApi as Record<string, unknown>).HandLandmarker;
+      const visionApi = (self as unknown as unknown as Record<string, unknown>).vision || self;
+      FilesetResolverRef = (visionApi as unknown as Record<string, unknown>).FilesetResolver;
+      HandLandmarkerRef = (visionApi as unknown as Record<string, unknown>).HandLandmarker;
     } else {
       throw importError;
     }

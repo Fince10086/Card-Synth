@@ -53,14 +53,14 @@ export class SourceOutputMonitor {
 
   update(): void {
     const app = this.app;
-    const engine = app.engine as Record<string, unknown> | undefined;
+    const engine = app.engine as unknown as Record<string, unknown> | undefined;
     if (!engine?.ready) return;
 
     const CHAIN_COUNT = 4;
     const getChain = app.getChain as (index: number) => { enabled: boolean; modules: Array<{ category: string; id: string }> } | null;
     const getSelectedChainIndex = app.getSelectedChainIndex as () => number;
     const getModuleRuntime = engine.getModuleRuntime as (chainIndex: number, moduleId: string) => { getOutputValue?: () => number } | null;
-    const signalFlow = (app.elements as Record<string, unknown>)?.signalFlow as HTMLElement | undefined;
+    const signalFlow = (app.elements as unknown as Record<string, unknown>)?.signalFlow as HTMLElement | undefined;
 
     for (let chainIndex = 0; chainIndex < CHAIN_COUNT; chainIndex++) {
       const chain = getChain(chainIndex);
@@ -80,7 +80,7 @@ export class SourceOutputMonitor {
             `[data-module-id="${module.id}"]`
           ) as HTMLElement | null;
           if (card) {
-            const display = (card as Record<string, unknown>).outputLevelDisplay as HTMLElement | undefined;
+            const display = (card as unknown as Record<string, unknown>).outputLevelDisplay as HTMLElement | undefined;
             if (display) {
               display.textContent = displayValue;
               display.className = `module-output-level ${this.getLevelClass(value)}`;

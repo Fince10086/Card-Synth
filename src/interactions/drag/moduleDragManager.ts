@@ -270,6 +270,6 @@ export class ModuleDragManager {
 
     (this.app.markUnsaved as () => void)?.();
     (this.app.renderAll as () => void)?.();
-    (this.app.engine as Record<string, unknown>)?.fullSync?.(this.app.state);
+    (this.app.engine as unknown as Record<string, (...args: unknown[]) => unknown>)?.fullSync?.(this.app.state);
   }
 }

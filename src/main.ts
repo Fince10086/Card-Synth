@@ -4,6 +4,8 @@
 
 import { ModularSynthApp } from "./app/modularSynthApp";
 
+declare const Tone: typeof import("tone") | undefined;
+
 window.addEventListener("DOMContentLoaded", async () => {
   try {
     const app = new ModularSynthApp();

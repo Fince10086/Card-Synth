@@ -47,7 +47,7 @@ export function createSliderControl({
   onManualMacroInput = null,
   onMacroRangeChange = null,
 }: SliderControlOptions): HTMLElement {
-  const isLogarithmic = (formatter as Record<string, unknown>)?.unit === "log" && min > 0 && max > 0 && max !== min;
+  const isLogarithmic = (formatter as unknown as Record<string, unknown>)?.unit === "log" && min > 0 && max > 0 && max !== min;
 
   function toLogPercent(actualValue: number): number {
     if (!isLogarithmic || actualValue <= 0) return (actualValue - min) / (max - min);
@@ -97,7 +97,7 @@ export function createSliderControl({
   if (moduleId && paramPath) {
     modulationTarget.dataset.moduleId = moduleId;
     modulationTarget.dataset.paramPath = paramPath;
-    if (modulationManager && (modulationManager as Record<string, unknown>).getModulationByTarget) {
+    if (modulationManager && (modulationManager as unknown as Record<string, unknown>).getModulationByTarget) {
       const existing = (modulationManager as Record<string, Function>).getModulationByTarget(moduleId, paramPath);
       if (existing) {
         modulationTarget.classList.add("is-connected");
@@ -160,9 +160,9 @@ export function createSliderControl({
     }
     paintRange();
     const centerValue = Number(nextValue);
-    const radius = (modulation as Record<string, unknown>).radius ?? ((max - min) * 0.15);
+    const radius = (modulation as unknown as Record<string, unknown>).radius ?? ((max - min) * 0.15);
     (modulationManager as Record<string, Function> | null)?.updateModulationRange?.(
-      (modulation as Record<string, unknown>).id,
+      (modulation as unknown as Record<string, unknown>).id,
       centerValue,
       radius,
       undefined,
@@ -405,13 +405,13 @@ export function createSliderControl({
       return clamp(Number(snapped.toFixed(6)));
     };
 
-    if ((modulation as Record<string, unknown>).radius === undefined) {
-      (modulation as Record<string, unknown>).radius = (max - min) * 0.15;
+    if ((modulation as unknown as Record<string, unknown>).radius === undefined) {
+      (modulation as unknown as Record<string, unknown>).radius = (max - min) * 0.15;
     }
 
     paintRange = () => {
       const centerValue = linearToActual(Number(input.value));
-      const radius = (modulation as Record<string, unknown>).radius ?? ((max - min) * 0.15);
+      const radius = (modulation as unknown as Record<string, unknown>).radius ?? ((max - min) * 0.15);
       const minValue = centerValue - (radius as number);
       const maxValue = centerValue + (radius as number);
 
@@ -422,7 +422,7 @@ export function createSliderControl({
       const maxPct = isLogarithmic ? toLogPercent(effMaxValue) : ((effMaxValue - min) / (max - min));
       const centerPct = isLogarithmic ? toLogPercent(centerValue) : ((centerValue - min) / (max - min));
 
-      const sourceModule = (modulationManager as Record<string, Function> | null)?.getModules?.()?.find((m: { id: string; type: string }) => m.id === (modulation as Record<string, unknown>).sourceModuleId);
+      const sourceModule = (modulationManager as Record<string, Function> | null)?.getModules?.()?.find((m: { id: string; type: string }) => m.id === (modulation as unknown as Record<string, unknown>).sourceModuleId);
       const isEnvelopeSource = sourceModule?.type === "Envelope";
 
       if (isEnvelopeSource) {
@@ -495,16 +495,16 @@ export function createSliderControl({
           const centerValue = linearToActual(Number(input.value));
 
           if (isMinBracket) {
-            (modulation as Record<string, unknown>).radius = centerValue - valueAtBracket;
+            (modulation as unknown as Record<string, unknown>).radius = centerValue - valueAtBracket;
           } else {
-            (modulation as Record<string, unknown>).radius = valueAtBracket - centerValue;
+            (modulation as unknown as Record<string, unknown>).radius = valueAtBracket - centerValue;
           }
           paintRange!();
 
           (modulationManager as Record<string, Function> | null)?.updateModulationRange?.(
-            (modulation as Record<string, unknown>).id,
+            (modulation as unknown as Record<string, unknown>).id,
             centerValue,
-            (modulation as Record<string, unknown>).radius,
+            (modulation as unknown as Record<string, unknown>).radius,
             undefined,
             min,
             max
@@ -537,7 +537,7 @@ export function createSliderControl({
         {
           type: "number",
           step,
-          value: ((modulation as Record<string, unknown>).radius ?? ((max - min) * 0.15)).toFixed(2),
+          value: (Number((modulation as unknown as Record<string, unknown>).radius) || ((max - min) * 0.15)).toFixed(2),
           style: {
             position: "absolute",
             left: centerValueEl.style.left || "0%",
@@ -548,18 +548,18 @@ export function createSliderControl({
         (value, cleanup) => {
           let newRadius = Number(value);
           if (Number.isNaN(newRadius)) {
-            newRadius = (modulation as Record<string, unknown>).radius as number ?? ((max - min) * 0.15);
+            newRadius = (modulation as unknown as Record<string, unknown>).radius as number ?? ((max - min) * 0.15);
           }
           const centerValue = Number(input.value);
           const maxRadius = Math.min(centerValue - min, max - centerValue);
           newRadius = Math.max(-maxRadius, Math.min(maxRadius, newRadius));
-          (modulation as Record<string, unknown>).radius = newRadius;
+          (modulation as unknown as Record<string, unknown>).radius = newRadius;
           cleanup();
           paintRange!();
           (modulationManager as Record<string, Function> | null)?.updateModulationRange?.(
-            (modulation as Record<string, unknown>).id,
+            (modulation as unknown as Record<string, unknown>).id,
             Number(input.value),
-            (modulation as Record<string, unknown>).radius,
+            (modulation as unknown as Record<string, unknown>).radius,
             undefined,
             min,
             max

@@ -3,11 +3,12 @@
  */
 
 import type { ModuleConfig } from "../../types";
+import type { ToneAudioNode } from "tone";
 
 export interface SignalChainOptions {
   modules: ModuleConfig[];
   runtimeMap: Map<string, Record<string, unknown>>;
-  masterVolume: AudioNode;
+  masterVolume: ToneAudioNode;
   isSourceModule(module: ModuleConfig): boolean;
   isEnvModule(module: ModuleConfig): boolean;
   isInputModule(module: ModuleConfig): boolean;
@@ -98,7 +99,7 @@ function connectSourceModule({
   runtime: Record<string, unknown>;
   envIndices: Set<number>;
   runtimeMap: Map<string, Record<string, unknown>>;
-  masterVolume: AudioNode;
+  masterVolume: ToneAudioNode;
   isSourceModule: (module: ModuleConfig) => boolean;
   isInputModule: (module: ModuleConfig) => boolean;
 }): void {
@@ -138,8 +139,8 @@ function connectSourceModule({
     const voices = runtime.voices as Array<Record<string, unknown>>;
     voices.forEach((voice, i) => {
       if (voice.initialized && envRuntime && envRuntime.voices) {
-        const envVoices = envRuntime.voices as Array<AudioNode>;
-        const outputNode = (voice.panNode || voice.hiddenEnv) as AudioNode;
+        const envVoices = envRuntime.voices as Array<ToneAudioNode>;
+        const outputNode = (voice.panNode || voice.hiddenEnv) as ToneAudioNode;
         if (outputNode && envVoices[i]) {
           outputNode.connect(envVoices[i]);
         }
@@ -158,11 +159,11 @@ function connectSourceModule({
       }
     }
 
-    let targetNode: AudioNode;
+    let targetNode: ToneAudioNode;
     if (targetIndex >= 0) {
       const targetModule = modules[targetIndex];
       const targetRuntime = runtimeMap.get(targetModule.id);
-      targetNode = (targetRuntime?.node as AudioNode) || masterVolume;
+      targetNode = (targetRuntime?.node as ToneAudioNode) || masterVolume;
     } else {
       targetNode = masterVolume;
     }
@@ -170,7 +171,7 @@ function connectSourceModule({
     const voices = runtime.voices as Array<Record<string, unknown>>;
     voices.forEach((voice) => {
       if (targetNode && voice.initialized && voice.hiddenEnv) {
-        (voice.hiddenEnv as AudioNode).connect(targetNode);
+        (voice.hiddenEnv as ToneAudioNode).connect(targetNode);
       }
     });
 
@@ -191,7 +192,7 @@ function connectNonSourceModule({
   moduleIndex: number;
   runtime: Record<string, unknown>;
   runtimeMap: Map<string, Record<string, unknown>>;
-  masterVolume: AudioNode;
+  masterVolume: ToneAudioNode;
   isSourceModule: (module: ModuleConfig) => boolean;
   isInputModule: (module: ModuleConfig) => boolean;
 }): void {
@@ -202,21 +203,21 @@ function connectNonSourceModule({
   if (runtime.type === "Envelope" && !runtime.modulationMode) {
     const targetIndex = findNextNonSourceIndex(modules, moduleIndex, isSourceModule, isInputModule);
 
-    let targetNode: AudioNode;
+    let targetNode: ToneAudioNode;
     if (targetIndex >= 0) {
       const targetModule = modules[targetIndex];
       const targetRuntime = runtimeMap.get(targetModule.id);
-      targetNode = (targetRuntime?.node as AudioNode) || masterVolume;
+      targetNode = (targetRuntime?.node as ToneAudioNode) || masterVolume;
     } else {
       targetNode = masterVolume;
     }
 
     if (targetNode) {
       if (runtime.node) {
-        (runtime.node as AudioNode).connect(targetNode);
+        (runtime.node as ToneAudioNode).connect(targetNode);
       }
       if (runtime.voices) {
-        const voices = runtime.voices as Array<AudioNode>;
+        const voices = runtime.voices as Array<ToneAudioNode>;
         voices.forEach((env) => env.connect(targetNode));
       }
     }
@@ -229,9 +230,9 @@ function connectNonSourceModule({
     const targetModule = modules[targetIndex];
     const targetRuntime = runtimeMap.get(targetModule.id);
     if (targetRuntime && targetRuntime.node) {
-      (runtime.node as AudioNode).connect(targetRuntime.node as AudioNode);
+      (runtime.node as ToneAudioNode).connect(targetRuntime.node as ToneAudioNode);
     }
   } else {
-    (runtime.node as AudioNode).connect(masterVolume);
+    (runtime.node as ToneAudioNode).connect(masterVolume);
   }
 }
