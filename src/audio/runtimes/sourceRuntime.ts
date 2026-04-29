@@ -1,5 +1,6 @@
 /**
  * Source runtime - manages voices and audio nodes for source modules
+ * Refactored: 使用 AudioResourceManager 统一调度，替代 setTimeout
  */
 
 import * as Tone from "tone";
@@ -12,6 +13,7 @@ import {
   SOURCE_LIBRARY,
 } from "../../utils/helpers";
 import type { ModuleConfig } from "../../types";
+import { createAudioResourceManager } from "../utils/audioResourceManager";
 
 export interface SourceVoice {
   node: Tone.ToneAudioNode | null;
@@ -28,7 +30,6 @@ export interface SourceVoice {
   state: VoiceState;
   releaseEndTime: number;
   idleSince: number;
-  disposeTimeoutId: ReturnType<typeof setTimeout> | null;
 }
 
 type VoiceState = "idle" | "active" | "releasing";
@@ -75,7 +76,7 @@ export interface SourceRuntimeOptions {
 }
 
 const VOICE_COUNT = 8;
-const ALL_VOICES_IDLE_REBUILD_DELAY = 10;
+const ALL_VOICES_IDLE_REBUILD_DELAY_MS = 10000;
 
 export function createSourceRuntime({
   module,
@@ -87,6 +88,9 @@ export function createSourceRuntime({
 }: SourceRuntimeOptions): SourceRuntime {
   const definition = (SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator) as unknown as Record<string, unknown>;
   let moduleState = deepClone(module);
+
+  // 统一资源管理器
+  const resourceManager = createAudioResourceManager();
 
   let sharedPlayerBuffer: ToneAudioBuffer | null = null;
   if ((definition as unknown as Record<string, unknown>).runtime === "player" && (moduleState.options as unknown as Record<string, unknown>)?.url) {
@@ -103,17 +107,15 @@ export function createSourceRuntime({
     RELEASING: "releasing" as VoiceState,
   };
 
-  let allVoicesIdleTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  const getAllVoicesIdleKey = (): string => "all-voices-idle";
+  const getVoiceReleaseKey = (voiceIndex: number): string => `voice-release-${voiceIndex}`;
 
   const checkAllVoicesIdle = (): void => {
     if (!onAllVoicesIdle) {
       return;
     }
 
-    if (allVoicesIdleTimeoutId) {
-      clearTimeout(allVoicesIdleTimeoutId);
-      allVoicesIdleTimeoutId = null;
-    }
+    resourceManager.clear(getAllVoicesIdleKey());
 
     const allIdleOrReleasing = voices.every((v) =>
       !v.initialized ||
@@ -122,10 +124,14 @@ export function createSourceRuntime({
     );
 
     if (allIdleOrReleasing) {
-      allVoicesIdleTimeoutId = setTimeout(() => {
-        onAllVoicesIdle!();
-        allVoicesIdleTimeoutId = null;
-      }, ALL_VOICES_IDLE_REBUILD_DELAY * 1000);
+      // 重建信号链是非音频操作，使用 setTimeout
+      resourceManager.setTimeout(
+        getAllVoicesIdleKey(),
+        ALL_VOICES_IDLE_REBUILD_DELAY_MS,
+        () => {
+          onAllVoicesIdle!();
+        }
+      );
     }
   };
 
@@ -194,7 +200,6 @@ export function createSourceRuntime({
     state: VOICE_STATE.IDLE,
     releaseEndTime: 0,
     idleSince: 0,
-    disposeTimeoutId: null,
   });
 
   const createSourceNode = (connectTarget: Tone.Gain): Tone.ToneAudioNode => {
@@ -315,11 +320,6 @@ export function createSourceRuntime({
   };
 
   const disposeVoiceNode = (voice: SourceVoice): void => {
-    if (voice.disposeTimeoutId) {
-      clearTimeout(voice.disposeTimeoutId);
-      voice.disposeTimeoutId = null;
-    }
-
     const nodesToDispose = [
       voice.frequencyMultiply,
       voice.frequencyOffsetParam,
@@ -426,20 +426,19 @@ export function createSourceRuntime({
     voice.releaseEndTime = now + releaseDuration;
     voice.idleSince = 0;
 
-    if (voice.disposeTimeoutId) {
-      clearTimeout(voice.disposeTimeoutId);
-      voice.disposeTimeoutId = null;
-    }
-
-    voice.disposeTimeoutId = setTimeout(() => {
-      if (voice.initialized) {
-        refreshVoiceLifecycle(voice, Tone.now());
-        if (!voice.initialized && onVoiceDisposed) {
-          onVoiceDisposed(voiceIndex);
+    // 使用 Transport 精确调度音频释放事件
+    resourceManager.schedule(
+      getVoiceReleaseKey(voiceIndex),
+      releaseDuration,
+      (time) => {
+        if (voice.initialized) {
+          refreshVoiceLifecycle(voice, time);
+          if (!voice.initialized && onVoiceDisposed) {
+            onVoiceDisposed(voiceIndex);
+          }
         }
       }
-      voice.disposeTimeoutId = null;
-    }, releaseDuration * 1000);
+    );
   };
 
   const releaseVoice = (voice: SourceVoice, voiceIndex: number, now: number = Tone.now()): void => {
@@ -639,20 +638,16 @@ export function createSourceRuntime({
         return -1;
       }
 
-      if (allVoicesIdleTimeoutId) {
-        clearTimeout(allVoicesIdleTimeoutId);
-        allVoicesIdleTimeoutId = null;
-      }
+      // 清除所有 voice idle 重建的调度
+      resourceManager.clear(getAllVoicesIdleKey());
 
       const isMono = getIsMono();
       const index = isMono ? 0 : voiceIndex;
       const voice = voices[index];
       const now = Tone.now();
 
-      if (voice.disposeTimeoutId) {
-        clearTimeout(voice.disposeTimeoutId);
-        voice.disposeTimeoutId = null;
-      }
+      // 清除该 voice 的释放调度
+      resourceManager.clear(getVoiceReleaseKey(index));
 
       refreshVoiceLifecycle(voice, now);
 
@@ -798,10 +793,8 @@ export function createSourceRuntime({
         }
       }
 
-      if (voice.disposeTimeoutId) {
-        clearTimeout(voice.disposeTimeoutId);
-        voice.disposeTimeoutId = null;
-      }
+      // 清除该 voice 的释放调度
+      resourceManager.clear(getVoiceReleaseKey(index));
 
       if (voice.state === VOICE_STATE.RELEASING) {
         voice.state = VOICE_STATE.IDLE;
@@ -811,10 +804,9 @@ export function createSourceRuntime({
     },
 
     dispose: (): void => {
-      if (allVoicesIdleTimeoutId) {
-        clearTimeout(allVoicesIdleTimeoutId);
-        allVoicesIdleTimeoutId = null;
-      }
+      // 使用 resourceManager 统一清理所有调度
+      resourceManager.dispose();
+
       voices.forEach((voice) => {
         if (voice.initialized) {
           disposeVoiceNode(voice);
