@@ -473,6 +473,7 @@ export class MacroManager {
     this.edgeScroll.stopScrolling();
 
     if (this.pointDrag.active && event.pointerId === this.pointDrag.pointerId) {
+      this.app.markUnsaved();
       this.cancelPointDrag();
       return;
     }
@@ -539,7 +540,6 @@ export class MacroManager {
     chainMacro.point.x = nextX;
     chainMacro.point.y = nextY;
 
-    this.app.markUnsaved();
     this.applyMappingsForChain(this.pointDrag.chainIndex, this.pointDrag.chainIndex === this.app.getSelectedChainIndex());
 
     const point = this.pointDrag.pointElement;
