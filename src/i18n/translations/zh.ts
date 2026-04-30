@@ -139,6 +139,8 @@ export const zhTranslations: Record<string, string> = {
   "{{value}} voices": "{{value}} 复音",
 
   // Dropdown categories
+  "Input": "输入",
+  "Effect": "效果",
 
   // Status messages
   "Audio ready.": "音频就绪。",
