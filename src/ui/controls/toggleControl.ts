@@ -2,6 +2,8 @@
  * Toggle control component
  */
 
+import { t } from "../../i18n";
+
 export interface ToggleControlOptions {
   label: string;
   value: boolean;
@@ -16,8 +18,8 @@ export function createToggleControl({
   value,
   onToggle,
   accent,
-  onLabel = "On",
-  offLabel = "Off",
+  onLabel = t("On"),
+  offLabel = t("Off"),
 }: ToggleControlOptions): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.className = "control";

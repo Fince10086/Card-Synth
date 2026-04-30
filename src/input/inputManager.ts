@@ -5,6 +5,7 @@
 import { clamp, noteFromOffset } from "../utils/helpers";
 import { KEY_MAP } from "../core/keyboard";
 import * as Tone from "tone";
+import { t } from "../i18n";
 import type { GlobalState } from "../types";
 
 export interface InputManagerOptions {
@@ -73,7 +74,7 @@ export class InputManager {
       access: null,
       inputs: [],
       selectedInputId: "",
-      status: "MIDI idle",
+      status: t("MIDI idle"),
       activeNotes: new Map(),
     };
 
@@ -117,7 +118,7 @@ export class InputManager {
 
   async requestMidiAccess(): Promise<void> {
     if (!this.midi.supported) {
-      this.midi.status = "Web MIDI unsupported";
+      this.midi.status = t("Web MIDI unsupported");
       this.onRenderMainCardContent();
       return;
     }
@@ -128,7 +129,7 @@ export class InputManager {
         this.midi.access.onstatechange = () => this.handleMidiStateChange();
       }
     } catch (_error) {
-      this.midi.status = "MIDI access denied";
+      this.midi.status = t("MIDI access denied");
       this.onRenderMainCardContent();
       return;
     }
@@ -136,7 +137,7 @@ export class InputManager {
     this.midi.inputs = Array.from(this.midi.access.inputs.values());
     if (!this.midi.inputs.length) {
       this.midi.selectedInputId = "";
-      this.midi.status = "No MIDI inputs";
+      this.midi.status = t("No MIDI inputs");
       return;
     }
 
@@ -152,7 +153,7 @@ export class InputManager {
     this.midi.inputs = Array.from(this.midi.access.inputs.values());
     if (!this.midi.inputs.length) {
       this.midi.selectedInputId = "";
-      this.midi.status = "No MIDI inputs";
+      this.midi.status = t("No MIDI inputs");
       this.onRenderMainCardContent();
       return;
     }
@@ -171,7 +172,7 @@ export class InputManager {
     });
 
     const selected = this.midi.inputs.find((input) => input.id === inputId);
-    this.midi.status = selected ? `MIDI ${selected.name || selected.id}` : "No MIDI input";
+    this.midi.status = selected ? t("MIDI {{name}}", { name: selected.name || selected.id }) : t("No MIDI input");
     if (rerender) {
       this.onRenderMainCardContent();
     }
@@ -183,7 +184,7 @@ export class InputManager {
       input.onmidimessage = null;
     });
     this.midi.selectedInputId = "";
-    this.midi.status = "MIDI off";
+    this.midi.status = t("MIDI off");
     if (this.midi.access) {
       this.midi.access.onstatechange = null;
       this.midi.access = null;
@@ -215,7 +216,10 @@ export class InputManager {
     const transportInfo = this.getTransportInfoElement();
     const global = this.getGlobalState();
     if (transportInfo) {
-      transportInfo.textContent = `Oct ${global.octave} / Vel ${Math.round(global.velocity * 100)}%`;
+      transportInfo.textContent = t("Oct {{octave}} / Vel {{velocity}}%", {
+        octave: global.octave,
+        velocity: Math.round(global.velocity * 100),
+      });
     }
   }
 

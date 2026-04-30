@@ -1,8 +1,10 @@
 import { createSelectControl } from "../controls/selectControl";
 import { createSliderControl } from "../controls/sliderControl";
 import { createToggleControl } from "../controls/toggleControl";
+import { createSwitchControl } from "../controls/switchControl";
 import { formatDb } from "../../core/formatters";
 import { createModuleCard, type ModuleCardElement } from "./moduleCard";
+import { t, getLanguage, type Language } from "../../i18n";
 import type { ChainState, Preset } from "../../types";
 
 interface MacroPoint {
@@ -48,6 +50,7 @@ interface RenderMainCardOptions {
   onGestureClick?: () => void;
   onDeleteUserPreset?: (id: string) => void;
   onPolyVoiceChange?: (value: number) => void;
+  onLanguageChange?: (lang: Language) => void;
 }
 
 interface UpdateMainCardOptions {
@@ -97,10 +100,11 @@ export function renderMainCard({
   onGestureClick,
   onDeleteUserPreset,
   onPolyVoiceChange,
+  onLanguageChange,
 }: RenderMainCardOptions): ModuleCardElement {
   const card = createModuleCard({
     accent: "indigo",
-    title: "Main",
+    title: t("Main"),
     isMainCard: true,
   });
 
@@ -164,15 +168,15 @@ export function renderMainCard({
   }
 
   const presetOptions = [
-    ...buildPresetOptions(builtinPresets, "— Built-in —"),
-    ...buildPresetOptions(userPresets, "— User —"),
+    ...buildPresetOptions(builtinPresets, t("— Built-in —")),
+    ...buildPresetOptions(userPresets, t("— User —")),
   ];
 
   const presetSelectWrapper = document.createElement("div");
   presetSelectWrapper.className = "preset-select-wrapper";
 
   const selectControl = createSelectControl({
-    label: "Preset",
+    label: t("Preset"),
     options: presetOptions,
     value: selectedPresetId || "",
     onChange: (value) => {
@@ -189,13 +193,13 @@ export function renderMainCard({
     delBtn.type = "button";
     delBtn.className = "user-preset-delete";
     delBtn.textContent = "×";
-    delBtn.title = "Delete preset";
+    delBtn.title = t("Delete preset");
     delBtn.setAttribute("tabindex", "-1");
 
     delBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       const presetName = userPresets[selectedPresetId]?.name || selectedPresetId;
-      if (confirm(`Delete preset "${presetName}"?`)) {
+      if (confirm(t('Delete preset "{{name}}"?', { name: presetName }))) {
         onDeleteUserPreset?.(selectedPresetId);
       }
     });
@@ -206,30 +210,38 @@ export function renderMainCard({
 
   const buttonRow = document.createElement("div");
   buttonRow.className = "preset-buttons";
-  ["Import", "Export Current", "Export All", "Reset", "Random", "MIDI"].forEach((label) => {
+  const buttonLabels = [
+    { key: "Import", handler: () => onImportClick?.() },
+    { key: "Export Current", handler: () => onExportCurrentClick?.() },
+    { key: "Export All", handler: () => onExportAllClick?.() },
+    { key: "Reset", handler: () => onResetClick?.() },
+    { key: "Random", handler: () => onRandomClick?.() },
+    { key: "MIDI", handler: () => onMidiClick?.() },
+  ];
+  buttonLabels.forEach(({ key, handler }) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "pill-button";
     btn.setAttribute("tabindex", "-1");
-    btn.textContent = label;
-
-    if (label === "Import") {
-      btn.addEventListener("click", () => onImportClick?.());
-    } else if (label === "Export Current") {
-      btn.addEventListener("click", () => onExportCurrentClick?.());
-    } else if (label === "Export All") {
-      btn.addEventListener("click", () => onExportAllClick?.());
-    } else if (label === "Reset") {
-      btn.addEventListener("click", () => onResetClick?.());
-    } else if (label === "Random") {
-      btn.addEventListener("click", () => onRandomClick?.());
-    } else if (label === "MIDI") {
-      btn.addEventListener("click", () => onMidiClick?.());
-    }
-
+    btn.textContent = t(key);
+    btn.addEventListener("click", handler);
     buttonRow.append(btn);
   });
   controls.append(buttonRow);
+
+  const langControl = createSwitchControl({
+    label: t("Language"),
+    options: [
+      { label: "English", value: "en" },
+      { label: "中文", value: "zh" },
+    ],
+    value: getLanguage(),
+    onChange: (value) => {
+      onLanguageChange?.(value as Language);
+    },
+    accent: "main",
+  });
+  controls.append(langControl);
 
   const midiContainer = document.createElement("div");
   midiContainer.id = "midiSelecter";
@@ -238,7 +250,7 @@ export function renderMainCard({
 
   controls.append(
     createSliderControl({
-      label: "Master",
+      label: t("Master"),
       min: -36,
       max: 6,
       step: 0.1,
@@ -254,12 +266,12 @@ export function renderMainCard({
 
   controls.append(
     createSliderControl({
-      label: "Poly Voices",
+      label: t("Poly Voices"),
       min: 2,
       max: 8,
       step: 1,
       value: state.global.polyVoice,
-      formatter: (value) => `${value} voices`,
+      formatter: (value) => t("{{value}} voices", { value }),
       onInput: (value) => {
         if (onPolyVoiceChange) {
           onPolyVoiceChange(value);
@@ -270,7 +282,7 @@ export function renderMainCard({
 
   controls.append(
     createToggleControl({
-      label: "Velocity",
+      label: t("Velocity"),
       value: state.global.velocityEnabled,
       accent: getComputedStyle(document.documentElement).getPropertyValue("--main").trim() || "#4b0082",
       onToggle: (value) => {
@@ -287,7 +299,7 @@ export function renderMainCard({
   const macroLabel = document.createElement("div");
   macroLabel.className = "control-label";
   const macroLabelStrong = document.createElement("strong");
-  macroLabelStrong.textContent = "Macro";
+  macroLabelStrong.textContent = t("Macro");
   macroLabel.append(macroLabelStrong);
   macroContainer.append(macroLabel);
 
@@ -310,7 +322,7 @@ export function renderMainCard({
     macroPoint.style.left = `${Number(point.x) * 100}%`;
     macroPoint.style.top = `${(1 - Number(point.y)) * 100}%`;
     macroPoint.style.background = point.color;
-    macroPoint.setAttribute("aria-label", `Macro Chain ${point.chainIndex + 1}`);
+      macroPoint.setAttribute("aria-label", t("Macro Chain {{n}}", { n: point.chainIndex + 1 }));
 
     macroPoint.addEventListener("pointerdown", (event) => {
       onMacroPointPointerDown?.(event, point.chainIndex, macroPad);
@@ -332,7 +344,7 @@ export function renderMainCard({
     button.setAttribute("tabindex", "-1");
     button.textContent = text;
     button.disabled = !selectedChainEnabled;
-    button.setAttribute("aria-label", axis === "x" ? "Bind Macro X Axis" : "Bind Macro Y Axis");
+    button.setAttribute("aria-label", axis === "x" ? t("Bind Macro X Axis") : t("Bind Macro Y Axis"));
     button.addEventListener("pointerdown", (event) => {
       onMacroAxisPointerDown?.(event, axis);
     });
@@ -346,7 +358,7 @@ export function renderMainCard({
   gestureBtn.type = "button";
   gestureBtn.className = "macro-gesture-btn";
   gestureBtn.setAttribute("tabindex", "-1");
-  gestureBtn.textContent = "Gesture";
+  gestureBtn.textContent = t("Gesture");
   gestureBtn.addEventListener("click", () => {
     onGestureClick?.();
   });
@@ -360,7 +372,7 @@ export function renderMainCard({
   const scopeLabel = document.createElement("div");
   scopeLabel.className = "control-label";
   const scopeLabelStrong = document.createElement("strong");
-  scopeLabelStrong.textContent = "Visualization";
+  scopeLabelStrong.textContent = t("Visualization");
   scopeLabel.append(scopeLabelStrong);
   scopeContainer.append(scopeLabel);
 
@@ -431,7 +443,7 @@ export function updateMainCard(card: ModuleCardElement | null, {
       macroPoint.style.left = `${Number(point.x) * 100}%`;
       macroPoint.style.top = `${(1 - Number(point.y)) * 100}%`;
       macroPoint.style.background = point.color;
-      macroPoint.setAttribute("aria-label", `Macro Chain ${point.chainIndex + 1}`);
+    macroPoint.setAttribute("aria-label", t("Macro Chain {{n}}", { n: point.chainIndex + 1 }));
 
       macroPoint.addEventListener("pointerdown", (event) => {
         onMacroPointPointerDown?.(event, point.chainIndex, macroPad as HTMLElement);

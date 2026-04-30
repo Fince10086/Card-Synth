@@ -2,6 +2,8 @@
  * Audio import control component
  */
 
+import { t } from "../../i18n";
+
 export interface AudioImportControlOptions {
   label: string;
   value?: string;
@@ -29,13 +31,13 @@ export function createAudioImportControl({
 
   const fileName = document.createElement("div");
   fileName.className = "file-chip";
-  fileName.textContent = value || "Choose audio file";
+  fileName.textContent = value || t("Choose audio file");
 
   const trigger = document.createElement("button");
   trigger.type = "button";
   trigger.className = "action-button file-action";
   trigger.setAttribute("tabindex", "-1");
-  trigger.textContent = "Import";
+  trigger.textContent = t("Import");
 
   const input = document.createElement("input");
   input.type = "file";
@@ -53,7 +55,7 @@ export function createAudioImportControl({
     try {
       await onSelect(file);
     } catch (error) {
-      onError?.((error as Error)?.message || "Unable to import the selected audio file.");
+      onError?.((error as Error)?.message || t("Unable to import the selected audio file."));
     }
   });
 

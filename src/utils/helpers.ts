@@ -4,6 +4,7 @@
 
 import { NOTE_NAMES, KEYBOARD_LAYOUT, noteFromOffset } from "../core/keyboard";
 import { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY, INPUT_LIBRARY } from "../core/libraries";
+import { t } from "../i18n";
 import type { ModuleConfig, ModuleCategory, ModuleType, AddableModuleOption, ModuleDefinition } from "../types";
 
 let moduleCounter = 1;
@@ -176,25 +177,25 @@ export function getAddableModuleOptions(): AddableModuleOption[] {
   return [
     ...Object.keys(INPUT_LIBRARY).map((type) => ({
       value: `input:${type}`,
-      label: `Input / ${type}`,
+      label: t("Input / {{type}}", { type: t(type) }),
       category: "input" as ModuleCategory,
       type: type as ModuleType,
     })),
     ...Object.keys(SOURCE_LIBRARY).map((type) => ({
       value: `source:${type}`,
-      label: `OSC / ${type}`,
+      label: t("OSC / {{type}}", { type: t(type) }),
       category: "source" as ModuleCategory,
       type: type as ModuleType,
     })),
     ...Object.keys(EFFECT_LIBRARY).map((type) => ({
       value: `effect:${type}`,
-      label: `Effect / ${type}`,
+      label: t("Effect / {{type}}", { type: t(type) }),
       category: "effect" as ModuleCategory,
       type: type as ModuleType,
     })),
     ...Object.keys(COMPONENT_LIBRARY).map((type) => ({
       value: `component:${type}`,
-      label: `Envelope / ${type}`,
+      label: t("Envelope / {{type}}", { type: t(type) }),
       category: "component" as ModuleCategory,
       type: type as ModuleType,
     })),

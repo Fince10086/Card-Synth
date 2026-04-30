@@ -3,6 +3,7 @@
  */
 
 import { ModularSynthApp } from "./app/modularSynthApp";
+import { t } from "./i18n";
 
 declare const Tone: typeof import("tone") | undefined;
 
@@ -12,7 +13,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     await app.init();
     if (typeof Tone === "undefined") {
       app.setStatus(
-        "Tone.js failed to load. The UI is available, but audio is disabled until the CDN script loads.",
+        t("Tone.js failed to load. The UI is available, but audio is disabled until the CDN script loads."),
         "error",
       );
     }
@@ -21,7 +22,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const status = document.getElementById("statusText");
     const dot = document.getElementById("statusDot");
     if (status) {
-      status.textContent = `Initialization failed: ${(error as Error).message}`;
+      status.textContent = t("Initialization failed: {{error}}", { error: (error as Error).message });
     }
     dot?.classList.add("error");
   }

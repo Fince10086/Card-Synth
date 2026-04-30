@@ -15,6 +15,7 @@ import {
 } from "../../utils/helpers";
 import { formatMultiplier, formatPlain } from "../../core/formatters";
 import { ENABLED as SOURCE_MONITOR_ENABLED } from "../../debug/sourceOutputMonitor";
+import { t } from "../../i18n";
 import {
   createSelectControl,
   createToggleControl,
@@ -340,11 +341,11 @@ export function renderModuleControl(
 
   if (control.kind === "select") {
     return createSelectControl({
-      label: control.label,
+      label: t(control.label),
       options:
         control.options?.map((opt) => ({
           value: String(opt.value),
-          label: opt.label,
+          label: t(opt.label),
         })) ?? [],
       value: String(value ?? ""),
       onChange: (nextValue: string) => {
@@ -364,7 +365,7 @@ export function renderModuleControl(
     const isInverted = controlExt.inverted === true;
     const displayValue = isInverted ? !Boolean(value) : Boolean(value);
     return createToggleControl({
-      label: control.label,
+      label: t(control.label),
       accent,
       value: displayValue,
       onLabel: controlExt.onLabel,
@@ -380,9 +381,13 @@ export function renderModuleControl(
 
   if (control.kind === "switch") {
     return createSwitchControl({
-      label: control.label,
+      label: t(control.label),
       accent,
-      options: control.options ?? [],
+      options:
+        control.options?.map((opt) => ({
+          value: opt.value,
+          label: t(opt.label),
+        })) ?? [],
       value: value as string | number | boolean,
       onChange: (nextValue: string | number | boolean) => {
         setByPath(module as unknown as Record<string, unknown>, path, nextValue);
@@ -394,7 +399,7 @@ export function renderModuleControl(
   }
 
   return createSliderControl({
-    label: control.label,
+    label: t(control.label),
     accent,
     min: control.min ?? 0,
     max: control.max ?? 1,
@@ -426,7 +431,7 @@ export function getSourceSampleSlots(module: ModuleConfig): SourceSampleSlot[] {
   if (moduleType === "Player") {
     return [
       {
-        label: "Sample",
+        label: t("Sample"),
         path: "options.url",
         namePath: "assetName",
         fallbackName: "Factory Pluck",
@@ -437,7 +442,7 @@ export function getSourceSampleSlots(module: ModuleConfig): SourceSampleSlot[] {
   if (moduleType === "GrainPlayer") {
     return [
       {
-        label: "Sample",
+        label: t("Sample"),
         path: "options.url",
         namePath: "assetName",
         fallbackName: "Factory Texture",
@@ -448,19 +453,19 @@ export function getSourceSampleSlots(module: ModuleConfig): SourceSampleSlot[] {
   if (moduleType === "Players") {
     return [
       {
-        label: "Low Sample",
+        label: t("Low Sample"),
         path: "options.urls.low",
         namePath: "sampleNames.low",
         fallbackName: "Factory Pluck",
       },
       {
-        label: "Mid Sample",
+        label: t("Mid Sample"),
         path: "options.urls.mid",
         namePath: "sampleNames.mid",
         fallbackName: "Factory Bell",
       },
       {
-        label: "High Sample",
+        label: t("High Sample"),
         path: "options.urls.high",
         namePath: "sampleNames.high",
         fallbackName: "Factory Texture",
@@ -486,7 +491,7 @@ export async function importSourceSample(
   app.renderAll();
   app.engine.fullSync(app.state);
   app.setStatus(
-    `Loaded ${file.name} into ${module.type}.`,
+    t("Loaded {{file}} into {{module}}.", { file: file.name, module: t(module.type) }),
     app.audioBooted ? "live" : "neutral"
   );
 }
@@ -496,24 +501,24 @@ export function getTitleOptions(
 ): Array<{ label: string; value: string }> {
   if (category === "source") {
     return Object.keys(SOURCE_LIBRARY).map((type) => ({
-      label: type,
+      label: t(type),
       value: type,
     }));
   }
   if (category === "effect") {
     return Object.keys(EFFECT_LIBRARY).map((type) => ({
-      label: type,
+      label: t(type),
       value: type,
     }));
   }
   if (category === "input") {
     return Object.keys(INPUT_LIBRARY).map((type) => ({
-      label: type,
+      label: t(type),
       value: type,
     }));
   }
   return Object.keys(COMPONENT_LIBRARY).map((type) => ({
-    label: type,
+    label: t(type),
     value: type,
   }));
 }

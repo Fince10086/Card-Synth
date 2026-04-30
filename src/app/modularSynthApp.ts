@@ -51,6 +51,7 @@ import {
   getModuleDefinition,
 } from "../utils/helpers";
 import { formatDb } from "../core/formatters";
+import { t, setLanguage, getLanguage, subscribeToLanguageChange, type Language } from "../i18n";
 import type {
   Preset,
   ChainState,
@@ -163,6 +164,7 @@ export class ModularSynthApp {
 
     this.cacheElements();
     this.bindEvents();
+    subscribeToLanguageChange(() => this.renderAll());
 
     window.addEventListener("resize", () => {
       this.resizeScopeCanvas();
@@ -263,6 +265,10 @@ export class ModularSynthApp {
       midiSelecter: document.getElementById("midiSelecter"),
     };
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
+    if (this.elements.addModuleCard) {
+      this.elements.addModuleCard.setAttribute("aria-label", t("Add module"));
+    }
+    document.title = t("Card Synth");
   }
 
   bindEvents(): void {
@@ -322,12 +328,12 @@ export class ModularSynthApp {
         this.engine.fullSync(this.state);
         this.setStatus(
           imported.type === "all"
-            ? `Imported all chains from ${file.name}.`
-            : `Imported current chain from ${file.name}.`,
+            ? t("Imported all chains from {{filename}}.", { filename: file.name })
+            : t("Imported current chain from {{filename}}.", { filename: file.name }),
           "live",
         );
       } catch (error: unknown) {
-        this.setStatus(`Import failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+        this.setStatus(t("Import failed: {{error}}", { error: error instanceof Error ? error.message : String(error) }), "error");
       } finally {
         (event.target as HTMLInputElement).value = "";
       }
@@ -359,9 +365,9 @@ export class ModularSynthApp {
     try {
       await this.engine.start(this.state);
       this.audioBooted = true;
-      this.setStatus("Audio ready.", "live");
+      this.setStatus(t("Audio ready."), "live");
     } catch (error: unknown) {
-      this.setStatus(`Audio failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+      this.setStatus(t("Audio failed: {{error}}", { error: error instanceof Error ? error.message : String(error) }), "error");
     }
   }
 
@@ -376,10 +382,10 @@ export class ModularSynthApp {
     const options = getAddableModuleOptions();
 
     const groups: Record<string, { title: string; items: ReturnType<typeof getAddableModuleOptions> }> = {
-      input: { title: "输入", items: [] },
-      source: { title: "声源", items: [] },
-      component: { title: "包络", items: [] },
-      effect: { title: "效果器", items: [] },
+      input: { title: t("Input"), items: [] },
+      source: { title: t("Source"), items: [] },
+      component: { title: t("Envelope"), items: [] },
+      effect: { title: t("Effect"), items: [] },
     };
 
     options.forEach((option) => {
@@ -517,7 +523,7 @@ export class ModularSynthApp {
         task();
       } catch (error: unknown) {
         console.error(`Render error in ${label}:`, error);
-        this.setStatus(`Render error in ${label}: ${error instanceof Error ? error.message : String(error)}`, "error");
+        this.setStatus(t("Render error in {{label}}: {{error}}", { label, error: error instanceof Error ? error.message : String(error) }), "error");
       }
     }
 
@@ -587,7 +593,7 @@ export class ModularSynthApp {
     const selectedId = this.inputManager.getMidiSelectedInputId();
 
     if (this.elements.midiBtn) {
-      this.elements.midiBtn.textContent = inputs.length > 0 ? "MIDI Off" : "MIDI On";
+      this.elements.midiBtn.textContent = inputs.length > 0 ? t("MIDI Off") : t("MIDI On");
     }
 
     const options = inputs.map((input) => ({
@@ -596,8 +602,8 @@ export class ModularSynthApp {
     }));
 
     const selectControl = createSelectControl({
-      label: "MIDI",
-      options: options.length > 0 ? options : [{ value: "", label: supported ? "No devices" : "Unsupported" }],
+      label: t("MIDI"),
+      options: options.length > 0 ? options : [{ value: "", label: supported ? t("No devices") : t("Unsupported") }],
       value: selectedId || "",
       onChange: (value) => {
         if (value) {
@@ -660,13 +666,13 @@ export class ModularSynthApp {
         const currentPreset = getPresetById(this.selectedPresetId) as PresetWithName | null;
         const presetName = currentPreset?.name || this.selectedPresetId || "preset";
         const filename = exportCurrentPresetToFile(this.state, this.getSelectedChainIndex(), presetName);
-        this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
+        this.setStatus(t("Exported {{filename}}.", { filename }), this.audioBooted ? "live" : "neutral");
       },
       onExportAllClick: () => {
         const currentPreset = getPresetById(this.selectedPresetId) as PresetWithName | null;
         const presetName = currentPreset?.name || this.selectedPresetId || "preset";
         const filename = exportAllPresetToFile(this.state, presetName);
-        this.setStatus(`Exported ${filename}.`, this.audioBooted ? "live" : "neutral");
+        this.setStatus(t("Exported {{filename}}.", { filename }), this.audioBooted ? "live" : "neutral");
       },
       onResetClick: () => {
         const builtins = getBuiltinPresets();
@@ -718,6 +724,9 @@ export class ModularSynthApp {
         } else {
           this.renderAll();
         }
+      },
+      onLanguageChange: (lang: Language) => {
+        setLanguage(lang);
       },
     };
 
@@ -911,7 +920,7 @@ export class ModularSynthApp {
 
     const loadedPreset = getPresetById(presetId) as PresetWithName | null;
     const presetName = loadedPreset?.name || presetId;
-    this.setStatus(`LOADED PRESET: ${presetName}.`, this.audioBooted ? "live" : "neutral");
+    this.setStatus(t("LOADED PRESET: {{name}}.", { name: presetName }), this.audioBooted ? "live" : "neutral");
   }
 
   markUnsaved(): void {
@@ -1002,7 +1011,7 @@ export class ModularSynthApp {
     this.markUnsaved();
     this.renderAll(previousState);
     this.engine.fullSync(this.state);
-    this.setStatus("Randomized the current patch.", this.audioBooted ? "live" : "neutral");
+    this.setStatus(t("Randomized the current patch."), this.audioBooted ? "live" : "neutral");
   }
 
   updateKeyboardKeyState(boundKey: string, active: boolean): void {
