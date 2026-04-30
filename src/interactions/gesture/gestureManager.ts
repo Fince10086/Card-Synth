@@ -338,7 +338,14 @@ export class GestureManager {
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "gesture-close-btn";
-    closeBtn.innerHTML = "<span>◥</span><span class=\"gesture-close-x\">×</span>";
+    const closeSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    closeSvg.setAttribute("width", "42");
+    closeSvg.setAttribute("height", "42");
+    closeSvg.setAttribute("viewBox", "0 0 42 42");
+    const closeUse = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    closeUse.setAttribute("href", "/icons.svg#gesture-close");
+    closeSvg.appendChild(closeUse);
+    closeBtn.appendChild(closeSvg);
     closeBtn.addEventListener("click", () => this.deactivate());
     this.overlay.appendChild(closeBtn);
 
