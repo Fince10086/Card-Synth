@@ -1020,11 +1020,16 @@ select {
 
 .preset-buttons {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 4px;
 }
 
-.preset-buttons .pill-button {
+.preset-button-row {
+  display: flex;
+  gap: 4px;
+}
+
+.preset-button-row .pill-button {
   flex: 1 1 auto;
   min-width: 50px;
   font-size: 0.68rem;

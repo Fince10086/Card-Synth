@@ -680,11 +680,13 @@ export class ModularSynthApp {
         if (firstId) this.applyPresetById(firstId);
       },
       onRandomClick: () => this.randomizeCurrentPatch(),
-      onMidiClick: () => {
-        if (this.inputManager.getMidiInputs().length > 0) {
-          this.inputManager.closeMidi();
-        } else {
+      midiEnabled: this.inputManager.getMidiInputs().length > 0,
+      onMidiToggle: (enabled: boolean) => {
+        const isOn = this.inputManager.getMidiInputs().length > 0;
+        if (enabled && !isOn) {
           this.inputManager.requestMidiAccess();
+        } else if (!enabled && isOn) {
+          this.inputManager.closeMidi();
         }
       },
       onMasterVolumeChange: (value: number) => {

@@ -94,19 +94,19 @@ export const zhTranslations: Record<string, string> = {
   "AutoFilter": "自动滤波器",
   "AutoPanner": "自动声像器",
   "AutoWah": "自动哇音",
-  "BitCrusher": "比特压缩",
+  "BitCrusher": "比特粉碎器",
   "Chebyshev": "切比雪夫滤波",
   "Chorus": "合唱",
   "Distortion": "失真",
   "FeedbackDelay": "反馈延迟",
-  "Freeverb": "自由混响",
+  "Freeverb": "Freeverb 混响",
   "FrequencyShifter": "频率移位",
-  "JCReverb": "JC混响",
+  "JCReverb": "JCReverb 混响",
   "Phaser": "移相器",
   "PingPongDelay": "乒乓延迟",
   "PitchShift": "音高移位",
   "Reverb": "混响",
-  "StereoWidener": "立体声展宽",
+  "StereoWidener": "立体声展宽器",
   "Tremolo": "颤音",
   "Vibrato": "震音",
   "Compressor": "压缩器",
@@ -139,9 +139,6 @@ export const zhTranslations: Record<string, string> = {
   "{{value}} voices": "{{value}} 复音",
 
   // Dropdown categories
-  "Input": "输入",
-  "Envelope": "包络",
-  "Effect": "效果器",
 
   // Status messages
   "Audio ready.": "音频就绪。",
@@ -181,24 +178,7 @@ export const zhTranslations: Record<string, string> = {
   // Toggle defaults
   "On": "开",
   "Off": "关",
-
-  // Units (reserved for translation, currently kept as original)
-  "s": "s",
-  "%": "%",
-  " dB": " dB",
-  " ct": " 音分",
-  ":1": ":1",
-  " Hz": " Hz",
-  " kHz": " kHz",
-  "x": "x",
-  " bit": " bit",
-  "°": "°",
-  " st": " 半音",
-  "ms": "ms",
-  "Oct": "八度",
-  "L": "L",
-  "R": "R",
-  "C": "中心",
+  "MIDI Device": "MIDI 设备",
 
   // HTML / misc
   "Card Synth": "Card Synth",

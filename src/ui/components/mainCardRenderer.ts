@@ -42,7 +42,8 @@ interface RenderMainCardOptions {
   onExportAllClick?: () => void;
   onResetClick?: () => void;
   onRandomClick?: () => void;
-  onMidiClick?: () => void;
+  midiEnabled?: boolean;
+  onMidiToggle?: (enabled: boolean) => void;
   onMasterVolumeChange?: (value: number) => void;
   onVelocityEnabledChange?: (value: boolean) => void;
   onMacroPointPointerDown?: (event: PointerEvent, chainIndex: number, padElement: HTMLElement) => void;
@@ -92,7 +93,6 @@ export function renderMainCard({
   onExportAllClick,
   onResetClick,
   onRandomClick,
-  onMidiClick,
   onMasterVolumeChange,
   onVelocityEnabledChange,
   onMacroPointPointerDown,
@@ -101,6 +101,8 @@ export function renderMainCard({
   onDeleteUserPreset,
   onPolyVoiceChange,
   onLanguageChange,
+  midiEnabled,
+  onMidiToggle,
 }: RenderMainCardOptions): ModuleCardElement {
   const card = createModuleCard({
     accent: "indigo",
@@ -208,26 +210,51 @@ export function renderMainCard({
 
   controls.append(presetSelectWrapper);
 
-  const buttonRow = document.createElement("div");
-  buttonRow.className = "preset-buttons";
-  const buttonLabels = [
-    { key: "Import", handler: () => onImportClick?.() },
-    { key: "Export Current", handler: () => onExportCurrentClick?.() },
-    { key: "Export All", handler: () => onExportAllClick?.() },
-    { key: "Reset", handler: () => onResetClick?.() },
-    { key: "Random", handler: () => onRandomClick?.() },
-    { key: "MIDI", handler: () => onMidiClick?.() },
+  const buttonGroups = document.createElement("div");
+  buttonGroups.className = "preset-buttons";
+
+  const rows = [
+    [{ key: "Import", handler: () => onImportClick?.() }],
+    [
+      { key: "Export Current", handler: () => onExportCurrentClick?.() },
+      { key: "Export All", handler: () => onExportAllClick?.() },
+    ],
+    [
+      { key: "Reset", handler: () => onResetClick?.() },
+      { key: "Random", handler: () => onRandomClick?.() },
+    ],
   ];
-  buttonLabels.forEach(({ key, handler }) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "pill-button";
-    btn.setAttribute("tabindex", "-1");
-    btn.textContent = t(key);
-    btn.addEventListener("click", handler);
-    buttonRow.append(btn);
+
+  rows.forEach((rowButtons) => {
+    const row = document.createElement("div");
+    row.className = "preset-button-row";
+    rowButtons.forEach(({ key, handler }) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pill-button";
+      btn.setAttribute("tabindex", "-1");
+      btn.textContent = t(key);
+      btn.addEventListener("click", handler);
+      row.append(btn);
+    });
+    buttonGroups.append(row);
   });
-  controls.append(buttonRow);
+
+  controls.append(buttonGroups);
+
+  const midiSwitch = createSwitchControl({
+    label: t("MIDI Device"),
+    options: [
+      { label: t("Off"), value: false },
+      { label: t("On"), value: true },
+    ],
+    value: midiEnabled ?? false,
+    onChange: (value) => {
+      onMidiToggle?.(Boolean(value));
+    },
+    accent: "main",
+  });
+  controls.append(midiSwitch);
 
   const langControl = createSwitchControl({
     label: t("Language"),
