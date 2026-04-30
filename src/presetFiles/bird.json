@@ -1,0 +1,122 @@
+{
+  "presetType": "current",
+  "global": {
+    "volume": -8,
+    "octave": 4,
+    "velocity": 0.8,
+    "velocityEnabled": true,
+    "polyVoice": 8
+  },
+  "modules": [
+    {
+      "id": "inp-0043",
+      "type": "Pitch",
+      "category": "input",
+      "enabled": true,
+      "index": 43,
+      "options": {
+        "mode": "midi",
+        "transpose": 0,
+        "octave": 4,
+        "frequency": 440
+      }
+    },
+    {
+      "id": "src-0001",
+      "type": "Oscillator",
+      "category": "source",
+      "enabled": true,
+      "volume": -12,
+      "pan": 0,
+      "modulationMode": false,
+      "midiOn": true,
+      "index": 19,
+      "options": {
+        "type": "square",
+        "detune": 0,
+        "frequencyOffset": 1
+      }
+    },
+    {
+      "id": "inp-0044",
+      "type": "Pitch",
+      "category": "input",
+      "enabled": true,
+      "index": 44,
+      "options": {
+        "mode": "frequency",
+        "transpose": 0,
+        "octave": 0,
+        "frequency": 10
+      }
+    },
+    {
+      "id": "src-0002",
+      "type": "Oscillator",
+      "category": "source",
+      "enabled": true,
+      "volume": 0,
+      "pan": 0,
+      "modulationMode": true,
+      "midiOn": true,
+      "index": 20,
+      "options": {
+        "type": "sine",
+        "detune": 0,
+        "frequencyOffset": 1,
+        "frequency": 10,
+        "gain": 1
+      }
+    },
+    {
+      "id": "fx-0001",
+      "type": "Filter",
+      "category": "effect",
+      "enabled": true,
+      "index": 21,
+      "options": {
+        "type": "bandpass",
+        "frequency": 4000,
+        "Q": 2,
+        "rolloff": -12
+      }
+    },
+    {
+      "id": "cmp-0001",
+      "type": "Envelope",
+      "category": "component",
+      "enabled": true,
+      "modulationMode": false,
+      "index": 22,
+      "options": {
+        "attack": 0.02,
+        "decay": 0.08,
+        "sustain": 0,
+        "release": 0.15,
+        "gain": 1
+      }
+    },
+    {
+      "id": "fx-0002",
+      "type": "Reverb",
+      "category": "effect",
+      "enabled": true,
+      "index": 23,
+      "options": {
+        "decay": 1,
+        "preDelay": 0.01,
+        "wet": 0.15
+      }
+    }
+  ],
+  "modulations": [
+    {
+      "id": "mod-0024",
+      "sourceModuleId": "src-0002",
+      "sourceVoiceIndex": 0,
+      "targetModuleId": "src-0001",
+      "targetParamPath": "options.detune",
+      "radius": 600
+    }
+  ]
+}
