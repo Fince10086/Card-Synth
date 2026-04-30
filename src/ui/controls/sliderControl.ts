@@ -200,8 +200,36 @@ export function createSliderControl({
 
   let pendingValue: number | null = null;
   let rafId: number | null = null;
+  let savedInputValue: string | null = null;
+
+  // When modulation or macro binding exists, only allow drag from thumb,
+  // not click-to-jump on track
+  if (modulation || macroBinding) {
+    input.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      const target = event.target as HTMLElement;
+      if (target.setPointerCapture) {
+        target.setPointerCapture(event.pointerId);
+      }
+      const rect = input.getBoundingClientRect();
+      const linearVal = Number(input.value);
+      const percent = (linearVal - min) / (max - min);
+      const thumbWidth = 12; // Matches CSS .slider-input::-webkit-slider-thumb
+      const thumbCenter = rect.left + percent * rect.width;
+
+      // Allow tolerance for easier thumb targeting
+      if (Math.abs(event.clientX - thumbCenter) > thumbWidth / 2 + 6) {
+        savedInputValue = input.value;
+      }
+    });
+  }
 
   input.addEventListener("input", (event) => {
+    if (savedInputValue !== null) {
+      input.value = savedInputValue;
+      savedInputValue = null;
+      return;
+    }
     const linearValue = Number((event.target as HTMLInputElement).value);
     const nextValue = linearToActual(linearValue);
     clearMacroBindingOnManualInput();
@@ -224,6 +252,11 @@ export function createSliderControl({
 
   if (eventName === "change") {
     input.addEventListener("change", (event) => {
+      if (savedInputValue !== null) {
+        input.value = savedInputValue;
+        savedInputValue = null;
+        return;
+      }
       const linearValue = Number((event.target as HTMLInputElement).value);
       const nextValue = linearToActual(linearValue);
       clearMacroBindingOnManualInput();

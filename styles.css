@@ -603,6 +603,7 @@ select {
   border-radius: 0;
   background: transparent;
   border: 0;
+  touch-action: none;
 }
 
 .slider-input {
@@ -653,6 +654,8 @@ select {
   z-index: calc(var(--z-base) + 1);
 }
 
+
+
 .mod-range-bracket,
 .mod-range-value {
   position: absolute;
@@ -666,6 +669,12 @@ select {
   font-weight: 700;
   cursor: ew-resize;
   touch-action: none;
+}
+
+.mod-range-bracket::after {
+  content: '';
+  position: absolute;
+  inset: -6px -10px;
 }
 
 .mod-range-value {
@@ -686,6 +695,12 @@ select {
   cursor: ew-resize;
   user-select: none;
   transform: translateX(-50%);
+}
+
+.macro-range-marker::after {
+  content: '';
+  position: absolute;
+  inset: -10px -11px;
 }
 
 .slider-input::-webkit-slider-thumb {
