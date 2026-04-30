@@ -116,7 +116,7 @@ export const zhTranslations: Record<string, string> = {
   "Envelope": "包络",
 
   // Main card UI
-  "Main": "主控",
+  "Main": "主选项",
   "— Built-in —": "— 内置 —",
   "— User —": "— 用户 —",
   "Preset": "预设",
