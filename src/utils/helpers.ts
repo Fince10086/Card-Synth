@@ -177,25 +177,25 @@ export function getAddableModuleOptions(): AddableModuleOption[] {
   return [
     ...Object.keys(INPUT_LIBRARY).map((type) => ({
       value: `input:${type}`,
-      label: t("Input / {{type}}", { type: t(type) }),
+      label: t(type),
       category: "input" as ModuleCategory,
       type: type as ModuleType,
     })),
     ...Object.keys(SOURCE_LIBRARY).map((type) => ({
       value: `source:${type}`,
-      label: t("OSC / {{type}}", { type: t(type) }),
+      label: t(type),
       category: "source" as ModuleCategory,
       type: type as ModuleType,
     })),
     ...Object.keys(EFFECT_LIBRARY).map((type) => ({
       value: `effect:${type}`,
-      label: t("Effect / {{type}}", { type: t(type) }),
+      label: t(type),
       category: "effect" as ModuleCategory,
       type: type as ModuleType,
     })),
     ...Object.keys(COMPONENT_LIBRARY).map((type) => ({
       value: `component:${type}`,
-      label: t("Envelope / {{type}}", { type: t(type) }),
+      label: t(type),
       category: "component" as ModuleCategory,
       type: type as ModuleType,
     })),

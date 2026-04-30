@@ -364,7 +364,7 @@ export function renderModuleControl(
     };
     const isInverted = controlExt.inverted === true;
     const displayValue = isInverted ? !Boolean(value) : Boolean(value);
-    return createToggleControl({
+    const toggleEl = createToggleControl({
       label: t(control.label),
       accent,
       value: displayValue,
@@ -377,10 +377,14 @@ export function renderModuleControl(
         onCommit();
       },
     });
+    if (module.category === "input") {
+      toggleEl.querySelector(".control-label")?.remove();
+    }
+    return toggleEl;
   }
 
   if (control.kind === "switch") {
-    return createSwitchControl({
+    const switchEl = createSwitchControl({
       label: t(control.label),
       accent,
       options:
@@ -396,6 +400,10 @@ export function renderModuleControl(
         app.renderAll();
       },
     });
+    if (module.category === "input") {
+      switchEl.querySelector(".control-label")?.remove();
+    }
+    return switchEl;
   }
 
   return createSliderControl({

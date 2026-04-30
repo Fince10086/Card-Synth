@@ -130,7 +130,7 @@ export const zhTranslations: Record<string, string> = {
   "Master": "主音量",
   "Poly Voices": "复音数",
   "Velocity": "力度",
-  "Macro": "宏控制",
+  "Macro": "宏",
   "Gesture": "手势",
   "Visualization": "可视化",
   "Macro Chain {{n}}": "宏控制链 {{n}}",
@@ -142,10 +142,6 @@ export const zhTranslations: Record<string, string> = {
   "Input": "输入",
   "Envelope": "包络",
   "Effect": "效果器",
-  "Input / {{type}}": "输入 / {{type}}",
-  "OSC / {{type}}": "振荡器 / {{type}}",
-  "Effect / {{type}}": "效果器 / {{type}}",
-  "Envelope / {{type}}": "包络 / {{type}}",
 
   // Status messages
   "Audio ready.": "音频就绪。",
