@@ -328,8 +328,15 @@ export function createSliderControl({
     let rangeEnd = Math.max(0, Math.min(1, Number(macroBinding.rangeEnd ?? 1)));
 
     const paintMacroRange = () => {
-      markerStart.style.left = `${rangeStart * 100}%`;
-      markerEnd.style.left = `${rangeEnd * 100}%`;
+      if (isLogarithmic) {
+        const startValue = min + rangeStart * (max - min);
+        const endValue = min + rangeEnd * (max - min);
+        markerStart.style.left = `${toLogPercent(startValue) * 100}%`;
+        markerEnd.style.left = `${toLogPercent(endValue) * 100}%`;
+      } else {
+        markerStart.style.left = `${rangeStart * 100}%`;
+        markerEnd.style.left = `${rangeEnd * 100}%`;
+      }
     };
 
     const updateRangeFromPointer = (clientX: number, markerType: string) => {
@@ -338,10 +345,17 @@ export function createSliderControl({
         return;
       }
       const norm = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      if (markerType === "start") {
-        rangeStart = norm;
+      let paramNorm: number;
+      if (isLogarithmic) {
+        const actualValue = fromLogPercent(norm);
+        paramNorm = (actualValue - min) / (max - min);
       } else {
-        rangeEnd = norm;
+        paramNorm = norm;
+      }
+      if (markerType === "start") {
+        rangeStart = paramNorm;
+      } else {
+        rangeEnd = paramNorm;
       }
       paintMacroRange();
       onMacroRangeChange?.(rangeStart, rangeEnd);
