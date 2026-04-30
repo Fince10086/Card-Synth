@@ -84,7 +84,7 @@
     {
       "id": "cmp-0001",
       "type": "Envelope",
-      "category": "component",
+      "category": "envelope",
       "enabled": true,
       "modulationMode": false,
       "index": 22,

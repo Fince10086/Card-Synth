@@ -322,7 +322,7 @@ Pitch → Oscillator → Voices=Mono → Oscillator → Envelope
 - `macro`: 宏控制绑定
 
 模块字段说明：
-- `category`: 模块类别 (`input`, `source`, `component`, `effect`)
+- `category`: 模块类别 (`input`, `source`, `envelope`, `effect`)
 - `type`: 模块类型
 - `modulationMode`: 是否为调制模式（Source 和 Envelope 模块）
 - `options`: 模块参数

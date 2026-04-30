@@ -384,7 +384,7 @@ export class ModularSynthApp {
     const groups: Record<string, { title: string; items: ReturnType<typeof getAddableModuleOptions> }> = {
       input: { title: t("Input"), items: [] },
       source: { title: t("Source"), items: [] },
-      component: { title: t("Envelope"), items: [] },
+      envelope: { title: t("Envelope"), items: [] },
       effect: { title: t("Effect"), items: [] },
     };
 

@@ -42,7 +42,7 @@
     },
     {
       "type": "Envelope",
-      "category": "component",
+      "category": "envelope",
       "enabled": true,
       "options": {
         "attack": 0.02,

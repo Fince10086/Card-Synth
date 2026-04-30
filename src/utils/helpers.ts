@@ -135,18 +135,21 @@ export function createEffectModule(type: ModuleType = "Chorus"): ModuleConfig {
   };
 }
 
-export function createComponentModule(type: ModuleType = "Envelope"): ModuleConfig {
+export function createEnvelopeModule(type: ModuleType = "Envelope"): ModuleConfig {
   const definition = COMPONENT_LIBRARY[type] || COMPONENT_LIBRARY.Envelope;
   return {
     id: createId("cmp"),
     type,
-    category: "component",
+    category: "envelope",
     enabled: true,
     modulationMode: false,
     index: moduleCounter - 1,
     options: deepClone(definition.options),
   };
 }
+
+/** @deprecated Use createEnvelopeModule */
+export const createComponentModule = createEnvelopeModule;
 
 export function createInputModule(type: ModuleType = "Pitch"): ModuleConfig {
   const definition = INPUT_LIBRARY[type] || INPUT_LIBRARY.Pitch;
@@ -170,7 +173,7 @@ export function createModule(category: ModuleCategory, type: ModuleType): Module
   if (category === "input") {
     return createInputModule(type);
   }
-  return createComponentModule(type);
+  return createEnvelopeModule(type);
 }
 
 export function getAddableModuleOptions(): AddableModuleOption[] {
@@ -194,9 +197,9 @@ export function getAddableModuleOptions(): AddableModuleOption[] {
       type: type as ModuleType,
     })),
     ...Object.keys(COMPONENT_LIBRARY).map((type) => ({
-      value: `component:${type}`,
+      value: `envelope:${type}`,
       label: t(type),
-      category: "component" as ModuleCategory,
+      category: "envelope" as ModuleCategory,
       type: type as ModuleType,
     })),
   ];
@@ -246,9 +249,12 @@ export function normalizeEffectModule(module: ModuleConfig | null | undefined): 
   return normalizeModule(module, "effect", (type) => createEffectModule((type || "Chorus") as ModuleType));
 }
 
-export function normalizeComponentModule(module: ModuleConfig | null | undefined): ModuleConfig {
-  return normalizeModule(module, "component", (type) => createComponentModule((type || "Envelope") as ModuleType));
+export function normalizeEnvelopeModule(module: ModuleConfig | null | undefined): ModuleConfig {
+  return normalizeModule(module, "envelope", (type) => createEnvelopeModule((type || "Envelope") as ModuleType));
 }
+
+/** @deprecated Use normalizeEnvelopeModule */
+export const normalizeComponentModule = normalizeEnvelopeModule;
 
 export function normalizeInputModule(module: ModuleConfig | null | undefined): ModuleConfig {
   const baseModule = { ...module } as ModuleConfig;
@@ -287,11 +293,16 @@ export function normalizeInputModule(module: ModuleConfig | null | undefined): M
 }
 
 export function normalizeAnyModule(module: ModuleConfig | null | undefined): ModuleConfig {
-  let category = module?.category || "component";
+  let category = (module?.category as string | undefined) || "envelope";
+
+  // Backward compatibility: "component" is the old name for "envelope"
+  if (category === "component") {
+    category = "envelope";
+  }
 
   // Backward compatibility: modules that used to be in COMPONENT_LIBRARY
   // but are now in EFFECT_LIBRARY should be treated as effect
-  if (category === "component" && EFFECT_LIBRARY[module?.type || ""]) {
+  if (category === "envelope" && EFFECT_LIBRARY[module?.type || ""]) {
     category = "effect";
   }
 
@@ -304,7 +315,7 @@ export function normalizeAnyModule(module: ModuleConfig | null | undefined): Mod
   if (category === "input") {
     return normalizeInputModule(module);
   }
-  return normalizeComponentModule(module);
+  return normalizeEnvelopeModule(module);
 }
 
 export function safeSet(target: { set?(options: unknown): void } | null | undefined, options: unknown): void {
@@ -422,7 +433,7 @@ export function getModuleDefinition(module: ModuleConfig): ModuleDefinition {
 
 export function getModuleAccent(module: ModuleConfig): string {
   const definition = getModuleDefinition(module);
-  return definition.accent || "component";
+  return definition.accent || "envelope";
 }
 
 export function getModuleTag(module: ModuleConfig): string {
