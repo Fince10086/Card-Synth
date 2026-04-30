@@ -94,7 +94,7 @@ export function createModuleCard({
 }: CreateModuleCardOptions): ModuleCardElement {
   if (isMainCard) {
     accent = "indigo";
-    title = "Main";
+    title = title || "Main";
     removable = false;
     index = null;
     onRemove = null;
