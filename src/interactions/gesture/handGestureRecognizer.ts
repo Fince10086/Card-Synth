@@ -4,10 +4,9 @@
 
 import visionBundleUrl from "@mediapipe/tasks-vision?url";
 
-const WASM_PATH = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm";
+const WASM_PATH = "/mediapipe/wasm";
 const VISION_LIBRARY_URL = visionBundleUrl;
-const MODEL_ASSET_PATH =
-  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+const MODEL_ASSET_PATH = "/mediapipe/hand_landmarker.task";
 
 export interface GestureResults {
   landmarks: unknown[][];
