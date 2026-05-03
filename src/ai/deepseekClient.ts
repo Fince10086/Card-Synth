@@ -17,7 +17,8 @@ function getApiKey(): string | null {
 export async function callDeepSeek(
   prompt: string,
   userDescription: string,
-  onReasoning?: (reasoning: string) => void
+  onReasoning?: (reasoning: string) => void,
+  onContentStart?: () => void
 ): Promise<string> {
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -58,6 +59,7 @@ export async function callDeepSeek(
 
   let fullContent = "";
   let fullReasoning = "";
+  let hasContentStarted = false;
   const decoder = new TextDecoder();
 
   while (true) {
@@ -79,6 +81,10 @@ export async function callDeepSeek(
           onReasoning?.(fullReasoning);
         }
         if (delta?.content) {
+          if (!hasContentStarted) {
+            hasContentStarted = true;
+            onContentStart?.();
+          }
           fullContent += delta.content;
         }
       } catch {

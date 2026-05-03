@@ -53,7 +53,7 @@ interface RenderMainCardOptions {
   onPolyVoiceChange?: (value: number) => void;
   onLanguageChange?: (lang: Language) => void;
   onAiGenerate?: (description: string) => void;
-  isAiGenerating?: boolean;
+  aiPhase?: 'idle' | 'reasoning' | 'generating';
   aiReasoning?: string | null;
 }
 
@@ -107,7 +107,7 @@ export function renderMainCard({
   midiEnabled,
   onMidiToggle,
   onAiGenerate,
-  isAiGenerating,
+  aiPhase,
   aiReasoning,
 }: RenderMainCardOptions): ModuleCardElement {
   const card = createModuleCard({
@@ -234,7 +234,8 @@ export function renderMainCard({
   aiInput.type = "text";
   aiInput.className = "file-chip";
   aiInput.placeholder = t("Describe the timbre you want...");
-  aiInput.disabled = Boolean(isAiGenerating);
+  const isGenerating = aiPhase !== 'idle' && aiPhase !== undefined;
+  aiInput.disabled = isGenerating;
   aiInput.style.flex = "1";
   aiInput.style.minWidth = "0";
   aiInputRow.append(aiInput);
@@ -243,8 +244,16 @@ export function renderMainCard({
   aiGenerateBtn.type = "button";
   aiGenerateBtn.className = "pill-button file-action";
   aiGenerateBtn.style.setProperty("--accent", "var(--main)");
-  aiGenerateBtn.textContent = isAiGenerating ? t("Generating...") : t("Generate");
-  aiGenerateBtn.disabled = Boolean(isAiGenerating);
+
+  if (aiPhase === 'reasoning') {
+    aiGenerateBtn.textContent = t("Thinking...");
+  } else if (aiPhase === 'generating') {
+    aiGenerateBtn.textContent = t("Generating...");
+  } else {
+    aiGenerateBtn.textContent = t("Generate");
+  }
+
+  aiGenerateBtn.disabled = isGenerating;
   aiGenerateBtn.addEventListener("click", () => {
     const desc = aiInput.value.trim();
     if (desc && onAiGenerate) {

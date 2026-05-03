@@ -119,7 +119,7 @@ export class ModularSynthApp {
   sourceMonitor: SourceOutputMonitor | undefined;
 
   selectedChainIndex: number;
-  aiGenerating: boolean;
+  aiPhase: 'idle' | 'reasoning' | 'generating';
   aiReasoning: string | null;
 
   constructor() {
@@ -144,7 +144,7 @@ export class ModularSynthApp {
     this.keyboardNavigation = new KeyboardNavigationManager();
     this.engine = new AudioEngine(this as unknown as unknown as Record<string, unknown>);
 
-    this.aiGenerating = false;
+    this.aiPhase = 'idle';
     this.aiReasoning = null;
 
     this.inputManager = new InputManager({
@@ -737,7 +737,7 @@ export class ModularSynthApp {
         setLanguage(lang);
       },
       onAiGenerate: (description: string) => this.generateTone(description),
-      isAiGenerating: this.aiGenerating,
+      aiPhase: this.aiPhase,
       aiReasoning: this.aiReasoning,
     };
 
@@ -1035,16 +1035,24 @@ export class ModularSynthApp {
   }
 
   async generateTone(description: string): Promise<void> {
-    this.aiGenerating = true;
+    this.aiPhase = 'reasoning';
     this.aiReasoning = null;
     this.renderAll();
-    this.setStatus(t("AI is thinking..."), "neutral");
+    this.setStatus(t("Thinking..."), "neutral");
 
     try {
-      const result = await generateToneFromDescription(description, (reasoning) => {
-        this.aiReasoning = reasoning;
-        this.renderAll();
-      });
+      const result = await generateToneFromDescription(
+        description,
+        (reasoning) => {
+          this.aiReasoning = reasoning;
+          this.renderAll();
+        },
+        () => {
+          this.aiPhase = 'generating';
+          this.setStatus(t("Generating..."), "neutral");
+          this.renderAll();
+        }
+      );
 
       const chain = this.getCurrentChain();
       const previousState = deepClone(this.state);
@@ -1068,7 +1076,7 @@ export class ModularSynthApp {
         this.setStatus(t("Failed to generate timbre: {{error}}", { error: message }), "error");
       }
     } finally {
-      this.aiGenerating = false;
+      this.aiPhase = 'idle';
       this.renderAll();
     }
   }

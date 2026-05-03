@@ -194,6 +194,7 @@ export const zhTranslations: Record<string, string> = {
   "Describe the timbre you want...": "描述你想要的音色...",
   "Generate": "生成",
   "Generating...": "生成中...",
+  "Thinking...": "思考中...",
   "AI is thinking...": "AI 思考中...",
   "View AI reasoning": "查看 AI 思考过程",
   "Hide AI reasoning": "隐藏 AI 思考过程",

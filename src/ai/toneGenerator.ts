@@ -81,10 +81,11 @@ export interface ToneGenerationResult {
 
 export async function generateToneFromDescription(
   description: string,
-  onReasoningUpdate?: (reasoning: string) => void
+  onReasoningUpdate?: (reasoning: string) => void,
+  onContentStart?: () => void
 ): Promise<ToneGenerationResult> {
   const prompt = await loadPrompt();
-  const content = await callDeepSeek(prompt, description, onReasoningUpdate);
+  const content = await callDeepSeek(prompt, description, onReasoningUpdate, onContentStart);
 
   // 提取 JSON
   const jsonMatch = content.match(/\{[\s\S]*\}/);
