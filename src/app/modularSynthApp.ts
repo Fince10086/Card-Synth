@@ -1066,7 +1066,17 @@ export class ModularSynthApp {
       // 保存为新的用户预设
       const presetName = result.name;
       const presetId = generateUserPresetId(presetName);
-      addUserPreset(presetId, result.preset);
+
+      // addUserPreset 只接受 current 格式（有 modules 字段），需要转换
+      const presetData = {
+        name: presetName,
+        presetType: "current" as const,
+        global: result.preset.global,
+        modules: result.preset.chains[0]?.modules || [],
+        modulations: result.preset.chains[0]?.modulations || [],
+        macro: result.preset.macro?.chains?.[0],
+      };
+      addUserPreset(presetId, presetData);
 
       // 应用新预设
       this.applyPresetById(presetId);

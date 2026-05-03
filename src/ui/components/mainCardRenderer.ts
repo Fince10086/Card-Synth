@@ -263,18 +263,43 @@ export function renderMainCard({
   aiInputRow.append(aiGenerateBtn);
   aiWrapper.append(aiInputRow);
 
-  // AI 思考过程
+  // AI 思考过程 — 实时三行显示
+  const reasoningBox = document.createElement("div");
+  reasoningBox.className = "ai-reasoning-box";
+
+  const reasoningLines = document.createElement("div");
+  reasoningLines.className = "ai-reasoning-lines";
+
   if (aiReasoning) {
-    const reasoningDetails = document.createElement("details");
-    reasoningDetails.className = "ai-reasoning-details";
-    const reasoningSummary = document.createElement("summary");
-    reasoningSummary.textContent = t("View AI reasoning");
-    reasoningDetails.append(reasoningSummary);
-    const reasoningContent = document.createElement("pre");
-    reasoningContent.className = "ai-reasoning-content";
-    reasoningContent.textContent = aiReasoning;
-    reasoningDetails.append(reasoningContent);
-    aiWrapper.append(reasoningDetails);
+    const lines = aiReasoning
+      .split("\n")
+      .filter((line) => line.trim())
+      .slice(-3);
+
+    lines.forEach((line) => {
+      const lineEl = document.createElement("div");
+      lineEl.className = "ai-reasoning-line";
+      lineEl.textContent = line;
+      reasoningLines.append(lineEl);
+    });
+  }
+
+  reasoningBox.append(reasoningLines);
+  aiWrapper.append(reasoningBox);
+
+  // 控制展开/收起动画
+  // 只在首次出现（aiReasoning 为空）时使用 RAF + transition 产生展开动画
+  // 后续内容更新时直接设置最终状态，避免 renderAll() 频繁重建 DOM 导致的闪烁
+  if (aiPhase === "reasoning") {
+    if (!aiReasoning) {
+      requestAnimationFrame(() => {
+        reasoningBox.classList.add("is-visible");
+      });
+    } else {
+      reasoningBox.classList.add("is-visible");
+    }
+  } else {
+    reasoningBox.classList.remove("is-visible");
   }
 
   controls.append(aiWrapper);
