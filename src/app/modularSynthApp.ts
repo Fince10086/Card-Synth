@@ -384,7 +384,7 @@ export class ModularSynthApp {
     const groups: Record<string, { title: string; items: ReturnType<typeof getAddableModuleOptions> }> = {
       input: { title: t("Input"), items: [] },
       source: { title: t("Source"), items: [] },
-      component: { title: t("Envelope"), items: [] },
+      envelope: { title: t("Envelope"), items: [] },
       effect: { title: t("Effect"), items: [] },
     };
 
@@ -1002,8 +1002,17 @@ export class ModularSynthApp {
         module.pan = randomRange(-0.45, 0.45, 0.01);
       }
       definition.controls.forEach((control) => {
+        if (control.conditional && !control.conditional(module)) {
+          return;
+        }
+        if (control.kind === "switch") {
+          return;
+        }
         if (control.kind === "select") {
           setByPath(module, control.path, randomChoice(control.options!).value);
+        } else if (control.kind === "toggle") {
+          if (module.category === "input") return;
+          setByPath(module, control.path, Math.random() < 0.5);
         } else {
           setByPath(module, control.path, randomRange(control.min!, control.max!, control.step!));
         }

@@ -8,7 +8,7 @@ declare function importScripts(...urls: string[]): void;
 const PINCH_ENTER_THRESHOLD = 0.08;
 const PINCH_EXIT_THRESHOLD = 0.12;
 const COOLDOWN_MS = 10;
-const VISION_LIBRARY_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+const VISION_LIBRARY_URL = "/mediapipe/vision_bundle.mjs";
 
 let handLandmarker: unknown = null;
 let initialized = false;
@@ -50,11 +50,9 @@ async function initialize(payload: Record<string, unknown>): Promise<void> {
   }
 
   const wasmPath =
-    (payload.wasmPath as string) ||
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm";
+    (payload.wasmPath as string) || "/mediapipe/wasm";
   const modelAssetPath =
-    (payload.modelAssetPath as string) ||
-    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+    (payload.modelAssetPath as string) || "/mediapipe/hand_landmarker.task";
 
   const preferred = (payload.preferredDelegate as string) || "GPU";
   const delegatesToTry = preferred === "GPU" ? ["GPU", "CPU"] : [preferred];

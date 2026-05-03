@@ -116,7 +116,7 @@ export const zhTranslations: Record<string, string> = {
   "Envelope": "包络",
 
   // Main card UI
-  "Main": "主控",
+  "Main": "主选项",
   "— Built-in —": "— 内置 —",
   "— User —": "— 用户 —",
   "Preset": "预设",
@@ -139,6 +139,8 @@ export const zhTranslations: Record<string, string> = {
   "{{value}} voices": "{{value}} 复音",
 
   // Dropdown categories
+  "Input": "输入",
+  "Effect": "效果",
 
   // Status messages
   "Audio ready.": "音频就绪。",

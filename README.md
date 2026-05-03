@@ -157,19 +157,30 @@ Pitch → Oscillator → Voices=Mono → Oscillator → Envelope
 
 | 模块 | 说明 | 关键参数 |
 |------|------|----------|
-| **Filter** | 滤波器 | Type(类型), Frequency(频率), Q(共振) |
-| **Compressor** | 压缩器 | Threshold, Ratio, Attack, Release |
+| **Filter** | 滤波器 | Type(类型), Frequency(频率), Q(共振), Rolloff(斜率) |
+| **Compressor** | 压缩器 | Threshold, Ratio, Attack, Release, Knee |
 | **Gain** | 增益 | Gain(增益量) |
-| **EQ3** | 三段均衡 | Low, Mid, High |
-| **Chorus** | 合唱效果 | Frequency, Depth, Delay Time |
+| **EQ3** | 三段均衡 | Low, Mid, High, LowFrequency, HighFrequency |
+| **Chorus** | 合唱效果 | Frequency, Depth, DelayTime, Spread, Feedback |
 | **Reverb** | 混响 | Decay(衰减), PreDelay(预延迟), Wet(干湿比) |
-| **AutoFilter** | 自动滤波 | Frequency, Depth, Base Frequency |
-| **Delay** | 延迟 | Delay Time, Feedback, Wet |
-| **Distortion** | 失真 | Distortion(失真度), Wet |
-| **Phaser** | 相位器 | Frequency, Depth, Stages |
-| **Tremolo** | 颤音 | Frequency, Depth, Waveform |
-| **Vibrato** | 颤音(音高) | Frequency, Depth, Waveform |
-等等
+| **AutoFilter** | 自动滤波 | Frequency, Depth, BaseFrequency, Octaves, FilterType |
+| **AutoPanner** | 自动声像 | Frequency, Depth, Type |
+| **AutoWah** | 自动哇音 | BaseFrequency, Octaves, Sensitivity, Q, Gain |
+| **BitCrusher** | 比特 crushing | Bits |
+| **Chebyshev** | 切比雪夫失真 | Order |
+| **FeedbackDelay** | 反馈延迟 | DelayTime, Feedback, Wet |
+| **Freeverb** | 自由混响 | RoomSize, Dampening, Wet |
+| **FrequencyShifter** | 频率偏移 | Frequency, Wet |
+| **JCReverb** | JC 混响 | RoomSize, Wet |
+| **Phaser** | 相位器 | Frequency, Depth, Octaves, Q |
+| **PingPongDelay** | 乒乓延迟 | DelayTime, Feedback, Wet |
+| **PitchShift** | 音高偏移 | Pitch, WindowSize, Feedback |
+| **StereoWidener** | 立体声展宽 | Width |
+| **Tremolo** | 颤音(振幅) | Frequency, Depth, Spread |
+| **Vibrato** | 颤音(音高) | Frequency, Depth, MaxDelay |
+| **Distortion** | 失真 | Drive, Oversample |
+| **PanVol** | 声像音量 | Pan, Volume |
+| **Limiter** | 限制器 | Threshold |
 
 ---
 
@@ -311,7 +322,7 @@ Pitch → Oscillator → Voices=Mono → Oscillator → Envelope
 - `macro`: 宏控制绑定
 
 模块字段说明：
-- `category`: 模块类别 (`input`, `source`, `component`, `effect`)
+- `category`: 模块类别 (`input`, `source`, `envelope`, `effect`)
 - `type`: 模块类型
 - `modulationMode`: 是否为调制模式（Source 和 Envelope 模块）
 - `options`: 模块参数
@@ -379,23 +390,76 @@ Chain IV ──┘
 **项目结构**:
 ```
 src/
-  app/           # 主应用逻辑
-  audio/         # 音频引擎 (Tone.js)
-    runtimes/    # 模块运行时
-      sourceRuntime.js      # 源模块运行时（支持动态 Mono/Poly）
-      envelopeRuntime.js    # 统一包络运行时（振幅/调制双模式）
-      inputRuntime.js       # 输入模块运行时（Voices/Pitch/Pedal 独立）
-      effectRuntime.js      # 效果模块运行时
-    chain/         # 信号链连接
-      signalChain.js        # 音频信号路由
-    voice/         # 声部管理
-      noteVoiceTracker.js   # 音符到声部映射
-  core/          # 核心库、键盘映射、采样、模块定义
-  input/         # 输入管理 (键盘、MIDI)
-  interactions/  # 交互系统 (调制、宏、手势、拖拽)
-  preset/        # 预设管理
-  ui/            # UI 组件、控件、布局
-  utils/         # 工具函数
+  app/                        # 主应用逻辑
+    modularSynthApp.ts        # 主应用类
+  audio/                      # 音频引擎 (Tone.js)
+    audio.ts                  # 音频引擎主入口
+    chain/
+      signalChain.ts          # 音频信号路由与链连接
+    runtimes/                 # 模块运行时
+      sourceRuntime.ts        # 源模块运行时（支持动态 Mono/Poly）
+      envelopeRuntime.ts      # 统一包络运行时（振幅/调制双模式）
+      inputRuntime.ts         # 输入模块运行时（Voices/Pitch/Pedal 独立）
+      effectRuntime.ts        # 效果模块运行时
+    utils/
+      audioResourceManager.ts # 音频资源统一调度
+    voice/
+      noteVoiceTracker.ts     # 音符到声部映射与 stealing
+  core/                       # 核心库
+    libraries.ts              # 模块库定义（所有可用模块类型与参数）
+    keyboard.ts               # 键盘映射与音符工具
+    samples.ts                # 采样库
+    formatters.ts             # 数值格式化
+  debug/
+    sourceOutputMonitor.ts    # 调试监控
+  i18n/                       # 国际化
+    index.ts
+    translations/             # 翻译文件
+  input/                      # 输入管理
+    inputManager.ts           # 键盘、MIDI 输入管理
+    keyboardNavigation.ts     # 键盘导航
+  interactions/               # 交互系统
+    drag/
+      moduleDragManager.ts    # 模块拖拽
+    gesture/
+      gestureManager.ts       # 手势管理
+      handGestureRecognizer.ts# 手势识别
+      handLandmarker.worker.ts# 手势识别 Worker
+    macro/
+      macroManager.ts         # 宏控制管理
+    modulation/
+      modulationManager.ts    # 调制管理
+      modulationBlacklist.ts  # 调制黑名单
+    edgeScrollManager.ts      # 边缘滚动
+  preset/                     # 预设管理
+    preset.ts                 # 预设工具（规范化、导入导出）
+    presetLoader.ts           # 预设加载器
+    presetStorage.ts          # 预设存储（localStorage）
+  presetFiles/                # 内置预设文件
+    default.json
+    bird.json
+    animal.json
+  types/                      # TypeScript 类型定义
+    core.ts, audio.ts, ui.ts, app.ts
+  ui/                         # UI 组件
+    components/               # 主要 UI 组件
+      mainCardRenderer.ts     # 主卡片渲染
+      moduleCard.ts           # 模块卡片
+      scopeRenderer.ts        # 示波器/频谱渲染
+      virtualKeyboard.ts      # 虚拟键盘
+    controls/                 # 控件
+      sliderControl.ts        # 滑块
+      selectControl.ts        # 下拉选择
+      toggleControl.ts        # 开关
+      switchControl.ts        # 切换
+      audioImportControl.ts   # 音频导入
+    layout/
+      masonryLayout.ts        # 瀑布流布局
+    rendering/
+      moduleRenderer.ts       # 模块渲染器
+  utils/
+    helpers.ts                # 工具函数与模块工厂
+  main.ts                     # 入口文件
 ```
 
 **技术栈**:

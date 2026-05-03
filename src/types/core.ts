@@ -4,7 +4,7 @@
  */
 
 // Module categories
-export type ModuleCategory = 'input' | 'source' | 'component' | 'effect';
+export type ModuleCategory = 'input' | 'source' | 'envelope' | 'effect';
 
 // Source module types
 export type SourceType = 

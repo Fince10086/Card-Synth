@@ -66,7 +66,7 @@ export function createEnvelopeRuntime(module: ModuleConfig): EnvelopeRuntime {
 
   const runtime: EnvelopeRuntime = {
     type: module.type as string,
-    category: isModulation ? "modulation-envelope" : "component",
+    category: isModulation ? "modulation-envelope" : "envelope",
     modulationMode: isModulation,
     hasPerVoiceConnection: false,
 
