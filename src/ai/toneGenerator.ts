@@ -3,7 +3,7 @@
  * 将自然语言描述转换为 Card Synth Preset
  */
 
-import { callDeepSeek } from "./deepseekClient";
+import { callAI } from "./aiClient";
 import { normalizePreset } from "../preset/preset";
 import type { Preset } from "../types";
 
@@ -76,7 +76,7 @@ export async function generateToneFromDescription(
   onContentStart?: () => void
 ): Promise<ToneGenerationResult> {
   const prompt = await loadPrompt();
-  const content = await callDeepSeek(prompt, description, onReasoningUpdate, onContentStart);
+  const content = await callAI(prompt, description, onReasoningUpdate, onContentStart);
 
   // 提取 JSON
   const jsonMatch = content.match(/\{[\s\S]*\}/);

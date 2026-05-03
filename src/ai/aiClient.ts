@@ -1,20 +1,21 @@
 /**
- * DeepSeek API 客户端
- * 仅通过环境变量读取 API Key
+ * 仅通过环境变量读取配置
  */
 
-const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
-const DEEPSEEK_MODEL = "deepseek-v4-flash";
+function getEnvVar(key: string, fallback: string): string {
+  const value = import.meta.env[key];
+  return value && value !== "your_api_key_here" ? value : fallback;
+}
 
 function getApiKey(): string | null {
-  const envKey = import.meta.env.VITE_DEEPSEEK_API_KEY;
+  const envKey = import.meta.env.VITE_API_KEY;
   if (envKey && envKey !== "your_api_key_here") {
     return envKey;
   }
   return null;
 }
 
-export async function callDeepSeek(
+export async function callAI(
   prompt: string,
   userDescription: string,
   onReasoning?: (reasoning: string) => void,
@@ -25,14 +26,17 @@ export async function callDeepSeek(
     throw new Error("NO_API_KEY");
   }
 
-  const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+  const baseUrl = getEnvVar("VITE_BASE_URL", "https://api.deepseek.com/chat/completions");
+  const model = getEnvVar("VITE_MODEL", "deepseek-chat");
+
+  const response = await fetch(`${baseUrl}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: DEEPSEEK_MODEL,
+      model,
       messages: [
         {
           role: "system",
