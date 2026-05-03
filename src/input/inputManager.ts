@@ -228,6 +228,16 @@ export class InputManager {
       return;
     }
 
+    // 在输入框中打字时不触发琴声
+    const target = event.target as HTMLElement;
+    if (
+      target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.isContentEditable
+    ) {
+      return;
+    }
+
     const key = event.key.toLowerCase();
     const global = this.getGlobalState();
 
