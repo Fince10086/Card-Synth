@@ -122,6 +122,7 @@ export class ModularSynthApp {
   selectedChainIndex: number;
   aiPhase: 'idle' | 'reasoning' | 'generating';
   aiReasoning: string | null;
+  originalStateSnapshot: Preset | null;
 
   constructor() {
     this.state = createBasePreset();
@@ -147,6 +148,7 @@ export class ModularSynthApp {
 
     this.aiPhase = 'idle';
     this.aiReasoning = null;
+    this.originalStateSnapshot = null;
 
     this.inputManager = new InputManager({
       onAttack: (note, velocity) => this.engine.attack(note as unknown as number, velocity),
@@ -682,9 +684,14 @@ export class ModularSynthApp {
         this.setStatus(t("Exported {{filename}}.", { filename }), this.audioBooted ? "live" : "neutral");
       },
       onResetClick: () => {
-        const builtins = getBuiltinPresets();
-        const firstId = Object.keys(builtins)[0];
-        if (firstId) this.applyPresetById(firstId);
+        if (this.originalStateSnapshot) {
+          const previousState = deepClone(this.state);
+          this.state = deepClone(this.originalStateSnapshot);
+          this.hasUnsavedChanges = false;
+          this.renderAll(previousState);
+          this.engine.fullSync(this.state);
+          this.setStatus(t("Reset to original state"), this.audioBooted ? "live" : "neutral");
+        }
       },
       onRandomClick: () => this.randomizeCurrentPatch(),
       midiEnabled: this.inputManager.getMidiInputs().length > 0,
@@ -923,6 +930,7 @@ export class ModularSynthApp {
 
     this.selectedPresetId = presetId;
     this.hasUnsavedChanges = false;
+    this.originalStateSnapshot = deepClone(this.state);
     saveLastSelectedId(presetId);
 
     if (shouldRender) {
@@ -1062,6 +1070,8 @@ export class ModularSynthApp {
 
       // 应用新预设
       this.applyPresetById(presetId);
+      // 保存快照，使重置可以回到这个新生成的预设的原始状态
+      this.originalStateSnapshot = deepClone(this.state);
 
       this.setStatus(
         t("Saved new preset: {{name}}", { name: presetName }),
