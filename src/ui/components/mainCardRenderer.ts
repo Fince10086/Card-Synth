@@ -52,6 +52,9 @@ interface RenderMainCardOptions {
   onDeleteUserPreset?: (id: string) => void;
   onPolyVoiceChange?: (value: number) => void;
   onLanguageChange?: (lang: Language) => void;
+  onAiGenerate?: (description: string) => void;
+  isAiGenerating?: boolean;
+  aiReasoning?: string | null;
 }
 
 interface UpdateMainCardOptions {
@@ -103,6 +106,9 @@ export function renderMainCard({
   onLanguageChange,
   midiEnabled,
   onMidiToggle,
+  onAiGenerate,
+  isAiGenerating,
+  aiReasoning,
 }: RenderMainCardOptions): ModuleCardElement {
   const card = createModuleCard({
     accent: "indigo",
@@ -210,11 +216,65 @@ export function renderMainCard({
 
   controls.append(presetSelectWrapper);
 
+  // AI 音色生成区域
+  const aiWrapper = document.createElement("div");
+  aiWrapper.className = "control";
+
+  const aiLabel = document.createElement("div");
+  aiLabel.className = "control-label";
+  const aiLabelStrong = document.createElement("strong");
+  aiLabelStrong.textContent = t("AI Timbre");
+  aiLabel.append(aiLabelStrong);
+  aiWrapper.append(aiLabel);
+
+  const aiInputRow = document.createElement("div");
+  aiInputRow.className = "file-control-row";
+
+  const aiInput = document.createElement("input");
+  aiInput.type = "text";
+  aiInput.className = "file-chip";
+  aiInput.placeholder = t("Describe the timbre you want...");
+  aiInput.disabled = Boolean(isAiGenerating);
+  aiInput.style.flex = "1";
+  aiInput.style.minWidth = "0";
+  aiInputRow.append(aiInput);
+
+  const aiGenerateBtn = document.createElement("button");
+  aiGenerateBtn.type = "button";
+  aiGenerateBtn.className = "pill-button file-action";
+  aiGenerateBtn.style.setProperty("--accent", "var(--main)");
+  aiGenerateBtn.textContent = isAiGenerating ? t("Generating...") : t("Generate");
+  aiGenerateBtn.disabled = Boolean(isAiGenerating);
+  aiGenerateBtn.addEventListener("click", () => {
+    const desc = aiInput.value.trim();
+    if (desc && onAiGenerate) {
+      onAiGenerate(desc);
+    }
+  });
+  aiInputRow.append(aiGenerateBtn);
+  aiWrapper.append(aiInputRow);
+
+  // AI 思考过程
+  if (aiReasoning) {
+    const reasoningDetails = document.createElement("details");
+    reasoningDetails.className = "ai-reasoning-details";
+    const reasoningSummary = document.createElement("summary");
+    reasoningSummary.textContent = t("View AI reasoning");
+    reasoningDetails.append(reasoningSummary);
+    const reasoningContent = document.createElement("pre");
+    reasoningContent.className = "ai-reasoning-content";
+    reasoningContent.textContent = aiReasoning;
+    reasoningDetails.append(reasoningContent);
+    aiWrapper.append(reasoningDetails);
+  }
+
+  controls.append(aiWrapper);
+
   const buttonGroups = document.createElement("div");
   buttonGroups.className = "preset-buttons";
 
   const rows = [
-    [{ key: "Import", handler: () => onImportClick?.() }],
+    [{ key: "Import Timbre", handler: () => onImportClick?.() }],
     [
       { key: "Export Current", handler: () => onExportCurrentClick?.() },
       { key: "Export All", handler: () => onExportAllClick?.() },

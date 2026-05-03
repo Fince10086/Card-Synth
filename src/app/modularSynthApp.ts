@@ -28,6 +28,7 @@ import { MacroManager } from "../interactions/macro/macroManager";
 import { GestureManager, type GestureManagerApp } from "../interactions/gesture/gestureManager";
 import { ModuleDragManager } from "../interactions/drag/moduleDragManager";
 import { ENABLED as SOURCE_MONITOR_ENABLED, SourceOutputMonitor } from "../debug/sourceOutputMonitor";
+import { generateToneFromDescription } from "../ai/toneGenerator";
 import { KeyboardNavigationManager } from "../input/keyboardNavigation";
 import {
   renderKeyboard,
@@ -118,6 +119,8 @@ export class ModularSynthApp {
   sourceMonitor: SourceOutputMonitor | undefined;
 
   selectedChainIndex: number;
+  aiGenerating: boolean;
+  aiReasoning: string | null;
 
   constructor() {
     this.state = createBasePreset();
@@ -140,6 +143,9 @@ export class ModularSynthApp {
     this.dragManager = new ModuleDragManager(this as unknown as unknown as Record<string, unknown>);
     this.keyboardNavigation = new KeyboardNavigationManager();
     this.engine = new AudioEngine(this as unknown as unknown as Record<string, unknown>);
+
+    this.aiGenerating = false;
+    this.aiReasoning = null;
 
     this.inputManager = new InputManager({
       onAttack: (note, velocity) => this.engine.attack(note as unknown as number, velocity),
@@ -730,6 +736,9 @@ export class ModularSynthApp {
       onLanguageChange: (lang: Language) => {
         setLanguage(lang);
       },
+      onAiGenerate: (description: string) => this.generateTone(description),
+      isAiGenerating: this.aiGenerating,
+      aiReasoning: this.aiReasoning,
     };
 
     const mainCard = renderMainCard(mainCardOptions);
@@ -1023,6 +1032,45 @@ export class ModularSynthApp {
     this.renderAll(previousState);
     this.engine.fullSync(this.state);
     this.setStatus(t("Randomized the current patch."), this.audioBooted ? "live" : "neutral");
+  }
+
+  async generateTone(description: string): Promise<void> {
+    this.aiGenerating = true;
+    this.aiReasoning = null;
+    this.renderAll();
+    this.setStatus(t("AI is thinking..."), "neutral");
+
+    try {
+      const result = await generateToneFromDescription(description, (reasoning) => {
+        this.aiReasoning = reasoning;
+        this.renderAll();
+      });
+
+      const chain = this.getCurrentChain();
+      const previousState = deepClone(this.state);
+
+      chain.modules = result.tone.modules as unknown as ModuleConfig[];
+      chain.modulations = result.tone.modulations as unknown as ModulationConnection[];
+      chain.enabled = true;
+
+      this.markUnsaved();
+      this.renderAll(previousState);
+      this.engine.fullSync(this.state);
+      this.setStatus(
+        t('Timbre generated successfully.'),
+        this.audioBooted ? "live" : "neutral"
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "NO_API_KEY") {
+        this.setStatus(t("API Key not configured"), "error");
+      } else {
+        this.setStatus(t("Failed to generate timbre: {{error}}", { error: message }), "error");
+      }
+    } finally {
+      this.aiGenerating = false;
+      this.renderAll();
+    }
   }
 
   updateKeyboardKeyState(boundKey: string, active: boolean): void {
