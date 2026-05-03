@@ -28,6 +28,8 @@ import { MacroManager } from "../interactions/macro/macroManager";
 import { GestureManager, type GestureManagerApp } from "../interactions/gesture/gestureManager";
 import { ModuleDragManager } from "../interactions/drag/moduleDragManager";
 import { ENABLED as SOURCE_MONITOR_ENABLED, SourceOutputMonitor } from "../debug/sourceOutputMonitor";
+import { generateToneFromDescription } from "../ai/toneGenerator";
+import type { ToneGenerationResult } from "../ai/toneGenerator";
 import { KeyboardNavigationManager } from "../input/keyboardNavigation";
 import {
   renderKeyboard,
@@ -118,6 +120,9 @@ export class ModularSynthApp {
   sourceMonitor: SourceOutputMonitor | undefined;
 
   selectedChainIndex: number;
+  aiPhase: 'idle' | 'reasoning' | 'generating';
+  aiReasoning: string | null;
+  originalStateSnapshot: Preset | null;
 
   constructor() {
     this.state = createBasePreset();
@@ -140,6 +145,10 @@ export class ModularSynthApp {
     this.dragManager = new ModuleDragManager(this as unknown as unknown as Record<string, unknown>);
     this.keyboardNavigation = new KeyboardNavigationManager();
     this.engine = new AudioEngine(this as unknown as unknown as Record<string, unknown>);
+
+    this.aiPhase = 'idle';
+    this.aiReasoning = null;
+    this.originalStateSnapshot = null;
 
     this.inputManager = new InputManager({
       onAttack: (note, velocity) => this.engine.attack(note as unknown as number, velocity),
@@ -675,9 +684,14 @@ export class ModularSynthApp {
         this.setStatus(t("Exported {{filename}}.", { filename }), this.audioBooted ? "live" : "neutral");
       },
       onResetClick: () => {
-        const builtins = getBuiltinPresets();
-        const firstId = Object.keys(builtins)[0];
-        if (firstId) this.applyPresetById(firstId);
+        if (this.originalStateSnapshot) {
+          const previousState = deepClone(this.state);
+          this.state = deepClone(this.originalStateSnapshot);
+          this.hasUnsavedChanges = false;
+          this.renderAll(previousState);
+          this.engine.fullSync(this.state);
+          this.setStatus(t("Reset to original state"), this.audioBooted ? "live" : "neutral");
+        }
       },
       onRandomClick: () => this.randomizeCurrentPatch(),
       midiEnabled: this.inputManager.getMidiInputs().length > 0,
@@ -730,6 +744,9 @@ export class ModularSynthApp {
       onLanguageChange: (lang: Language) => {
         setLanguage(lang);
       },
+      onAiGenerate: (description: string) => this.generateTone(description),
+      aiPhase: this.aiPhase,
+      aiReasoning: this.aiReasoning,
     };
 
     const mainCard = renderMainCard(mainCardOptions);
@@ -913,6 +930,7 @@ export class ModularSynthApp {
 
     this.selectedPresetId = presetId;
     this.hasUnsavedChanges = false;
+    this.originalStateSnapshot = deepClone(this.state);
     saveLastSelectedId(presetId);
 
     if (shouldRender) {
@@ -1023,6 +1041,63 @@ export class ModularSynthApp {
     this.renderAll(previousState);
     this.engine.fullSync(this.state);
     this.setStatus(t("Randomized the current patch."), this.audioBooted ? "live" : "neutral");
+  }
+
+  async generateTone(description: string): Promise<void> {
+    this.aiPhase = 'reasoning';
+    this.aiReasoning = null;
+    this.renderAll();
+    this.setStatus(t("Thinking..."), "neutral");
+
+    try {
+      const result = await generateToneFromDescription(
+        description,
+        (reasoning) => {
+          this.aiReasoning = reasoning;
+          this.renderAll();
+        },
+        () => {
+          this.aiPhase = 'generating';
+          this.setStatus(t("Generating..."), "neutral");
+          this.renderAll();
+        }
+      );
+
+      // 保存为新的用户预设
+      const presetName = result.name;
+      const presetId = generateUserPresetId(presetName);
+
+      // addUserPreset 只接受 current 格式（有 modules 字段），需要转换
+      const presetData = {
+        name: presetName,
+        presetType: "current" as const,
+        global: result.preset.global,
+        modules: result.preset.chains[0]?.modules || [],
+        modulations: result.preset.chains[0]?.modulations || [],
+        macro: result.preset.macro?.chains?.[0],
+      };
+      addUserPreset(presetId, presetData);
+
+      // 应用新预设
+      this.applyPresetById(presetId);
+      // 保存快照，使重置可以回到这个新生成的预设的原始状态
+      this.originalStateSnapshot = deepClone(this.state);
+
+      this.setStatus(
+        t("Saved new preset: {{name}}", { name: presetName }),
+        this.audioBooted ? "live" : "neutral"
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "NO_API_KEY") {
+        this.setStatus(t("API Key not configured"), "error");
+      } else {
+        this.setStatus(t("Failed to generate timbre: {{error}}", { error: message }), "error");
+      }
+    } finally {
+      this.aiPhase = 'idle';
+      this.renderAll();
+    }
   }
 
   updateKeyboardKeyState(boundKey: string, active: boolean): void {

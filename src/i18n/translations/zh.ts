@@ -122,7 +122,7 @@ export const zhTranslations: Record<string, string> = {
   "Preset": "预设",
   "Delete preset": "删除预设",
   'Delete preset "{{name}}"?': '删除预设 "{{name}}"？',
-  "Import": "导入",
+  "Import Timbre": "导入音色",
   "Export Current": "导出当前",
   "Export All": "导出全部",
   "Reset": "重置",
@@ -188,4 +188,17 @@ export const zhTranslations: Record<string, string> = {
   "Language": "语言",
   "English": "English",
   "中文": "中文",
+
+  // AI Tone Generation
+  "AI Generate": "AI 生成",
+  "Describe the timbre you want...": "描述你想要的音色...",
+  "Generate": "生成",
+  "Generating...": "生成中...",
+  "Thinking...": "思考中...",
+  "API Key not configured": "未配置 API Key",
+  "Timbre generated successfully.": "音色生成成功。",
+  "Failed to generate timbre: {{error}}": "音色生成失败：{{error}}",
+  "AI Timbre": "AI 音色",
+  "Saved new preset: {{name}}": "已保存新预设：{{name}}",
+  "Reset to original state": "已重置为原始状态",
 };

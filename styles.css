@@ -1016,6 +1016,41 @@ select {
   font-size: 0.86rem;
 }
 
+/* AI 音色生成区域 —— 复用现有控件风格 */
+
+.ai-reasoning-box {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    max-height 240ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.ai-reasoning-box.is-visible {
+  max-height: 6em;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ai-reasoning-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0 4px;
+}
+
+.ai-reasoning-line {
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 预设按钮组 */
 
 .preset-buttons {
