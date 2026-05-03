@@ -202,4 +202,5 @@ export const zhTranslations: Record<string, string> = {
   "Timbre generated successfully.": "音色生成成功。",
   "Failed to generate timbre: {{error}}": "音色生成失败：{{error}}",
   "AI Timbre": "AI 音色",
+  "Saved new preset: {{name}}": "已保存新预设：{{name}}",
 };

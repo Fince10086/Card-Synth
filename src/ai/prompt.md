@@ -97,6 +97,7 @@ ID 前缀：`src-` / `inp-` / `env-` / `fx-` / `mod-`。全局唯一，跨链不
 5. 无宏时可省略 `macro`，但应思考是否默认提供宏
 6. JSON 前后不加任何文字
 7. `all` 类型：`chains` 和 `macro.chains` 长度固定为 4
+8. **根对象必须包含 `"name"` 字段**，值为描述性音色名称（2-20 字，如 "Warm Analog Pad"、"Glitch Lead"），不要使用 "Preset"、"Timbre" 等泛化词汇
 
 ## 注意事项
 1. FrequencyOffset如果设为0，则不会产生任何声音

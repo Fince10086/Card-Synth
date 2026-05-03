@@ -29,6 +29,7 @@ import { GestureManager, type GestureManagerApp } from "../interactions/gesture/
 import { ModuleDragManager } from "../interactions/drag/moduleDragManager";
 import { ENABLED as SOURCE_MONITOR_ENABLED, SourceOutputMonitor } from "../debug/sourceOutputMonitor";
 import { generateToneFromDescription } from "../ai/toneGenerator";
+import type { ToneGenerationResult } from "../ai/toneGenerator";
 import { KeyboardNavigationManager } from "../input/keyboardNavigation";
 import {
   renderKeyboard,
@@ -1054,18 +1055,16 @@ export class ModularSynthApp {
         }
       );
 
-      const chain = this.getCurrentChain();
-      const previousState = deepClone(this.state);
+      // 保存为新的用户预设
+      const presetName = result.name;
+      const presetId = generateUserPresetId(presetName);
+      addUserPreset(presetId, result.preset);
 
-      chain.modules = result.tone.modules as unknown as ModuleConfig[];
-      chain.modulations = result.tone.modulations as unknown as ModulationConnection[];
-      chain.enabled = true;
+      // 应用新预设
+      this.applyPresetById(presetId);
 
-      this.markUnsaved();
-      this.renderAll(previousState);
-      this.engine.fullSync(this.state);
       this.setStatus(
-        t('Timbre generated successfully.'),
+        t("Saved new preset: {{name}}", { name: presetName }),
         this.audioBooted ? "live" : "neutral"
       );
     } catch (error: unknown) {

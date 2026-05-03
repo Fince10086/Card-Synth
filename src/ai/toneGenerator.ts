@@ -4,14 +4,8 @@
  */
 
 import { callDeepSeek } from "./deepseekClient";
-import {
-  createInputModule,
-  createSourceModule,
-  createComponentModule,
-  createEffectModule,
-  deepClone,
-} from "../utils/helpers";
-import type { ModuleConfig, ModulationConnection } from "../types";
+import { normalizePreset } from "../preset/preset";
+import type { Preset } from "../types";
 
 // 读取 prompt 文件
 async function loadPrompt(): Promise<string> {
@@ -51,9 +45,11 @@ function getDefaultPrompt(): string {
 - Pitch: mode(midi/frequency), transpose(-12~12), octave(-4~4)
 - Voices: mono(true/false)
 
-请生成 JSON 格式，严格遵循以下结构：
+请生成完整的 Card Synth preset JSON，严格遵循以下结构：
 {
-  "name": "音色名称",
+  "name": "描述性音色名称（2-20字）",
+  "presetType": "current",
+  "global": { "volume": -8, "octave": 4, "velocity": 0.8, "velocityEnabled": true, "polyVoice": 8 },
   "modules": [
     { "type": "Pitch", "category": "input", "enabled": true, "options": {...} },
     { "type": "Oscillator", "category": "source", "enabled": true, "volume": 0, "pan": 0, "options": {...} }
@@ -65,18 +61,13 @@ function getDefaultPrompt(): string {
 1. 必须包含 Pitch 输入模块
 2. 至少包含一个 Source 模块
 3. 参数必须在指定范围内
-4. 只返回 JSON，不要任何解释文字`;
-}
-
-export interface GeneratedTone {
-  name?: string;
-  modules: ModuleConfig[];
-  modulations: ModulationConnection[];
+4. 只返回 JSON，不要任何解释文字
+5. 根对象必须包含 "name" 字段，值为描述性音色名称`;
 }
 
 export interface ToneGenerationResult {
-  tone: GeneratedTone;
-  reasoning?: string;
+  preset: Preset;
+  name: string;
 }
 
 export async function generateToneFromDescription(
@@ -95,69 +86,16 @@ export async function generateToneFromDescription(
 
   const parsed = JSON.parse(jsonMatch[0]);
 
-  // 规范化结果
-  const modules: ModuleConfig[] = [];
+  // 确保有 name
+  const name = typeof parsed.name === "string" && parsed.name.trim()
+    ? parsed.name.trim()
+    : "AI Generated";
 
-  // 确保有 Pitch 输入
-  const hasPitch = parsed.modules?.some(
-    (m: ModuleConfig) => m.type === "Pitch"
-  );
-  if (!hasPitch) {
-    modules.push(createInputModule("Pitch"));
-  }
-
-  // 添加 AI 生成的模块
-  if (Array.isArray(parsed.modules)) {
-    for (const mod of parsed.modules) {
-      if (mod.type === "Pitch" && !hasPitch) continue; // 已添加
-      modules.push(normalizeModule(mod));
-    }
-  }
-
-  // 确保至少有一个 Source
-  const hasSource = modules.some((m) => m.category === "source");
-  if (!hasSource) {
-    modules.splice(1, 0, createSourceModule("Oscillator"));
-  }
+  // 使用现有的 normalizePreset 来规范化整个 preset
+  const preset = normalizePreset(parsed);
 
   return {
-    tone: {
-      name: parsed.name || "AI Generated",
-      modules,
-      modulations: Array.isArray(parsed.modulations)
-        ? parsed.modulations
-        : [],
-    },
-    reasoning: undefined, // reasoning 通过回调传递
+    preset,
+    name,
   };
-}
-
-function normalizeModule(mod: ModuleConfig): ModuleConfig {
-  const normalized = deepClone(mod);
-
-  // 确保 category 正确
-  if (!normalized.category) {
-    const sourceTypes = ["Oscillator", "PulseOscillator", "Noise", "Player"];
-    const effectTypes = [
-      "Filter", "Compressor", "EQ3", "Chorus", "Reverb", "AutoFilter",
-      "AutoPanner", "AutoWah", "BitCrusher", "Chebyshev", "FeedbackDelay",
-      "Freeverb", "FrequencyShifter", "JCReverb", "Phaser", "PingPongDelay",
-      "PitchShift", "StereoWidener", "Tremolo", "Vibrato", "Distortion",
-      "PanVol", "Limiter", "Gain",
-    ];
-    const inputTypes = ["Pitch", "Voices", "Pedal"];
-
-    if (sourceTypes.includes(normalized.type)) normalized.category = "source";
-    else if (effectTypes.includes(normalized.type))
-      normalized.category = "effect";
-    else if (inputTypes.includes(normalized.type))
-      normalized.category = "input";
-    else if (normalized.type === "Envelope")
-      normalized.category = "envelope";
-  }
-
-  // 确保 enabled
-  if (normalized.enabled === undefined) normalized.enabled = true;
-
-  return normalized;
 }
