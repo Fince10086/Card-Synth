@@ -314,8 +314,8 @@ export function renderMainCard({
       { key: "Export All", handler: () => onExportAllClick?.() },
     ],
     [
-      { key: "Reset", handler: () => onResetClick?.() },
-      { key: "Random", handler: () => onRandomClick?.() },
+      { key: "Reset Preset", handler: () => onResetClick?.() },
+      { key: "Random Params", handler: () => onRandomClick?.() },
     ],
   ];
 
