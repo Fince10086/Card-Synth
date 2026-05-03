@@ -9,7 +9,7 @@ import type { Preset } from "../types";
 
 // 读取 prompt 文件
 async function loadPrompt(): Promise<string> {
-  const response = await fetch("src/ai/prompt.md");
+  const response = await fetch("/prompt.md");
   if (!response.ok) {
     throw new Error("无法加载 prompt.md 文件");
   }
