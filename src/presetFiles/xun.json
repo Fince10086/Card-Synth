@@ -1,0 +1,191 @@
+{
+  "presetType": "current",
+  "name": "陶埙",
+  "global": {
+    "volume": -8,
+    "octave": 4,
+    "velocity": 0.8,
+    "velocityEnabled": true,
+    "polyVoice": 8
+  },
+  "modules": [
+    {
+      "id": "inp-0001",
+      "type": "Voices",
+      "category": "input",
+      "enabled": true,
+      "index": 1,
+      "options": {
+        "mode": "midi",
+        "transpose": 0,
+        "octave": 0,
+        "frequency": 440,
+        "mono": true
+      }
+    },
+    {
+      "id": "inp-0002",
+      "type": "Pitch",
+      "category": "input",
+      "enabled": true,
+      "index": 2,
+      "options": {
+        "mode": "frequency",
+        "transpose": 0,
+        "octave": 0,
+        "frequency": 4.5
+      }
+    },
+    {
+      "id": "src-0001",
+      "type": "Oscillator",
+      "category": "source",
+      "enabled": true,
+      "volume": 0,
+      "pan": 0,
+      "modulationMode": true,
+      "midiOn": false,
+      "index": 3,
+      "options": {
+        "type": "sine",
+        "detune": 0,
+        "frequencyOffset": 1,
+        "gain": 1
+      }
+    },
+    {
+      "id": "inp-0003",
+      "type": "Pitch",
+      "category": "input",
+      "enabled": true,
+      "index": 4,
+      "options": {
+        "mode": "midi",
+        "transpose": 0,
+        "octave": 0,
+        "frequency": 440
+      }
+    },
+    {
+      "id": "src-0004",
+      "type": "Noise",
+      "category": "source",
+      "enabled": true,
+      "volume": -22,
+      "pan": 0,
+      "modulationMode": false,
+      "midiOn": false,
+      "index": 5,
+      "options": {
+        "type": "pink",
+        "playbackRate": 1,
+        "frequencyOffset": 1
+      }
+    },
+    {
+      "id": "env-0001",
+      "type": "Envelope",
+      "category": "envelope",
+      "enabled": true,
+      "modulationMode": false,
+      "index": 6,
+      "options": {
+        "attack": 0.001,
+        "decay": 0.15,
+        "sustain": 0.4,
+        "release": 0.5,
+        "gain": 1
+      }
+    },
+    {
+      "id": "src-0002",
+      "type": "Oscillator",
+      "category": "source",
+      "enabled": true,
+      "volume": -8,
+      "pan": 0,
+      "modulationMode": false,
+      "midiOn": true,
+      "index": 7,
+      "options": {
+        "type": "triangle",
+        "detune": 0,
+        "frequencyOffset": 1
+      }
+    },
+    {
+      "id": "src-0003",
+      "type": "Oscillator",
+      "category": "source",
+      "enabled": true,
+      "volume": -16,
+      "pan": 0.15,
+      "modulationMode": false,
+      "midiOn": true,
+      "index": 8,
+      "options": {
+        "type": "sine",
+        "detune": 1200,
+        "frequencyOffset": 1
+      }
+    },
+    {
+      "id": "env-0002",
+      "type": "Envelope",
+      "category": "envelope",
+      "enabled": true,
+      "modulationMode": false,
+      "index": 9,
+      "options": {
+        "attack": 0.18,
+        "decay": 0.4,
+        "sustain": 0.78,
+        "release": 0.9,
+        "gain": 1
+      }
+    },
+    {
+      "id": "fx-0001",
+      "type": "Filter",
+      "category": "effect",
+      "enabled": true,
+      "index": 10,
+      "options": {
+        "type": "lowpass",
+        "frequency": 1800,
+        "Q": 1.8,
+        "rolloff": -24
+      }
+    },
+    {
+      "id": "fx-0002",
+      "type": "Reverb",
+      "category": "effect",
+      "enabled": true,
+      "index": 11,
+      "options": {
+        "decay": 4.5,
+        "preDelay": 0.035,
+        "wet": 0.5
+      }
+    }
+  ],
+  "modulations": [
+    {
+      "id": "mod-0001",
+      "sourceModuleId": "src-0001",
+      "sourceVoiceIndex": 0,
+      "targetModuleId": "src-0002",
+      "targetParamPath": "options.detune",
+      "radius": 10
+    },
+    {
+      "id": "mod-0002",
+      "sourceModuleId": "src-0001",
+      "sourceVoiceIndex": 1,
+      "targetModuleId": "src-0003",
+      "targetParamPath": "options.detune",
+      "radius": 40
+    }
+  ]
+}

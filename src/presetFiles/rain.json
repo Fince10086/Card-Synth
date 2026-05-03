@@ -1,0 +1,132 @@
+{
+  "presetType": "current",
+  "name": "Rain Shower",
+  "global": {
+    "volume": -12,
+    "octave": 3,
+    "velocity": 0.6,
+    "velocityEnabled": false,
+    "polyVoice": 2
+  },
+  "modules": [
+    {
+      "id": "inp-0001",
+      "type": "Pitch",
+      "category": "input",
+      "enabled": true,
+      "index": 1,
+      "options": {
+        "mode": "frequency",
+        "transpose": 0,
+        "octave": 0,
+        "frequency": 0.4
+      }
+    },
+    {
+      "id": "src-0001",
+      "type": "Oscillator",
+      "category": "source",
+      "enabled": true,
+      "volume": 0,
+      "pan": 0,
+      "modulationMode": true,
+      "midiOn": false,
+      "index": 2,
+      "options": {
+        "type": "sine",
+        "detune": 0,
+        "frequencyOffset": 1
+      }
+    },
+    {
+      "id": "src-0002",
+      "type": "Noise",
+      "category": "source",
+      "enabled": true,
+      "volume": -10,
+      "pan": -0.2,
+      "modulationMode": false,
+      "midiOn": false,
+      "index": 3,
+      "options": {
+        "type": "pink",
+        "playbackRate": 1
+      }
+    },
+    {
+      "id": "fx-0001",
+      "type": "Filter",
+      "category": "effect",
+      "enabled": true,
+      "index": 4,
+      "options": {
+        "type": "lowpass",
+        "frequency": 2500,
+        "Q": 1.2,
+        "rolloff": -24
+      }
+    },
+    {
+      "id": "src-0003",
+      "type": "Noise",
+      "category": "source",
+      "enabled": true,
+      "volume": -18,
+      "pan": 0.2,
+      "modulationMode": false,
+      "midiOn": false,
+      "index": 5,
+      "options": {
+        "type": "white",
+        "playbackRate": 1
+      }
+    },
+    {
+      "id": "fx-0002",
+      "type": "Filter",
+      "category": "effect",
+      "enabled": true,
+      "index": 6,
+      "options": {
+        "type": "highpass",
+        "frequency": 4000,
+        "Q": 1.5,
+        "rolloff": -24
+      }
+    },
+    {
+      "id": "fx-0003",
+      "type": "Reverb",
+      "category": "effect",
+      "enabled": true,
+      "index": 7,
+      "options": {
+        "decay": 3.5,
+        "preDelay": 0.02,
+        "wet": 0.4
+      }
+    },
+    {
+      "id": "fx-0004",
+      "type": "PingPongDelay",
+      "category": "effect",
+      "enabled": true,
+      "index": 8,
+      "options": {
+        "delayTime": 0.12,
+        "feedback": 0.25,
+        "wet": 0.18
+      }
+    }
+  ],
+  "modulations": [
+    {
+      "id": "mod-0001",
+      "sourceModuleId": "src-0001",
+      "sourceVoiceIndex": 0,
+      "targetModuleId": "fx-0001",
+      "targetParamPath": "options.frequency",
+      "radius": 1200
+    }
+  ]
+}
