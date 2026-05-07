@@ -5,30 +5,32 @@ import type { InputManager } from "../../input/inputManager";
 const WHITE_KEY_WIDTH = 40;       // 白键固定宽度 (px)
 const BLACK_KEY_WIDTH = 26;       // 黑键固定宽度 = 40 * 0.65
 const OCTAVE_WIDTH = 320;         // 单八度总宽度 = 8 * 40
-const F_SHARP_OFFSET = 140;       // F# 在八度内的 x 坐标 (第6个半音)
+const F_SHARP_OFFSET = 160;       // F# 中心在八度内的 x 坐标 (F和G的边界)
 const KEYBOARD_HEIGHT = 100;      // 键盘高度
 
 // ==================== 一个八度内的琴键定义 ====================
 interface KeyLayoutDef {
   type: "white" | "black";
   offset: number;       // 半音偏移 (0-12, 12是下一个八度的C)
-  x: number;            // 相对于八度起始点的 x 坐标
+  x: number;            // 相对于八度起始点的 left 坐标
 }
 
+// 白键从 0 开始，每隔 40px
+// 黑键位于两个白键中间，left = 白键边界 - 黑键宽度/2
 const OCTAVE_KEYS: KeyLayoutDef[] = [
-  { type: "white", offset: 0,  x: 0 },    // C
-  { type: "black", offset: 1,  x: 20 },   // C# (两个白键之间)
-  { type: "white", offset: 2,  x: 40 },   // D
-  { type: "black", offset: 3,  x: 60 },   // D#
-  { type: "white", offset: 4,  x: 80 },   // E
-  { type: "white", offset: 5,  x: 120 },  // F
-  { type: "black", offset: 6,  x: 140 },  // F#  ★ 中心锚点
-  { type: "white", offset: 7,  x: 160 },  // G
-  { type: "black", offset: 8,  x: 180 },  // G#
-  { type: "white", offset: 9,  x: 200 },  // A
-  { type: "black", offset: 10, x: 220 },  // A#
-  { type: "white", offset: 11, x: 240 },  // B
-  { type: "white", offset: 12, x: 280 },  // C (下一个八度)
+  { type: "white", offset: 0,  x: 0 },    // C   [0, 40]
+  { type: "black", offset: 1,  x: 27 },   // C#  [27, 53] 中心在 40 (C-D 边界)
+  { type: "white", offset: 2,  x: 40 },   // D   [40, 80]
+  { type: "black", offset: 3,  x: 67 },   // D#  [67, 93] 中心在 80 (D-E 边界)
+  { type: "white", offset: 4,  x: 80 },   // E   [80, 120]
+  { type: "white", offset: 5,  x: 120 },  // F   [120, 160]
+  { type: "black", offset: 6,  x: 147 },  // F#  [147, 173] 中心在 160 (F-G 边界) ★ 锚点
+  { type: "white", offset: 7,  x: 160 },  // G   [160, 200]
+  { type: "black", offset: 8,  x: 187 },  // G#  [187, 213] 中心在 200 (G-A 边界)
+  { type: "white", offset: 9,  x: 200 },  // A   [200, 240]
+  { type: "black", offset: 10, x: 227 },  // A#  [227, 253] 中心在 240 (A-B 边界)
+  { type: "white", offset: 11, x: 240 },  // B   [240, 280]
+  { type: "white", offset: 12, x: 280 },  // C   [280, 320] (下一个八度)
 ];
 
 // ==================== 指针状态 ====================
