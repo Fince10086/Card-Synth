@@ -33,6 +33,7 @@ import type { ToneGenerationResult } from "../ai/toneGenerator";
 import { KeyboardNavigationManager } from "../input/keyboardNavigation";
 import {
   renderKeyboard,
+  animateOctaveChange,
   resizeScopeCanvas,
   startScopeRendering,
   stopScopeRendering,
@@ -85,6 +86,8 @@ interface ModularSynthAppElements {
   midiBtn: HTMLElement | null;
   masterReadout: HTMLElement | null;
   midiSelecter: HTMLElement | null;
+  octaveDownBtn: HTMLElement | null;
+  octaveUpBtn: HTMLElement | null;
 }
 
 interface PresetWithName extends Preset {
@@ -260,7 +263,7 @@ export class ModularSynthApp {
       signalFlowShell: document.querySelector(".signal-flow-shell"),
       addModuleCard: document.getElementById("addModuleCard"),
       addModuleDropdown: document.getElementById("addModuleDropdown"),
-      keyboard: document.getElementById("virtualKeyboard"),
+      keyboard: document.getElementById("keyboardContent"),
       oscilloscope: document.getElementById("oscilloscope") as HTMLCanvasElement | null,
       presetFileInput: document.getElementById("presetFileInput") as HTMLInputElement | null,
       transportInfo: document.getElementById("transportInfo"),
@@ -272,6 +275,8 @@ export class ModularSynthApp {
       midiBtn: document.getElementById("midiBtn"),
       masterReadout: document.getElementById("masterReadout"),
       midiSelecter: document.getElementById("midiSelecter"),
+      octaveDownBtn: document.getElementById("octaveDownBtn"),
+      octaveUpBtn: document.getElementById("octaveUpBtn"),
     };
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
     if (this.elements.addModuleCard) {
@@ -346,6 +351,14 @@ export class ModularSynthApp {
       } finally {
         (event.target as HTMLInputElement).value = "";
       }
+    });
+
+    // 绑定浮动八度切换按钮
+    this.elements.octaveDownBtn?.addEventListener("click", () => {
+      this.handleOctaveChange(-1);
+    });
+    this.elements.octaveUpBtn?.addEventListener("click", () => {
+      this.handleOctaveChange(1);
     });
 
     this.modulationManager.bindEvents();
@@ -772,44 +785,34 @@ export class ModularSynthApp {
   }
 
   renderKeyboard(): void {
-    const keyboard = document.getElementById("virtualKeyboard");
+    const keyboard = document.getElementById("keyboardContent");
     if (!keyboard) {
       return;
     }
 
-    const onOctaveChange = (octave: number) => {
-      this.state.global.octave = octave;
-      this.renderKeyboard();
-      this.inputManager.updateTransportInfo();
-      this.markUnsaved();
-    };
+    renderKeyboard(
+      keyboard,
+      this.state,
+      this.inputManager,
+      () => this.ensureAudioStarted(),
+      this.heldPointerNotes
+    );
 
-    const doRender = () =>
-      renderKeyboard(
-        keyboard,
-        this.state,
-        this.inputManager,
-        () => this.ensureAudioStarted(),
-        this.heldPointerNotes,
-        onOctaveChange
-      );
-
-    doRender();
+    this.updateOctaveButtonVisibility();
 
     if (!this.keyboardResizeObserver) {
       this.keyboardResizeObserver = new ResizeObserver((entries) => {
         const newWidth = entries[0]?.contentRect?.width;
         if (newWidth && newWidth !== this._keyboardLastWidth) {
           this._keyboardLastWidth = newWidth;
-          const kb = document.getElementById("virtualKeyboard");
+          const kb = document.getElementById("keyboardContent");
           if (kb) {
             renderKeyboard(
               kb,
               this.state,
               this.inputManager,
               () => this.ensureAudioStarted(),
-              this.heldPointerNotes,
-              onOctaveChange
+              this.heldPointerNotes
             );
           }
         }
@@ -819,6 +822,50 @@ export class ModularSynthApp {
     this._keyboardLastWidth = keyboard.clientWidth;
     this.keyboardResizeObserver.disconnect();
     this.keyboardResizeObserver.observe(keyboard);
+  }
+
+  updateOctaveButtonVisibility(): void {
+    const downBtn = this.elements.octaveDownBtn;
+    const upBtn = this.elements.octaveUpBtn;
+    const currentOctave = this.state.global.octave;
+
+    if (downBtn) {
+      downBtn.classList.toggle("is-hidden", currentOctave <= 1);
+    }
+    if (upBtn) {
+      upBtn.classList.toggle("is-hidden", currentOctave >= 7);
+    }
+  }
+
+  handleOctaveChange(delta: number): void {
+    const currentOctave = this.state.global.octave;
+    const newOctave = Math.max(1, Math.min(7, currentOctave + delta));
+    if (newOctave === currentOctave) return;
+
+    const keyboard = document.getElementById("keyboardContent");
+    if (!keyboard) {
+      this.state.global.octave = newOctave;
+      this.renderKeyboard();
+      this.inputManager.updateTransportInfo();
+      this.markUnsaved();
+      return;
+    }
+
+    animateOctaveChange(
+      keyboard,
+      this.state,
+      this.inputManager,
+      currentOctave,
+      newOctave,
+      () => this.ensureAudioStarted(),
+      this.heldPointerNotes,
+      () => {
+        this.state.global.octave = newOctave;
+        this.renderKeyboard();
+        this.inputManager.updateTransportInfo();
+        this.markUnsaved();
+      }
+    );
   }
 
   resizeScopeCanvas(): void {

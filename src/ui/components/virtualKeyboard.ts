@@ -1,46 +1,41 @@
 import { noteFromOffset } from "../../utils/helpers";
 import type { InputManager } from "../../input/inputManager";
 
-interface KeyboardDefOctave {
-  type: "octave";
-  delta: number;
-  label: string;
-}
+// ==================== 固定尺寸常量 ====================
+const WHITE_KEY_WIDTH = 40;       // 白键固定宽度 (px)
+const BLACK_KEY_WIDTH = 26;       // 黑键固定宽度 = 40 * 0.65
+const OCTAVE_WIDTH = 320;         // 单八度总宽度 = 8 * 40
+const F_SHARP_OFFSET = 140;       // F# 在八度内的 x 坐标 (第6个半音)
+const KEYBOARD_HEIGHT = 100;      // 键盘高度
 
-interface KeyboardDefKey {
+// ==================== 一个八度内的琴键定义 ====================
+interface KeyLayoutDef {
   type: "white" | "black";
-  key: string;
-  offset: number;
-  whiteIndex: number;
+  offset: number;       // 半音偏移 (0-12, 12是下一个八度的C)
+  x: number;            // 相对于八度起始点的 x 坐标
 }
 
-type KeyboardDef = KeyboardDefOctave | KeyboardDefKey;
+const OCTAVE_KEYS: KeyLayoutDef[] = [
+  { type: "white", offset: 0,  x: 0 },    // C
+  { type: "black", offset: 1,  x: 20 },   // C# (两个白键之间)
+  { type: "white", offset: 2,  x: 40 },   // D
+  { type: "black", offset: 3,  x: 60 },   // D#
+  { type: "white", offset: 4,  x: 80 },   // E
+  { type: "white", offset: 5,  x: 120 },  // F
+  { type: "black", offset: 6,  x: 140 },  // F#  ★ 中心锚点
+  { type: "white", offset: 7,  x: 160 },  // G
+  { type: "black", offset: 8,  x: 180 },  // G#
+  { type: "white", offset: 9,  x: 200 },  // A
+  { type: "black", offset: 10, x: 220 },  // A#
+  { type: "white", offset: 11, x: 240 },  // B
+  { type: "white", offset: 12, x: 280 },  // C (下一个八度)
+];
 
+// ==================== 指针状态 ====================
 interface PointerDownInfo {
   keyElement: HTMLElement;
   note: string;
 }
-
-// 统一的键盘布局定义：按钮和琴键一体化
-// 布局比例：按钮占 1 份，白键占 3 份，黑键不占宽度（叠加）
-// 总份数 = 1 + 8*3 + 1 = 26
-const KEYBOARD_DEF: KeyboardDef[] = [
-  { type: "octave", delta: -1, label: "<" },
-  { type: "white", key: "a", offset: 0, whiteIndex: 0 },
-  { type: "black", key: "w", offset: 1, whiteIndex: 0 },
-  { type: "white", key: "s", offset: 2, whiteIndex: 1 },
-  { type: "black", key: "e", offset: 3, whiteIndex: 1 },
-  { type: "white", key: "d", offset: 4, whiteIndex: 2 },
-  { type: "white", key: "f", offset: 5, whiteIndex: 3 },
-  { type: "black", key: "t", offset: 6, whiteIndex: 3 },
-  { type: "white", key: "g", offset: 7, whiteIndex: 4 },
-  { type: "black", key: "y", offset: 8, whiteIndex: 4 },
-  { type: "white", key: "h", offset: 9, whiteIndex: 5 },
-  { type: "black", key: "u", offset: 10, whiteIndex: 5 },
-  { type: "white", key: "j", offset: 11, whiteIndex: 6 },
-  { type: "white", key: "k", offset: 12, whiteIndex: 7 },
-  { type: "octave", delta: 1, label: ">" },
-];
 
 const pointerDownMap = new Map<number, PointerDownInfo>();
 
@@ -50,6 +45,67 @@ interface KeyboardState {
   };
 }
 
+interface RenderedKey {
+  el: HTMLElement;
+  type: "white" | "black";
+  octave: number;
+  offset: number;
+}
+
+// ==================== 渲染缓存 ====================
+let renderedKeys: RenderedKey[] = [];
+let isKeyboardBound = false;
+let animationTargetOctave = 0;
+let animationStartOctave = 0;
+let animationStartTime = 0;
+let animationFrameId = 0;
+const ANIMATION_DURATION = 200; // ms
+
+// ==================== 辅助函数 ====================
+
+/** 计算当前八度的 F# 在卷轴上的绝对 x 坐标 */
+function getFSharpX(octave: number): number {
+  return octave * OCTAVE_WIDTH + F_SHARP_OFFSET;
+}
+
+/** 计算可见键列表 */
+function calculateVisibleKeys(
+  centerOctave: number,
+  screenWidth: number
+): Array<{ octave: number; def: KeyLayoutDef; screenX: number; note: string }> {
+  const centerX = getFSharpX(centerOctave);
+  const viewLeft = centerX - screenWidth / 2;
+  const viewRight = centerX + screenWidth / 2;
+
+  // 确定需要渲染的八度范围
+  const startOctave = Math.floor(viewLeft / OCTAVE_WIDTH) - 1;
+  const endOctave = Math.ceil(viewRight / OCTAVE_WIDTH) + 1;
+
+  const visible: Array<{ octave: number; def: KeyLayoutDef; screenX: number; note: string }> = [];
+
+  for (let oct = startOctave; oct <= endOctave; oct++) {
+    for (const def of OCTAVE_KEYS) {
+      const absoluteX = oct * OCTAVE_WIDTH + def.x;
+      const keyWidth = def.type === "white" ? WHITE_KEY_WIDTH : BLACK_KEY_WIDTH;
+
+      // 只要键的任何部分在视图内就渲染
+      if (absoluteX + keyWidth > viewLeft && absoluteX < viewRight) {
+        const screenX = absoluteX - viewLeft;
+        const note = noteFromOffset(oct, def.offset);
+        visible.push({ octave: oct, def, screenX, note });
+      }
+    }
+  }
+
+  return visible;
+}
+
+/** 缓动函数 */
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+// ==================== 主渲染函数 ====================
 export function renderKeyboard(
   keyboardElement: HTMLElement | null,
   state: KeyboardState,
@@ -63,61 +119,49 @@ export function renderKeyboard(
   }
 
   const containerWidth = keyboardElement.clientWidth;
-  const totalUnits = 26; // 1 + 8*3 + 1
-  const unitWidth = containerWidth / totalUnits;
-  const octaveBtnWidth = unitWidth;
-  const whiteKeyWidth = unitWidth * 3;
-  const blackKeyWidth = whiteKeyWidth * 0.65;
 
-  keyboardElement.style.setProperty("--white-key-width", `${whiteKeyWidth}px`);
-  keyboardElement.style.setProperty("--black-key-width", `${blackKeyWidth}px`);
-  keyboardElement.style.setProperty("--octave-btn-width", `${octaveBtnWidth}px`);
+  // 设置CSS变量
+  keyboardElement.style.setProperty("--white-key-width", `${WHITE_KEY_WIDTH}px`);
+  keyboardElement.style.setProperty("--black-key-width", `${BLACK_KEY_WIDTH}px`);
 
-  const isFirstRender = !keyboardElement.dataset.keyboardBound;
-
-  if (isFirstRender) {
+  // 首次渲染：创建所有琴键DOM元素
+  if (!isKeyboardBound) {
+    // 为可能的可见范围创建足够多的琴键元素（预留3个八度范围）
     const fragment = document.createDocumentFragment();
+    const maxVisibleKeys = Math.ceil(containerWidth / WHITE_KEY_WIDTH) + 20;
 
-    // 统一创建所有元素
-    KEYBOARD_DEF.forEach((def) => {
-      const el = document.createElement("div");
-      el.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < maxVisibleKeys; i++) {
+      // 白键
+      const whiteKey = document.createElement("div");
+      whiteKey.className = "white-key";
+      whiteKey.setAttribute("aria-hidden", "true");
+      const whiteCap = document.createElement("div");
+      whiteCap.className = "key-cap";
+      whiteKey.append(whiteCap);
+      fragment.append(whiteKey);
 
-      if (def.type === "octave") {
-        el.className = "octave-btn";
-        el.textContent = def.label;
-        el.dataset.octave = String(def.delta);
-        el.dataset.key = def.delta === -1 ? "z" : "x";
-      } else {
-        el.className = def.type === "black" ? "black-key" : "white-key";
-        el.dataset.key = def.key;
-        const cap = document.createElement("div");
-        cap.className = "key-cap";
-        el.append(cap);
-      }
-
-      fragment.append(el);
-    });
+      // 黑键
+      const blackKey = document.createElement("div");
+      blackKey.className = "black-key";
+      blackKey.setAttribute("aria-hidden", "true");
+      const blackCap = document.createElement("div");
+      blackCap.className = "key-cap";
+      blackKey.append(blackCap);
+      fragment.append(blackKey);
+    }
 
     keyboardElement.append(fragment);
 
-    // 事件委托 + setPointerCapture，支持滑动切换
+    // 事件委托
     keyboardElement.addEventListener("pointerdown", (e: PointerEvent) => {
-      const octaveBtn = (e.target as HTMLElement).closest("[data-octave]");
-      if (octaveBtn) {
-        e.preventDefault();
-        const delta = parseInt((octaveBtn as HTMLElement).dataset.octave!, 10);
-        const newOctave = Math.max(1, Math.min(7, state.global.octave + delta));
-        onOctaveChange?.(newOctave);
-        return;
-      }
-
-      const key = (e.target as HTMLElement).closest("[data-key]");
+      const key = (e.target as HTMLElement).closest(".white-key, .black-key");
       if (!key) return;
+
+      const note = (key as HTMLElement).dataset.note;
+      if (!note) return;
 
       (key as HTMLElement).setPointerCapture(e.pointerId);
 
-      const note = (key as HTMLElement).dataset.note!;
       inputManager.pressNote(note);
       heldPointerNotes.add(note);
       (key as HTMLElement).classList.add("active");
@@ -132,7 +176,7 @@ export function renderKeyboard(
 
       const key = document
         .elementFromPoint(e.clientX, e.clientY)
-        ?.closest("[data-key]");
+        ?.closest(".white-key, .black-key");
 
       if (!key) {
         inputManager.releaseNote(current.note);
@@ -151,12 +195,13 @@ export function renderKeyboard(
         heldPointerNotes.delete(current.note);
         current.keyElement.classList.remove("active");
 
-        const newNote = (key as HTMLElement).dataset.note!;
-        inputManager.pressNote(newNote);
-        heldPointerNotes.add(newNote);
-        (key as HTMLElement).classList.add("active");
-
-        pointerDownMap.set(e.pointerId, { keyElement: key as HTMLElement, note: newNote });
+        const newNote = (key as HTMLElement).dataset.note;
+        if (newNote) {
+          inputManager.pressNote(newNote);
+          heldPointerNotes.add(newNote);
+          (key as HTMLElement).classList.add("active");
+          pointerDownMap.set(e.pointerId, { keyElement: key as HTMLElement, note: newNote });
+        }
       }
     });
 
@@ -180,45 +225,166 @@ export function renderKeyboard(
       pointerDownMap.delete(e.pointerId);
     });
 
-    keyboardElement.dataset.keyboardBound = "true";
+    isKeyboardBound = true;
   }
 
-  // 统一计算所有元素的位置和属性
-  let currentLeft = 0;
+  // 更新琴键位置
+  updateKeyPositions(keyboardElement, state, inputManager, containerWidth, state.global.octave);
+}
 
-  KEYBOARD_DEF.forEach((def, index) => {
-    const el = keyboardElement.children[index] as HTMLElement | undefined;
-    if (!el) return;
+/** 更新琴键位置（支持动画） */
+function updateKeyPositions(
+  keyboardElement: HTMLElement,
+  state: KeyboardState,
+  inputManager: InputManager,
+  containerWidth: number,
+  currentOctave: number,
+  isAnimating = false
+): void {
+  const visibleKeys = calculateVisibleKeys(currentOctave, containerWidth);
+  const children = keyboardElement.children;
+  let whiteIndex = 0;
+  let blackIndex = 0;
 
-    if (def.type === "octave") {
-      el.style.left = `${currentLeft}px`;
-      currentLeft += octaveBtnWidth;
-    } else if (def.type === "white") {
-      el.style.left = `${currentLeft}px`;
-      currentLeft += whiteKeyWidth;
-
-      // 更新 note 和 active 状态
-      const note = noteFromOffset(state.global.octave, def.offset);
-      el.dataset.note = note;
-
-      if (inputManager.heldComputerKeys.has(def.key)) {
-        el.classList.add("active");
-      } else {
-        el.classList.remove("active");
-      }
-    } else if (def.type === "black") {
-      // 黑键叠在当前 whiteKey 的起始位置之前的一半
-      el.style.left = `${currentLeft - blackKeyWidth / 2}px`;
-
-      // 更新 note 和 active 状态
-      const note = noteFromOffset(state.global.octave, def.offset);
-      el.dataset.note = note;
-
-      if (inputManager.heldComputerKeys.has(def.key)) {
-        el.classList.add("active");
-      } else {
-        el.classList.remove("active");
-      }
+  // 收集白键和黑键元素
+  const whiteKeys: HTMLElement[] = [];
+  const blackKeys: HTMLElement[] = [];
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i] as HTMLElement;
+    if (child.classList.contains("white-key")) {
+      whiteKeys.push(child);
+    } else if (child.classList.contains("black-key")) {
+      blackKeys.push(child);
     }
+  }
+
+  // 重置所有键
+  whiteKeys.forEach((el) => {
+    el.style.display = "none";
+    el.classList.remove("active");
   });
+  blackKeys.forEach((el) => {
+    el.style.display = "none";
+    el.classList.remove("active");
+  });
+
+  // 收集需要渲染的键
+  const whiteToRender: typeof visibleKeys = [];
+  const blackToRender: typeof visibleKeys = [];
+
+  for (const key of visibleKeys) {
+    if (key.def.type === "white") {
+      whiteToRender.push(key);
+    } else {
+      blackToRender.push(key);
+    }
+  }
+
+  // 渲染白键
+  for (let i = 0; i < whiteToRender.length && i < whiteKeys.length; i++) {
+    const key = whiteToRender[i];
+    const el = whiteKeys[i];
+    el.style.display = "block";
+    el.style.left = `${key.screenX}px`;
+    el.dataset.note = key.note;
+    el.dataset.key = getComputerKeyForOffset(key.def.offset);
+
+    if (inputManager.heldComputerKeys.has(getComputerKeyForOffset(key.def.offset))) {
+      el.classList.add("active");
+    }
+  }
+
+  // 渲染黑键
+  for (let i = 0; i < blackToRender.length && i < blackKeys.length; i++) {
+    const key = blackToRender[i];
+    const el = blackKeys[i];
+    el.style.display = "block";
+    el.style.left = `${key.screenX}px`;
+    el.dataset.note = key.note;
+    el.dataset.key = getComputerKeyForOffset(key.def.offset);
+
+    if (inputManager.heldComputerKeys.has(getComputerKeyForOffset(key.def.offset))) {
+      el.classList.add("active");
+    }
+  }
+}
+
+/** 获取半音偏移对应的电脑键盘键 */
+function getComputerKeyForOffset(offset: number): string {
+  const map: Record<number, string> = {
+    0: "a",   // C
+    1: "w",   // C#
+    2: "s",   // D
+    3: "e",   // D#
+    4: "d",   // E
+    5: "f",   // F
+    6: "t",   // F#
+    7: "g",   // G
+    8: "y",   // G#
+    9: "h",   // A
+    10: "u",  // A#
+    11: "j",  // B
+    12: "k",  // C (下一个八度)
+  };
+  return map[offset] || "";
+}
+
+/** 开始八度切换动画 */
+export function animateOctaveChange(
+  keyboardElement: HTMLElement | null,
+  state: KeyboardState,
+  inputManager: InputManager,
+  fromOctave: number,
+  toOctave: number,
+  ensureAudioStartedFn: () => void,
+  heldPointerNotes: Set<string>,
+  onComplete?: () => void
+): void {
+  if (!keyboardElement) return;
+
+  // 取消之前的动画
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+  }
+
+  animationStartOctave = fromOctave;
+  animationTargetOctave = toOctave;
+  animationStartTime = performance.now();
+
+  const animate = (now: number) => {
+    const elapsed = now - animationStartTime;
+    const progress = Math.min(elapsed / ANIMATION_DURATION, 1);
+    const eased = easeOutCubic(progress);
+
+    // 插值当前八度
+    const currentOctave = animationStartOctave + (animationTargetOctave - animationStartOctave) * eased;
+
+    // 更新琴键位置
+    const containerWidth = keyboardElement.clientWidth;
+    updateKeyPositions(keyboardElement, state, inputManager, containerWidth, currentOctave, true);
+
+    if (progress < 1) {
+      animationFrameId = requestAnimationFrame(animate);
+    } else {
+      animationFrameId = 0;
+      onComplete?.();
+    }
+  };
+
+  animationFrameId = requestAnimationFrame(animate);
+}
+
+/** 暴露当前动画状态 */
+export function isAnimating(): boolean {
+  return animationFrameId !== 0;
+}
+
+/** 清理函数 */
+export function resetKeyboardState(): void {
+  isKeyboardBound = false;
+  renderedKeys = [];
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = 0;
+  }
 }

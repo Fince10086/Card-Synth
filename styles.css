@@ -883,15 +883,91 @@ select {
   border: 1px solid #e2e5ed;
 }
 
-/* 虚拟键盘 */
+/* 底部键盘外壳 */
+.bottom-keyboard {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100px;
+  z-index: 1001;
+  background: #1a1a2e;
+  overflow: visible;
+  touch-action: none;
+  user-select: none;
+}
+
+/* 键盘内容容器 */
+.keyboard-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* 浮动八度切换按钮 */
+.octave-float-btn {
+  position: fixed;
+  bottom: 115px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1002;
+  transition: opacity 180ms ease, transform 180ms ease, background 180ms ease;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.octave-float-btn.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.8);
+}
+
+.octave-float-btn--left {
+  left: 12px;
+}
+
+.octave-float-btn--right {
+  right: 12px;
+}
+
+.octave-float-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+@media (hover: hover) {
+  .octave-float-btn:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+}
+
+.octave-float-btn:active {
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(0.92);
+}
+
+/* 为底部键盘留出空间 */
+.page-shell {
+  padding-bottom: 120px;
+}
+
+/* 虚拟键盘 - 底部栏内部 */
 .virtual-keyboard {
   position: relative;
-  flex: 1;
-  min-height: 80px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
   touch-action: none;
 }
 
@@ -899,6 +975,7 @@ select {
 .white-key,
 .black-key {
   position: absolute;
+  top: 0;
   user-select: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -908,12 +985,12 @@ select {
     box-shadow 50ms ease,
     background 50ms ease,
     color 50ms ease;
+  will-change: transform, left;
 }
 
 .white-key {
-  top: 0;
   width: var(--white-key-width);
-  height: calc(100% - 2px);
+  height: calc(100% - 4px);
   border-radius: 0 0 3px 3px;
   background: #ffffff;
   border: 1px solid #d7dce7;
@@ -921,9 +998,8 @@ select {
 }
 
 .black-key {
-  top: 0;
   width: var(--black-key-width);
-  height: calc(60% - 2px);
+  height: calc(60% - 4px);
   border-radius: 0 0 2px 2px;
   background: var(--ink);
   color: #f3f6fb;
@@ -954,50 +1030,6 @@ select {
   }
 }
 
-.octave-btn {
-  position: absolute;
-  top: 0;
-  height: calc(100% - 2px);
-  width: var(--octave-btn-width);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  appearance: none;
-  border: 1px solid #e0e2eb;
-  border-radius: 4px;
-  background: #ffffff;
-  color: #181d6b;
-  font-weight: 500;
-  font-size: 0.72rem;
-  padding: 0;
-  cursor: pointer;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  transition:
-    transform 50ms ease,
-    border-color 50ms ease,
-    box-shadow 50ms ease,
-    background 50ms ease;
-}
-
-.octave-btn:focus {
-  outline: none;
-  border-color: rgba(41, 33, 21, 0.24);
-  box-shadow: 0 0 0 4px rgba(61, 127, 184, 0.1);
-}
-
-@media (hover: hover) {
-  .octave-btn:hover {
-    border-color: #cad0de;
-  }
-}
-
-.octave-btn:active,
-.octave-btn.active {
-  background: #d0d0d0;
-  border-color: #a0a0a0;
-}
-
 .key-cap {
   display: flex;
   flex-direction: column;
@@ -1005,6 +1037,7 @@ select {
   align-items: center;
   height: 100%;
   padding-bottom: 4px;
+  pointer-events: none;
 }
 
 .helper-row {

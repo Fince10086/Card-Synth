@@ -504,13 +504,6 @@ export function renderMainCard({
   scopeContainer.append(scopeCanvas);
   controls.append(scopeContainer);
 
-  const keyboard = document.createElement("div");
-  keyboard.id = "virtualKeyboard";
-  keyboard.className = "virtual-keyboard";
-  keyboard.setAttribute("aria-hidden", "true");
-  keyboard.setAttribute("tabindex", "-1");
-  controls.append(keyboard);
-
   card.append(controls);
   return card;
 }
@@ -595,7 +588,7 @@ export function renderMainCardContent({
 
 export function cacheDynamicElements(): DynamicElements {
   const elements: DynamicElements = {
-    keyboard: document.getElementById("virtualKeyboard"),
+    keyboard: document.getElementById("keyboardContent"),
     oscilloscope: document.getElementById("oscilloscope") as HTMLCanvasElement | null,
     scopeContext: null,
   };
