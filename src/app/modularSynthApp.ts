@@ -88,6 +88,8 @@ interface ModularSynthAppElements {
   midiSelecter: HTMLElement | null;
   octaveDownBtn: HTMLElement | null;
   octaveUpBtn: HTMLElement | null;
+  keyboardContainer: HTMLElement | null;
+  keyboardHandle: HTMLElement | null;
 }
 
 interface PresetWithName extends Preset {
@@ -126,6 +128,7 @@ export class ModularSynthApp {
   aiPhase: 'idle' | 'reasoning' | 'generating';
   aiReasoning: string | null;
   originalStateSnapshot: Preset | null;
+  keyboardCollapsed: boolean;
 
   constructor() {
     this.state = createBasePreset();
@@ -152,6 +155,7 @@ export class ModularSynthApp {
     this.aiPhase = 'idle';
     this.aiReasoning = null;
     this.originalStateSnapshot = null;
+    this.keyboardCollapsed = localStorage.getItem("keyboardCollapsed") === "true";
 
     this.inputManager = new InputManager({
       onAttack: (note, velocity) => this.engine.attack(note as unknown as number, velocity),
@@ -277,6 +281,8 @@ export class ModularSynthApp {
       midiSelecter: document.getElementById("midiSelecter"),
       octaveDownBtn: document.getElementById("octaveDownBtn"),
       octaveUpBtn: document.getElementById("octaveUpBtn"),
+      keyboardContainer: document.getElementById("keyboardContainer"),
+      keyboardHandle: document.getElementById("keyboardHandle"),
     };
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
     if (this.elements.addModuleCard) {
@@ -361,8 +367,33 @@ export class ModularSynthApp {
       this.handleOctaveChange(1);
     });
 
+    // 绑定键盘收起展开横条
+    this.elements.keyboardHandle?.addEventListener("click", () => {
+      this.toggleKeyboardCollapse();
+    });
+    this.elements.keyboardHandle?.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        this.toggleKeyboardCollapse();
+      }
+    });
+
     this.modulationManager.bindEvents();
     this.macroManager.bindEvents();
+  }
+
+  toggleKeyboardCollapse(): void {
+    this.keyboardCollapsed = !this.keyboardCollapsed;
+    localStorage.setItem("keyboardCollapsed", String(this.keyboardCollapsed));
+    this.elements.keyboardContainer?.classList.toggle("is-collapsed", this.keyboardCollapsed);
+
+    // 收起时如果正在触摸琴键，释放它们
+    if (this.keyboardCollapsed) {
+      this.heldPointerNotes.forEach((note) => {
+        this.inputManager.releaseNote(note as unknown as number);
+      });
+      this.heldPointerNotes.clear();
+    }
   }
 
   setStatus(message: string, tone = "neutral"): void {
@@ -944,6 +975,11 @@ export class ModularSynthApp {
     }
 
     this.renderAll();
+
+    // 应用初始键盘收起状态
+    if (this.keyboardCollapsed) {
+      this.elements.keyboardContainer?.classList.add("is-collapsed");
+    }
 
     const scopeEl = document.getElementById("oscilloscope");
     if (scopeEl) {

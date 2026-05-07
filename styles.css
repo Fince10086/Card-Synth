@@ -883,14 +883,68 @@ select {
   border: 1px solid #e2e5ed;
 }
 
-/* 底部键盘外壳 */
-.bottom-keyboard {
+/* 键盘外壳容器 */
+.keyboard-container {
   position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 100px;
   z-index: 1001;
+  transition: height 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  height: 116px;
+}
+
+.keyboard-container.is-collapsed {
+  height: 16px;
+}
+
+/* 拖动横条 */
+.keyboard-handle {
+  height: 16px;
+  background: rgba(40, 40, 40, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 180ms ease;
+}
+
+.keyboard-handle:hover {
+  background: rgba(50, 50, 50, 0.85);
+}
+
+.keyboard-handle-bar {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+  transition: background 180ms ease;
+}
+
+.keyboard-handle:hover .keyboard-handle-bar {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+/* 键盘内部区域 */
+.keyboard-inner {
+  height: 100px;
+  position: relative;
+  overflow: hidden;
+  transition: height 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.keyboard-container.is-collapsed .keyboard-inner {
+  height: 0;
+}
+
+/* 底部键盘 */
+.bottom-keyboard {
+  position: relative;
+  width: 100%;
+  height: 100%;
   background: #1a1a2e;
   overflow: visible;
   touch-action: none;
@@ -907,21 +961,21 @@ select {
 
 /* 浮动八度切换按钮 */
 .octave-float-btn {
-  position: fixed;
-  bottom: 115px;
+  position: absolute;
+  bottom: 10px;
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(60, 60, 60, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1002;
+  z-index: 2;
   transition: opacity 180ms ease, transform 180ms ease, background 180ms ease;
   opacity: 1;
   pointer-events: auto;
@@ -957,11 +1011,6 @@ select {
   transform: scale(0.92);
 }
 
-/* 为底部键盘留出空间 */
-.page-shell {
-  padding-bottom: 120px;
-}
-
 /* 虚拟键盘 - 底部栏内部 */
 .virtual-keyboard {
   position: relative;
@@ -990,8 +1039,8 @@ select {
 
 .white-key {
   width: var(--white-key-width);
-  height: calc(100% - 4px);
-  border-radius: 0 0 3px 3px;
+  height: 100%;
+  border-radius: 0;
   background: #ffffff;
   border: 1px solid #d7dce7;
   box-shadow: none;
@@ -1011,7 +1060,6 @@ select {
 .white-key.active {
   background: #d0d0d0;
   border-color: #a0a0a0;
-  transform: translateY(2px);
 }
 
 .black-key.active {

@@ -24,22 +24,27 @@
 
     <input id="presetFileInput" type="file" accept=".json,application/json" hidden />
 
-    <!-- 底部虚拟键盘 -->
-    <div id="bottomKeyboard" class="bottom-keyboard" aria-hidden="true">
-      <div id="keyboardContent" class="keyboard-content"></div>
+    <!-- 底部虚拟键盘容器 -->
+    <div id="keyboardContainer" class="keyboard-container">
+      <div id="keyboardHandle" class="keyboard-handle" role="button" tabindex="0" aria-label="Toggle keyboard">
+        <div class="keyboard-handle-bar"></div>
+      </div>
+      <div id="keyboardInner" class="keyboard-inner">
+        <div id="bottomKeyboard" class="bottom-keyboard" aria-hidden="true">
+          <div id="keyboardContent" class="keyboard-content"></div>
+        </div>
+        <button id="octaveDownBtn" class="octave-float-btn octave-float-btn--left" type="button" aria-label="Lower octave" data-delta="-1">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <button id="octaveUpBtn" class="octave-float-btn octave-float-btn--right" type="button" aria-label="Raise octave" data-delta="1">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </button>
+      </div>
     </div>
-
-    <!-- 浮动八度切换按钮 -->
-    <button id="octaveDownBtn" class="octave-float-btn octave-float-btn--left" type="button" aria-label="Lower octave" data-delta="-1">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="15 18 9 12 15 6"></polyline>
-      </svg>
-    </button>
-    <button id="octaveUpBtn" class="octave-float-btn octave-float-btn--right" type="button" aria-label="Raise octave" data-delta="1">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="9 18 15 12 9 6"></polyline>
-      </svg>
-    </button>
 
     <script type="module" src="./src/main.js"></script>
   </body>
