@@ -291,7 +291,9 @@ function updateKeyPositions(
     el.dataset.note = key.note;
     el.dataset.key = getComputerKeyForOffset(key.def.offset);
 
-    if (inputManager.heldComputerKeys.has(getComputerKeyForOffset(key.def.offset))) {
+    const computerKey = getComputerKeyForOffset(key.def.offset);
+    const heldNote = inputManager.heldComputerKeys.get(computerKey);
+    if (heldNote === key.note) {
       el.classList.add("active");
     }
   }
@@ -305,7 +307,9 @@ function updateKeyPositions(
     el.dataset.note = key.note;
     el.dataset.key = getComputerKeyForOffset(key.def.offset);
 
-    if (inputManager.heldComputerKeys.has(getComputerKeyForOffset(key.def.offset))) {
+    const computerKey = getComputerKeyForOffset(key.def.offset);
+    const heldNote = inputManager.heldComputerKeys.get(computerKey);
+    if (heldNote === key.note) {
       el.classList.add("active");
     }
   }
