@@ -901,31 +901,17 @@ select {
 /* 拖动横条 */
 .keyboard-handle {
   height: 16px;
-  background: rgba(40, 40, 40, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  transition: background 180ms ease;
-}
-
-.keyboard-handle:hover {
-  background: rgba(50, 50, 50, 0.85);
 }
 
 .keyboard-handle-bar {
   width: 40px;
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.25);
-  transition: background 180ms ease;
-}
-
-.keyboard-handle:hover .keyboard-handle-bar {
-  background: rgba(255, 255, 255, 0.45);
+  background: #555555;
 }
 
 /* 键盘内部区域 */
@@ -962,21 +948,18 @@ select {
 /* 浮动八度切换按钮 */
 .octave-float-btn {
   position: absolute;
-  bottom: 10px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: rgba(60, 60, 60, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  top: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 0;
+  background: #555555;
+  border: none;
   color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2;
-  transition: opacity 180ms ease, transform 180ms ease, background 180ms ease;
   opacity: 1;
   pointer-events: auto;
 }
@@ -996,19 +979,8 @@ select {
 }
 
 .octave-float-btn svg {
-  width: 20px;
-  height: 20px;
-}
-
-@media (hover: hover) {
-  .octave-float-btn:hover {
-    background: rgba(255, 255, 255, 0.22);
-  }
-}
-
-.octave-float-btn:active {
-  background: rgba(255, 255, 255, 0.08);
-  transform: scale(0.92);
+  width: 14px;
+  height: 14px;
 }
 
 /* 虚拟键盘 - 底部栏内部 */
