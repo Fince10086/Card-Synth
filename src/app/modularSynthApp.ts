@@ -168,7 +168,7 @@ export class ModularSynthApp {
       onVelocityChange: (velocity) => {
         this.state.global.velocity = velocity;
       },
-      onUpdateKeyboardKeyState: (key, active) => this.updateKeyboardKeyState(key, active),
+      onUpdateKeyboardKeyState: (key, active, note) => this.updateKeyboardKeyState(key, active, note),
       onRenderMainCardContent: () => this.updateMainCardContent(),
       getGlobalState: () => this.state.global,
       getKeyboardElement: () => this.elements.keyboard,
@@ -1183,8 +1183,9 @@ export class ModularSynthApp {
     }
   }
 
-  updateKeyboardKeyState(boundKey: string, active: boolean): void {
-    const visualKey = this.elements.keyboard?.querySelector(`[data-key="${boundKey}"]`);
+  updateKeyboardKeyState(boundKey: string, active: boolean, note?: string | null): void {
+    const selector = note ? `[data-note="${note}"]` : `[data-key="${boundKey}"]`;
+    const visualKey = this.elements.keyboard?.querySelector(selector);
     if (!visualKey) {
       return;
     }

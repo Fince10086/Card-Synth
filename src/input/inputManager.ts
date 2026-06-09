@@ -14,7 +14,7 @@ export interface InputManagerOptions {
   onEnsureAudioStarted?: () => Promise<void>;
   onOctaveChange?: (octave: number) => void;
   onVelocityChange?: (velocity: number) => void;
-  onUpdateKeyboardKeyState?: (key: string, active: boolean) => void;
+  onUpdateKeyboardKeyState?: (key: string, active: boolean, note?: string | null) => void;
   onRenderMainCardContent?: () => void;
   getGlobalState?: () => GlobalState;
   getKeyboardElement?: () => HTMLElement | null;
@@ -37,7 +37,7 @@ export class InputManager {
   onEnsureAudioStarted: () => Promise<void>;
   onOctaveChange: (octave: number) => void;
   onVelocityChange: (velocity: number) => void;
-  onUpdateKeyboardKeyState: (key: string, active: boolean) => void;
+  onUpdateKeyboardKeyState: (key: string, active: boolean, note?: string | null) => void;
   onRenderMainCardContent: () => void;
   getGlobalState: () => GlobalState;
   getKeyboardElement: () => HTMLElement | null;
@@ -250,7 +250,7 @@ export class InputManager {
       this.updateTransportInfo();
       if (!this.heldComputerKeys.has(key)) {
         this.heldComputerKeys.set(key, null);
-        this.onUpdateKeyboardKeyState(key, true);
+        this.onUpdateKeyboardKeyState(key, true, null);
       }
       return;
     }
@@ -276,7 +276,7 @@ export class InputManager {
     if (!this.heldComputerKeys.has(key)) {
       this.heldComputerKeys.set(key, note);
       this.pressNote(note);
-      this.onUpdateKeyboardKeyState(key, true);
+      this.onUpdateKeyboardKeyState(key, true, note);
     }
   }
 
@@ -288,7 +288,7 @@ export class InputManager {
 
     const note = this.heldComputerKeys.get(key);
     this.heldComputerKeys.delete(key);
-    this.onUpdateKeyboardKeyState(key, false);
+    this.onUpdateKeyboardKeyState(key, false, note);
 
     if (note) {
       this.releaseNote(note);
