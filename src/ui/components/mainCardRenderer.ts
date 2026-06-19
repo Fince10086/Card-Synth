@@ -8,16 +8,19 @@ import { t, getLanguage, type Language } from "../../i18n";
 import type { ChainState, Preset } from "../../types";
 
 interface MacroPoint {
-  chainIndex: number;
+  pointIndex: number;
   visible: boolean;
   selected: boolean;
+  recentRank: number;
   x: number;
   y: number;
   color: string;
 }
 
 interface MacroViewModel {
-  selectedChainEnabled: boolean;
+  pointCount: number;
+  selectedPointIndex: number;
+  recentSelection: number[];
   points: MacroPoint[];
 }
 
@@ -46,8 +49,9 @@ interface RenderMainCardOptions {
   onMidiToggle?: (enabled: boolean) => void;
   onMasterVolumeChange?: (value: number) => void;
   onVelocityEnabledChange?: (value: boolean) => void;
-  onMacroPointPointerDown?: (event: PointerEvent, chainIndex: number, padElement: HTMLElement) => void;
-  onMacroAxisPointerDown?: (event: PointerEvent, axis: string) => void;
+  onMacroPointPointerDown?: (event: PointerEvent, pointIndex: number, padElement: HTMLElement) => void;
+  onMacroAxisPointerDown?: (event: PointerEvent, axis: string, pointIndex: number) => void;
+  onMacroPointCountChange?: (value: number) => void;
   onGestureClick?: () => void;
   onDeleteUserPreset?: (id: string) => void;
   onPolyVoiceChange?: (value: number) => void;
@@ -62,8 +66,9 @@ interface UpdateMainCardOptions {
   chains: ChainState[];
   onChainIndexClick?: (chainIndex: number, isSelected: boolean) => void;
   macro: MacroViewModel;
-  onMacroPointPointerDown?: (event: PointerEvent, chainIndex: number, padElement: HTMLElement) => void;
-  onMacroAxisPointerDown?: (event: PointerEvent, axis: string) => void;
+  onMacroPointPointerDown?: (event: PointerEvent, pointIndex: number, padElement: HTMLElement) => void;
+  onMacroAxisPointerDown?: (event: PointerEvent, axis: string, pointIndex: number) => void;
+  onMacroPointCountChange?: (value: number) => void;
 }
 
 interface RenderMainCardContentOptions {
@@ -100,6 +105,7 @@ export function renderMainCard({
   onVelocityEnabledChange,
   onMacroPointPointerDown,
   onMacroAxisPointerDown,
+  onMacroPointCountChange,
   onGestureClick,
   onDeleteUserPreset,
   onPolyVoiceChange,
@@ -417,22 +423,44 @@ export function renderMainCard({
   const macroContainer = document.createElement("div");
   macroContainer.className = "main-card__macro";
 
-  const macroLabel = document.createElement("div");
-  macroLabel.className = "control-label";
-  const macroLabelStrong = document.createElement("strong");
-  macroLabelStrong.textContent = t("Macro");
-  macroLabel.append(macroLabelStrong);
-  macroContainer.append(macroLabel);
+  const macroHeader = document.createElement("div");
+  macroHeader.className = "control-label";
+  const macroHeaderStrong = document.createElement("strong");
+  macroHeaderStrong.textContent = t("Macro");
+  macroHeader.append(macroHeaderStrong);
+  macroContainer.append(macroHeader);
+
+  const pointCountRow = document.createElement("div");
+  pointCountRow.className = "macro-point-count-row";
+  const pointCountLabel = document.createElement("span");
+  pointCountLabel.className = "macro-point-count-label";
+  pointCountLabel.textContent = t("Points");
+  pointCountRow.append(pointCountLabel);
+
+  const pointCountValue = document.createElement("span");
+  pointCountValue.className = "macro-point-count-value";
+  pointCountValue.textContent = String(macro.pointCount);
+  pointCountRow.append(pointCountValue);
+
+  const pointCountSlider = document.createElement("input");
+  pointCountSlider.type = "range";
+  pointCountSlider.className = "macro-point-count-slider";
+  pointCountSlider.min = "1";
+  pointCountSlider.max = "9";
+  pointCountSlider.step = "1";
+  pointCountSlider.value = String(macro.pointCount);
+  pointCountSlider.addEventListener("input", (e) => {
+    const value = Number((e.target as HTMLInputElement).value);
+    onMacroPointCountChange?.(value);
+  });
+  pointCountRow.append(pointCountSlider);
+  macroContainer.append(pointCountRow);
 
   const macroPad = document.createElement("div");
   macroPad.className = "macro-pad";
 
-  const points = Array.isArray(macro?.points) ? macro.points : [];
-  points.forEach((point) => {
-    if (!point?.visible) {
-      return;
-    }
-
+  const visiblePoints = (macro?.points || []).filter((point) => point?.visible);
+  visiblePoints.forEach((point) => {
     const macroPoint = document.createElement("button");
     macroPoint.type = "button";
     macroPoint.className = "macro-point";
@@ -443,10 +471,14 @@ export function renderMainCard({
     macroPoint.style.left = `${Number(point.x) * 100}%`;
     macroPoint.style.top = `${(1 - Number(point.y)) * 100}%`;
     macroPoint.style.background = point.color;
-      macroPoint.setAttribute("aria-label", t("Macro Chain {{n}}", { n: point.chainIndex + 1 }));
+    const opacityScale = point.recentRank === 0 ? 1 : point.recentRank === 1 ? 0.6 : 0.3;
+    macroPoint.style.opacity = String(opacityScale);
+    macroPoint.style.transform = `scale(${point.recentRank === 0 ? 1.2 : point.recentRank === 1 ? 0.95 : 0.75})`;
+    macroPoint.setAttribute("aria-label", t("Macro Point {{n}}", { n: point.pointIndex + 1 }));
+    macroPoint.textContent = String(point.pointIndex + 1);
 
     macroPoint.addEventListener("pointerdown", (event) => {
-      onMacroPointPointerDown?.(event, point.chainIndex, macroPad);
+      onMacroPointPointerDown?.(event, point.pointIndex, macroPad);
     });
 
     macroPad.append(macroPoint);
@@ -457,17 +489,16 @@ export function renderMainCard({
   const axisRow = document.createElement("div");
   axisRow.className = "macro-axis-row";
 
-  const selectedChainEnabled = Boolean(macro?.selectedChainEnabled);
+  const selectedPointIndex = macro.selectedPointIndex;
   const makeAxisButton = (axis: string, text: string) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "macro-axis-handle";
     button.setAttribute("tabindex", "-1");
     button.textContent = text;
-    button.disabled = !selectedChainEnabled;
     button.setAttribute("aria-label", axis === "x" ? t("Bind Macro X Axis") : t("Bind Macro Y Axis"));
     button.addEventListener("pointerdown", (event) => {
-      onMacroAxisPointerDown?.(event, axis);
+      onMacroAxisPointerDown?.(event, axis, selectedPointIndex);
     });
     return button;
   };
@@ -515,6 +546,7 @@ export function updateMainCard(card: ModuleCardElement | null, {
   macro,
   onMacroPointPointerDown,
   onMacroAxisPointerDown,
+  onMacroPointCountChange,
 }: UpdateMainCardOptions): void {
   if (!card) return;
 
@@ -543,10 +575,8 @@ export function updateMainCard(card: ModuleCardElement | null, {
   const macroPad = card.querySelector(".macro-pad");
   if (macroPad) {
     macroPad.innerHTML = "";
-    const points = Array.isArray(macro?.points) ? macro.points : [];
-    points.forEach((point) => {
-      if (!point?.visible) return;
-
+    const visiblePoints = (macro?.points || []).filter((point) => point?.visible);
+    visiblePoints.forEach((point) => {
       const macroPoint = document.createElement("button");
       macroPoint.type = "button";
       macroPoint.className = "macro-point";
@@ -557,22 +587,43 @@ export function updateMainCard(card: ModuleCardElement | null, {
       macroPoint.style.left = `${Number(point.x) * 100}%`;
       macroPoint.style.top = `${(1 - Number(point.y)) * 100}%`;
       macroPoint.style.background = point.color;
-    macroPoint.setAttribute("aria-label", t("Macro Chain {{n}}", { n: point.chainIndex + 1 }));
+      const opacityScale = point.recentRank === 0 ? 1 : point.recentRank === 1 ? 0.6 : 0.3;
+      macroPoint.style.opacity = String(opacityScale);
+      macroPoint.style.transform = `scale(${point.recentRank === 0 ? 1.2 : point.recentRank === 1 ? 0.95 : 0.75})`;
+      macroPoint.setAttribute("aria-label", t("Macro Point {{n}}", { n: point.pointIndex + 1 }));
+      macroPoint.textContent = String(point.pointIndex + 1);
 
       macroPoint.addEventListener("pointerdown", (event) => {
-        onMacroPointPointerDown?.(event, point.chainIndex, macroPad as HTMLElement);
+        onMacroPointPointerDown?.(event, point.pointIndex, macroPad as HTMLElement);
       });
 
       macroPad.append(macroPoint);
     });
   }
 
-  // 更新 axis buttons 禁用状态
-  const selectedChainEnabled = Boolean(macro?.selectedChainEnabled);
+  // 更新 axis buttons 选中点索引
+  const selectedPointIndex = macro?.selectedPointIndex ?? 0;
   const axisHandles = card.querySelectorAll(".macro-axis-handle");
   axisHandles.forEach((handle) => {
-    (handle as HTMLButtonElement).disabled = !selectedChainEnabled;
+    const old = handle as HTMLElement;
+    const button = old.cloneNode(true) as HTMLButtonElement;
+    button.disabled = false;
+    const axis = button.getAttribute("aria-label")?.includes("X") ? "x" : "y";
+    button.addEventListener("pointerdown", (event) => {
+      onMacroAxisPointerDown?.(event, axis, selectedPointIndex);
+    });
+    old.replaceWith(button);
   });
+
+  // 更新 point count slider
+  const pointCountSlider = card.querySelector(".macro-point-count-slider") as HTMLInputElement | null;
+  const pointCountValue = card.querySelector(".macro-point-count-value");
+  if (pointCountSlider) {
+    pointCountSlider.value = String(macro?.pointCount ?? 3);
+  }
+  if (pointCountValue) {
+    pointCountValue.textContent = String(macro?.pointCount ?? 3);
+  }
 }
 
 export function renderMainCardContent({

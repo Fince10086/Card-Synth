@@ -127,7 +127,19 @@ export interface MacroAxisBinding {
   rangeEnd?: number;
 }
 
-// Macro chain state
+// Macro mapping item (cross-chain)
+export interface MacroMappingItem {
+  targetChainIndex: number;
+  targetModuleId: string;
+  targetParamPath: string;
+  min: number;
+  max: number;
+  step: number;
+  rangeStart: number;
+  rangeEnd: number;
+}
+
+// Macro chain state (legacy, migrated to MacroPointState)
 export interface MacroChainState {
   x: number;
   y: number;
@@ -135,9 +147,22 @@ export interface MacroChainState {
   bindings: Record<string, MacroAxisBinding[]>;
 }
 
+// Macro point state (cross-chain control point)
+export interface MacroPointState {
+  x: number;
+  y: number;
+  bindings: {
+    x: MacroMappingItem[];
+    y: MacroMappingItem[];
+  };
+}
+
 // Macro state
 export interface MacroState {
-  chains: MacroChainState[];
+  pointCount: number;
+  selectedPointIndex: number;
+  recentSelection: number[];
+  points: MacroPointState[];
 }
 
 // Chain state

@@ -1,33 +1,33 @@
 import { clamp, getByPath, setByPath } from "../../utils/helpers";
 import {
-  createDefaultMacroChainState,
-  normalizeMacroChain,
+  createDefaultMacroPointState,
+  normalizeMacroPoint,
   normalizeMacroState,
 } from "../../preset/preset";
 import { EdgeScrollManager } from "../edgeScrollManager";
 import type { MacroMappingItem } from "../../preset/preset";
 
-const AXES = ["x", "y", "z"] as const;
+const AXES = ["x", "y"] as const;
 type Axis = (typeof AXES)[number];
 
-const POINT_OPACITY = [1, 0.9, 0.8, 0.7] as const;
+const POINT_OPACITY = [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.25] as const;
 const TARGET_SELECTOR = ".control.control-slider[data-module-id][data-param-path]";
 const HOVER_CLASS = "macro-target-hover";
 const VALUE_EPSILON = 1e-6;
 
-interface MacroChainStateRuntime {
-  point: {
-    x: number;
-    y: number;
-    z: number;
+interface MacroPointStateRuntime {
+  x: number;
+  y: number;
+  bindings: {
+    x: MacroMappingItem[];
+    y: MacroMappingItem[];
   };
-  mappings: Record<string, MacroMappingItem[]>;
 }
 
 interface PointDragState {
   active: boolean;
   pointerId: number;
-  chainIndex: number;
+  pointIndex: number;
   padElement: Element | null;
   pointElement: HTMLElement | null;
 }
@@ -35,7 +35,7 @@ interface PointDragState {
 interface BindingDragState {
   active: boolean;
   pointerId: number;
-  chainIndex: number;
+  pointIndex: number;
   axis: Axis;
   startX: number;
   startY: number;
@@ -44,16 +44,19 @@ interface BindingDragState {
 }
 
 interface MacroPointViewModel {
-  chainIndex: number;
+  pointIndex: number;
   visible: boolean;
   selected: boolean;
+  recentRank: number;
   x: number;
   y: number;
   color: string;
 }
 
 interface MainCardViewModel {
-  selectedChainEnabled: boolean;
+  pointCount: number;
+  selectedPointIndex: number;
+  recentSelection: number[];
   points: MacroPointViewModel[];
 }
 
@@ -64,9 +67,12 @@ interface BindingResult extends MacroMappingItem {
 
 interface AppState {
   macro: {
-    chains: Array<MacroChainStateRuntime | undefined>;
+    pointCount: number;
+    selectedPointIndex: number;
+    recentSelection: number[];
+    points: Array<MacroPointStateRuntime | undefined>;
   };
-  chains: Array<{ macro?: Partial<MacroChainStateRuntime> } | undefined>;
+  chains: Array<{ macro?: { x?: number; y?: number; bindings?: Record<string, MacroMappingItem[]> } } | undefined>;
 }
 
 interface MacroManagerApp {
@@ -113,7 +119,7 @@ export class MacroManager {
     this.pointDrag = {
       active: false,
       pointerId: 0,
-      chainIndex: -1,
+      pointIndex: -1,
       padElement: null,
       pointElement: null,
     };
@@ -121,7 +127,7 @@ export class MacroManager {
     this.bindingDrag = {
       active: false,
       pointerId: 0,
-      chainIndex: -1,
+      pointIndex: -1,
       axis: "x",
       startX: 0,
       startY: 0,
@@ -148,105 +154,104 @@ export class MacroManager {
     ) as unknown as AppState["macro"];
   }
 
-  getChainMacro(chainIndex: number = this.app.getSelectedChainIndex()): MacroChainStateRuntime {
+  getMacroPoint(pointIndex: number): MacroPointStateRuntime {
     this.ensureMacroState();
 
-    const index = clamp(Number(chainIndex || 0), 0, this.app.getChainCount() - 1);
-    if (!this.app.state.macro.chains[index]) {
-      const normalized = createDefaultMacroChainState();
-      const runtime: MacroChainStateRuntime = {
-        point: {
-          x: normalized.x,
-          y: normalized.y,
-          z: normalized.z,
-        },
-        mappings: {
-          x: normalized.bindings.x as unknown as MacroMappingItem[],
-          y: normalized.bindings.y as unknown as MacroMappingItem[],
-          z: normalized.bindings.z as unknown as MacroMappingItem[],
-        },
-      };
-      this.app.state.macro.chains[index] = runtime as unknown as (typeof this.app.state.macro.chains)[number];
-    }
-
-    const normalized = normalizeMacroChain(
-      this.app.state.macro.chains[index] as unknown as Parameters<typeof normalizeMacroChain>[0]
-    );
-
-    const runtime: MacroChainStateRuntime = {
-      point: {
+    const count = this.app.state.macro.points.length;
+    const index = clamp(Number(pointIndex || 0), 0, Math.max(0, count - 1));
+    if (!this.app.state.macro.points[index]) {
+      const normalized = createDefaultMacroPointState();
+      const runtime: MacroPointStateRuntime = {
         x: normalized.x,
         y: normalized.y,
-        z: normalized.z,
-      },
-      mappings: {
-        x: normalized.bindings.x as unknown as MacroMappingItem[],
-        y: normalized.bindings.y as unknown as MacroMappingItem[],
-        z: normalized.bindings.z as unknown as MacroMappingItem[],
+        bindings: {
+          x: normalized.bindings.x,
+          y: normalized.bindings.y,
+        },
+      };
+      this.app.state.macro.points[index] = runtime as unknown as (typeof this.app.state.macro.points)[number];
+    }
+
+    const normalized = normalizeMacroPoint(
+      this.app.state.macro.points[index] as unknown as Parameters<typeof normalizeMacroPoint>[0]
+    );
+
+    const runtime: MacroPointStateRuntime = {
+      x: normalized.x,
+      y: normalized.y,
+      bindings: {
+        x: normalized.bindings.x,
+        y: normalized.bindings.y,
       },
     };
 
-    this.app.state.macro.chains[index] = runtime as unknown as (typeof this.app.state.macro.chains)[number];
+    this.app.state.macro.points[index] = runtime as unknown as (typeof this.app.state.macro.points)[number];
     return runtime;
   }
 
-  resetChainMacro(chainIndex: number = this.app.getSelectedChainIndex()): void {
+  resetMacroPoint(pointIndex: number): void {
     this.ensureMacroState();
-    const index = clamp(Number(chainIndex || 0), 0, this.app.getChainCount() - 1);
-    const normalized = createDefaultMacroChainState();
-    const runtime: MacroChainStateRuntime = {
-      point: {
-        x: normalized.x,
-        y: normalized.y,
-        z: normalized.z,
-      },
-      mappings: {
-        x: normalized.bindings.x as unknown as MacroMappingItem[],
-        y: normalized.bindings.y as unknown as MacroMappingItem[],
-        z: normalized.bindings.z as unknown as MacroMappingItem[],
+    const index = clamp(Number(pointIndex || 0), 0, this.app.state.macro.points.length - 1);
+    const normalized = createDefaultMacroPointState();
+    const runtime: MacroPointStateRuntime = {
+      x: normalized.x,
+      y: normalized.y,
+      bindings: {
+        x: normalized.bindings.x,
+        y: normalized.bindings.y,
       },
     };
-    this.app.state.macro.chains[index] = runtime as unknown as (typeof this.app.state.macro.chains)[number];
+    this.app.state.macro.points[index] = runtime as unknown as (typeof this.app.state.macro.points)[number];
   }
 
-  getPointColor(chainIndex: number): string {
-    const opacity = POINT_OPACITY[chainIndex] ?? 0.7;
-    const percent = Math.round(opacity * 100);
+  getPointColor(pointIndex: number, opacityScale = 1): string {
+    const opacity = (POINT_OPACITY[pointIndex] ?? 0.7) * opacityScale;
+    const percent = Math.round(clamp(opacity, 0, 1) * 100);
     return `color-mix(in srgb, var(--ink) ${percent}%, transparent)`;
   }
 
   getMainCardViewModel(): MainCardViewModel {
-    const selectedChainIndex = this.app.getSelectedChainIndex();
+    const pointCount = clamp(this.app.state.macro.pointCount, 1, this.app.state.macro.points.length);
+    const selectedPointIndex = clamp(this.app.state.macro.selectedPointIndex, 0, pointCount - 1);
+    const recentSelection = this.app.state.macro.recentSelection.slice(0, 3);
+    const recentRankMap = new Map(recentSelection.map((index, rank) => [index, rank]));
 
     return {
-      selectedChainEnabled: this.app.isChainEnabled(selectedChainIndex),
-      points: Array.from({ length: this.app.getChainCount() }, (_, chainIndex) => {
-        const chainMacro = this.getChainMacro(chainIndex);
+      pointCount,
+      selectedPointIndex,
+      recentSelection,
+      points: Array.from({ length: pointCount }, (_, pointIndex) => {
+        const point = this.getMacroPoint(pointIndex);
+        const rank = recentRankMap.get(pointIndex);
+        const recentRank = rank === undefined ? -1 : rank;
+        const visible = recentRank >= 0;
         return {
-          chainIndex,
-          visible: this.app.isChainEnabled(chainIndex),
-          selected: chainIndex === selectedChainIndex,
-          x: chainMacro.point.x,
-          y: chainMacro.point.y,
-          color: this.getPointColor(chainIndex),
+          pointIndex,
+          visible,
+          selected: pointIndex === selectedPointIndex,
+          recentRank,
+          x: point.x,
+          y: point.y,
+          color: this.getPointColor(pointIndex),
         };
       }),
     };
   }
 
   getBindingForTarget(moduleId: string, paramPath: string, chainIndex: number = this.app.getSelectedChainIndex()): BindingResult | null {
-    const chainMacro = this.getChainMacro(chainIndex);
-
-    for (const axis of AXES) {
-      const match = chainMacro.mappings[axis].find(
-        (item) => item.targetModuleId === moduleId && item.targetParamPath === paramPath,
-      );
-      if (match) {
-        return {
-          ...match,
-          axis,
-          color: this.getPointColor(chainIndex),
-        };
+    for (let pointIndex = 0; pointIndex < this.app.state.macro.points.length; pointIndex++) {
+      const point = this.getMacroPoint(pointIndex);
+      for (const axis of AXES) {
+        const match = point.bindings[axis].find(
+          (item) => item.targetChainIndex === chainIndex && item.targetModuleId === moduleId && item.targetParamPath === paramPath,
+        );
+        if (match) {
+          return {
+            ...match,
+            axis,
+            color: this.getPointColor(pointIndex),
+          };
+        }
       }
     }
 
@@ -254,18 +259,20 @@ export class MacroManager {
   }
 
   removeBindingsForTarget(moduleId: string, paramPath: string, chainIndex: number = this.app.getSelectedChainIndex()): boolean {
-    const chainMacro = this.getChainMacro(chainIndex);
     let changed = false;
 
-    AXES.forEach((axis) => {
-      const before = chainMacro.mappings[axis].length;
-      chainMacro.mappings[axis] = chainMacro.mappings[axis].filter(
-        (item) => !(item.targetModuleId === moduleId && item.targetParamPath === paramPath),
-      );
-      if (chainMacro.mappings[axis].length !== before) {
-        changed = true;
-      }
-    });
+    for (let pointIndex = 0; pointIndex < this.app.state.macro.points.length; pointIndex++) {
+      const point = this.getMacroPoint(pointIndex);
+      AXES.forEach((axis) => {
+        const before = point.bindings[axis].length;
+        point.bindings[axis] = point.bindings[axis].filter(
+          (item) => !(item.targetChainIndex === chainIndex && item.targetModuleId === moduleId && item.targetParamPath === paramPath),
+        );
+        if (point.bindings[axis].length !== before) {
+          changed = true;
+        }
+      });
+    }
 
     if (changed) {
       this.app.markUnsaved();
@@ -278,16 +285,16 @@ export class MacroManager {
     this.ensureMacroState();
     let changed = false;
 
-    this.app.state.macro.chains.forEach((_, chainIndex) => {
-      const normalized = this.getChainMacro(chainIndex);
+    for (let pointIndex = 0; pointIndex < this.app.state.macro.points.length; pointIndex++) {
+      const point = this.getMacroPoint(pointIndex);
       AXES.forEach((axis) => {
-        const before = normalized.mappings[axis].length;
-        normalized.mappings[axis] = normalized.mappings[axis].filter((item) => item.targetModuleId !== moduleId);
-        if (normalized.mappings[axis].length !== before) {
+        const before = point.bindings[axis].length;
+        point.bindings[axis] = point.bindings[axis].filter((item) => item.targetModuleId !== moduleId);
+        if (point.bindings[axis].length !== before) {
           changed = true;
         }
       });
-    });
+    }
 
     if (changed) {
       this.app.markUnsaved();
@@ -297,21 +304,21 @@ export class MacroManager {
   }
 
   updateBindingRange(options: {
-    chainIndex: number;
+    pointIndex: number;
     axis: Axis;
     moduleId: string;
     paramPath: string;
     rangeStart: number;
     rangeEnd: number;
   }): boolean {
-    const { chainIndex, axis, moduleId, paramPath, rangeStart, rangeEnd } = options;
+    const { pointIndex, axis, moduleId, paramPath, rangeStart, rangeEnd } = options;
 
     if (!AXES.includes(axis)) {
       return false;
     }
 
-    const chainMacro = this.getChainMacro(chainIndex);
-    const item = chainMacro.mappings[axis].find(
+    const point = this.getMacroPoint(pointIndex);
+    const item = point.bindings[axis].find(
       (mapping) => mapping.targetModuleId === moduleId && mapping.targetParamPath === paramPath,
     );
     if (!item) {
@@ -329,32 +336,28 @@ export class MacroManager {
     item.rangeEnd = nextEnd;
 
     this.app.markUnsaved();
-    this.applyMappingsForChain(chainIndex, chainIndex === this.app.getSelectedChainIndex());
+    this.applyMappingsForPoint(pointIndex, false);
 
     return true;
   }
 
   applyAllMappings(): void {
-    for (let chainIndex = 0; chainIndex < this.app.getChainCount(); chainIndex += 1) {
-      this.applyMappingsForChain(chainIndex, false);
+    for (let pointIndex = 0; pointIndex < this.app.state.macro.points.length; pointIndex += 1) {
+      this.applyMappingsForPoint(pointIndex, false);
     }
   }
 
-  applyMappingsForChain(chainIndex: number, syncControls: boolean = false): boolean {
-    const chain = this.app.getChain(chainIndex);
-    const modules = Array.isArray(chain.modules) ? chain.modules : [];
-    if (!modules.length) {
-      return false;
-    }
-
-    const chainMacro = this.getChainMacro(chainIndex);
-    const moduleMap = new Map(modules.map((module) => [module.id, module]));
-    const dirtyModules = new Set<string>();
+  applyMappingsForPoint(pointIndex: number, syncControls: boolean = false): boolean {
+    const point = this.getMacroPoint(pointIndex);
+    const dirtyChains = new Map<number, Set<string>>();
 
     AXES.forEach((axis) => {
-      const axisValue = axis === "x" ? chainMacro.point.x : axis === "y" ? chainMacro.point.y : chainMacro.point.z;
-      chainMacro.mappings[axis].forEach((mapping) => {
-        const module = moduleMap.get(mapping.targetModuleId);
+      const axisValue = axis === "x" ? point.x : point.y;
+      point.bindings[axis].forEach((mapping) => {
+        const chainIndex = mapping.targetChainIndex;
+        const chain = this.app.getChain(chainIndex);
+        const modules = Array.isArray(chain.modules) ? chain.modules : [];
+        const module = modules.find((m) => m.id === mapping.targetModuleId);
         if (!module) {
           return;
         }
@@ -377,22 +380,29 @@ export class MacroManager {
         }
 
         setByPath(module, mapping.targetParamPath, nextValue);
-        dirtyModules.add(module.id);
+        if (!dirtyChains.has(chainIndex)) {
+          dirtyChains.set(chainIndex, new Set<string>());
+        }
+        dirtyChains.get(chainIndex)!.add(module.id);
       });
     });
 
-    if (!dirtyModules.size) {
+    if (!dirtyChains.size) {
       return false;
     }
 
-    dirtyModules.forEach((moduleId) => {
-      const module = moduleMap.get(moduleId);
-      if (module) {
-        this.app.engine.updateModule(module.id, module, chainIndex);
-      }
+    dirtyChains.forEach((moduleIds, chainIndex) => {
+      const chain = this.app.getChain(chainIndex);
+      const modules = Array.isArray(chain.modules) ? chain.modules : [];
+      moduleIds.forEach((moduleId) => {
+        const module = modules.find((m) => m.id === moduleId);
+        if (module) {
+          this.app.engine.updateModule(module.id, module, chainIndex);
+        }
+      });
     });
 
-    if (syncControls && chainIndex === this.app.getSelectedChainIndex()) {
+    if (syncControls) {
       this.app.syncControlsFromState();
     }
 
@@ -401,12 +411,12 @@ export class MacroManager {
 
   startPointDrag(options: {
     event: PointerEvent;
-    chainIndex: number;
+    pointIndex: number;
     padElement: Element | null;
   }): void {
-    const { event, chainIndex, padElement } = options;
+    const { event, pointIndex, padElement } = options;
 
-    if (!this.app.isChainEnabled(chainIndex)) {
+    if (pointIndex < 0 || pointIndex >= this.app.state.macro.pointCount) {
       return;
     }
 
@@ -416,7 +426,7 @@ export class MacroManager {
     this.pointDrag = {
       active: true,
       pointerId: event.pointerId,
-      chainIndex,
+      pointIndex,
       padElement,
       pointElement: (event.currentTarget as HTMLElement | null) || (event.target as HTMLElement | null)?.closest(".macro-point") || null,
     };
@@ -427,11 +437,11 @@ export class MacroManager {
   startAxisBindingDrag(options: {
     event: PointerEvent;
     axis: Axis;
-    chainIndex?: number;
+    pointIndex?: number;
   }): void {
-    const { event, axis, chainIndex = this.app.getSelectedChainIndex() } = options;
+    const { event, axis, pointIndex = this.app.state.macro.selectedPointIndex } = options;
 
-    if (!AXES.includes(axis) || !this.app.isChainEnabled(chainIndex)) {
+    if (!AXES.includes(axis) || pointIndex < 0 || pointIndex >= this.app.state.macro.pointCount) {
       return;
     }
 
@@ -441,7 +451,7 @@ export class MacroManager {
     this.bindingDrag = {
       active: true,
       pointerId: event.pointerId,
-      chainIndex,
+      pointIndex,
       axis,
       startX: event.clientX,
       startY: event.clientY,
@@ -488,7 +498,7 @@ export class MacroManager {
     this.pointDrag = {
       active: false,
       pointerId: 0,
-      chainIndex: -1,
+      pointIndex: -1,
       padElement: null,
       pointElement: null,
     };
@@ -499,7 +509,7 @@ export class MacroManager {
     this.bindingDrag = {
       active: false,
       pointerId: 0,
-      chainIndex: -1,
+      pointIndex: -1,
       axis: "x",
       startX: 0,
       startY: 0,
@@ -529,23 +539,23 @@ export class MacroManager {
     const nextX = clamp((event.clientX - rect.left) / rect.width, 0, 1);
     const nextY = clamp(1 - (event.clientY - rect.top) / rect.height, 0, 1);
 
-    const chainMacro = this.getChainMacro(this.pointDrag.chainIndex);
+    const point = this.getMacroPoint(this.pointDrag.pointIndex);
     if (
-      Math.abs(chainMacro.point.x - nextX) <= VALUE_EPSILON
-      && Math.abs(chainMacro.point.y - nextY) <= VALUE_EPSILON
+      Math.abs(point.x - nextX) <= VALUE_EPSILON
+      && Math.abs(point.y - nextY) <= VALUE_EPSILON
     ) {
       return;
     }
 
-    chainMacro.point.x = nextX;
-    chainMacro.point.y = nextY;
+    point.x = nextX;
+    point.y = nextY;
 
-    this.applyMappingsForChain(this.pointDrag.chainIndex, this.pointDrag.chainIndex === this.app.getSelectedChainIndex());
+    this.applyMappingsForPoint(this.pointDrag.pointIndex, this.app.getSelectedChainIndex() === this.app.getSelectedChainIndex());
 
-    const point = this.pointDrag.pointElement;
-    if (point) {
-      point.style.left = `${nextX * 100}%`;
-      point.style.top = `${(1 - nextY) * 100}%`;
+    const pointEl = this.pointDrag.pointElement;
+    if (pointEl) {
+      pointEl.style.left = `${nextX * 100}%`;
+      pointEl.style.top = `${(1 - nextY) * 100}%`;
     }
   }
 
@@ -556,7 +566,7 @@ export class MacroManager {
     }
 
     const committed = this.commitBinding({
-      chainIndex: this.bindingDrag.chainIndex,
+      pointIndex: this.bindingDrag.pointIndex,
       axis: this.bindingDrag.axis,
       targetControl,
     });
@@ -566,16 +576,16 @@ export class MacroManager {
     }
 
     this.app.markUnsaved();
-    this.applyMappingsForChain(this.bindingDrag.chainIndex, this.bindingDrag.chainIndex === this.app.getSelectedChainIndex());
+    this.applyMappingsForPoint(this.bindingDrag.pointIndex, false);
     this.app.renderAll();
   }
 
   commitBinding(options: {
-    chainIndex: number;
+    pointIndex: number;
     axis: Axis;
     targetControl: HTMLElement;
   }): boolean {
-    const { chainIndex, axis, targetControl } = options;
+    const { pointIndex, axis, targetControl } = options;
 
     const targetModuleId = String(targetControl.dataset.moduleId || "");
     const targetParamPath = String(targetControl.dataset.paramPath || "");
@@ -592,15 +602,17 @@ export class MacroManager {
       return false;
     }
 
-    const chainMacro = this.getChainMacro(chainIndex);
-    const mappings = chainMacro.mappings[axis];
+    const point = this.getMacroPoint(pointIndex);
+    const mappings = point.bindings[axis];
+    const targetChainIndex = this.app.getSelectedChainIndex();
     const existingIndex = mappings.findIndex(
-      (item) => item.targetModuleId === targetModuleId && item.targetParamPath === targetParamPath,
+      (item) => item.targetChainIndex === targetChainIndex && item.targetModuleId === targetModuleId && item.targetParamPath === targetParamPath,
     );
 
     const previous = existingIndex >= 0 ? mappings[existingIndex] : null;
 
     const next: MacroMappingItem = {
+      targetChainIndex,
       targetModuleId,
       targetParamPath,
       min: Math.min(min, max),

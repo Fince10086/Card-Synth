@@ -1,7 +1,7 @@
 import type { Analyser } from "tone";
 import {
   createBasePreset,
-  createDefaultMacroChainState,
+  createDefaultMacroPointState,
   normalizeCurrentPresetData,
   normalizePreset,
   importPresetFromFile,
@@ -63,6 +63,7 @@ import type {
   ControlBinding,
   ModuleCategory,
   ModuleType,
+  MacroPointState,
 } from "../types";
 
 const CHAIN_COUNT = 4;
@@ -178,6 +179,8 @@ export class ModularSynthApp {
       },
     });
 
+    this.bindMacroKeyboardSelection();
+
     this.cacheElements();
     this.bindEvents();
     subscribeToLanguageChange(() => this.renderAll());
@@ -259,6 +262,58 @@ export class ModularSynthApp {
     chain.enabled = Boolean(enabled);
   }
 
+  bindMacroKeyboardSelection(): void {
+    document.addEventListener("keydown", (e) => {
+      if (e.repeat) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+        return;
+      }
+      if (e.key >= "1" && e.key <= "9") {
+        const index = Number(e.key) - 1;
+        if (index < this.state.macro.pointCount) {
+          this.selectMacroPoint(index);
+        }
+      }
+    });
+  }
+
+  selectMacroPoint(index: number): void {
+    const pointCount = clamp(this.state.macro.pointCount, 1, 9);
+    const safeIndex = clamp(index, 0, pointCount - 1);
+    this.state.macro.selectedPointIndex = safeIndex;
+    const recent = [safeIndex, ...this.state.macro.recentSelection.filter((i) => i !== safeIndex)];
+    this.state.macro.recentSelection = recent.slice(0, 3);
+    this.markUnsaved();
+    this.renderAll();
+  }
+
+  getMacroPoint(pointIndex: number): MacroPointState {
+    return this.macroManager.getMacroPoint(pointIndex);
+  }
+
+  getMacroPointCount(): number {
+    return clamp(this.state.macro.pointCount, 1, 9);
+  }
+
+  getSelectedMacroPointIndex(): number {
+    return clamp(this.state.macro.selectedPointIndex, 0, this.getMacroPointCount() - 1);
+  }
+
+  updateMacroPointFromGesture(pointIndex: number, x: number, y: number): void {
+    const point = this.macroManager.getMacroPoint(pointIndex);
+    const nextX = clamp(x, 0, 1);
+    const nextY = clamp(y, 0, 1);
+    if (Math.abs(point.x - nextX) <= 1e-6 && Math.abs(point.y - nextY) <= 1e-6) {
+      return;
+    }
+    point.x = nextX;
+    point.y = nextY;
+    this.macroManager.applyMappingsForPoint(pointIndex, false);
+    this.markUnsaved();
+    this.renderAll();
+  }
+
   cacheElements(): void {
     this.elements = {
       statusText: document.getElementById("statusText"),
@@ -334,7 +389,8 @@ export class ModularSynthApp {
           chain.modulations = imported.chain.modulations as unknown as ModulationConnection[];
 
           this.macroManager.ensureMacroState();
-          this.state.macro.chains[this.getSelectedChainIndex()] = imported.chain.macro || createDefaultMacroChainState();
+          const macroPoint = imported.chain.macro?.points?.[this.getSelectedChainIndex()];
+          this.state.macro.points[this.getSelectedChainIndex()] = macroPoint || createDefaultMacroPointState();
         }
 
         const baseName = file.name.replace(/\.json$/i, "");
@@ -390,7 +446,7 @@ export class ModularSynthApp {
     // 收起时如果正在触摸琴键，释放它们
     if (this.keyboardCollapsed) {
       this.heldPointerNotes.forEach((note) => {
-        this.inputManager.releaseNote(note as unknown as number);
+        this.inputManager.releaseNote(note as unknown as string);
       });
       this.heldPointerNotes.clear();
     }
@@ -762,15 +818,28 @@ export class ModularSynthApp {
         this.markUnsaved();
         this.engine.updateGlobal(this.state.global);
       },
-      onMacroPointPointerDown: (event: PointerEvent, chainIndex: number, padElement: HTMLElement) => {
-        this.macroManager.startPointDrag({ event, chainIndex, padElement });
+      onMacroPointPointerDown: (event: PointerEvent, pointIndex: number, padElement: HTMLElement) => {
+        this.macroManager.startPointDrag({ event, pointIndex, padElement });
       },
-      onMacroAxisPointerDown: (event: PointerEvent, axis: string) => {
+      onMacroAxisPointerDown: (event: PointerEvent, axis: string, pointIndex: number) => {
         this.macroManager.startAxisBindingDrag({
           event,
-          axis: axis as "x" | "y" | "z",
-          chainIndex: this.getSelectedChainIndex(),
+          axis: axis as "x" | "y",
+          pointIndex,
         });
+      },
+      onMacroPointCountChange: (value: number) => {
+        const count = clamp(Number(value), 1, 9);
+        this.state.macro.pointCount = count;
+        this.state.macro.selectedPointIndex = clamp(this.state.macro.selectedPointIndex, 0, count - 1);
+        this.state.macro.recentSelection = this.state.macro.recentSelection
+          .filter((i) => i < count)
+          .slice(0, 3);
+        if (this.state.macro.recentSelection.length === 0) {
+          this.state.macro.recentSelection = Array.from({ length: Math.min(3, count) }, (_, i) => i);
+        }
+        this.markUnsaved();
+        this.renderAll();
       },
       onGestureClick: () => {
         this.gestureManager.activate();
@@ -1008,7 +1077,9 @@ export class ModularSynthApp {
       chain.modules = chainPreset.modules as unknown as ModuleConfig[];
       chain.modulations = chainPreset.modulations as unknown as ModulationConnection[];
       chain.enabled = true;
-      this.state.macro.chains[this.getSelectedChainIndex()] = chainPreset.macro || createDefaultMacroChainState();
+      this.macroManager.ensureMacroState();
+      const macroPoint = chainPreset.macro?.points?.[this.getSelectedChainIndex()];
+      this.state.macro.points[this.getSelectedChainIndex()] = macroPoint || createDefaultMacroPointState();
     }
 
     this.selectedPresetId = presetId;
@@ -1157,7 +1228,7 @@ export class ModularSynthApp {
         global: result.preset.global,
         modules: result.preset.chains[0]?.modules || [],
         modulations: result.preset.chains[0]?.modulations || [],
-        macro: result.preset.macro?.chains?.[0],
+        macro: result.preset.macro?.points?.[0],
       };
       addUserPreset(presetId, presetData);
 
