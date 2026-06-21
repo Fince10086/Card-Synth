@@ -1,14 +1,57 @@
 /* 全局设计令牌：颜色、圆角、过渡时间都在这里统一定义，便于整站风格同步调整。 */
 :root {
   --ink: #2a241b;
+  --ink-rgb: 42, 36, 27;
+  --ink-tint-13: #e3e2e1;
+  --ink-tint-24: #d6d4d2;
+  --ink-tint-25: #d5d3d1;
+  --ink-tint-78: #7f786d;
+
   --muted: #726757;
+  --muted-rgb: 114, 103, 87;
+
   --source: #2f9f95;
+  --source-rgb: 47, 159, 149;
+  --source-tint-13: #dff2f0;
+  --source-tint-24: #cce8e5;
+  --source-tint-78: #60bfb6;
+
   --env: #c0a03e;
+  --env-rgb: 192, 160, 62;
+  --env-tint-13: #f7f2e1;
+  --env-tint-24: #f2ead0;
+  --env-tint-78: #e4cc7d;
+
   --input: #6f8f4e;
+  --input-rgb: 111, 143, 78;
+  --input-tint-13: #ecf1e7;
+  --input-tint-24: #dbe5d2;
+  --input-tint-78: #9dbb80;
+
   --fx: #ca5d48;
+  --fx-rgb: 202, 93, 72;
+  --fx-tint-13: #f8e7e4;
+  --fx-tint-24: #f2d5cf;
+  --fx-tint-78: #e49283;
+
   --modulation: #3d7fb8;
+  --modulation-rgb: 61, 127, 184;
+  --modulation-tint-13: #e7eff6;
+  --modulation-tint-24: #d2e2ee;
+  --modulation-tint-78: #6ea4cf;
+
   --disabled: #8a8a8a;
+  --disabled-rgb: 138, 138, 138;
+  --disabled-tint-13: #f0f0f0;
+  --disabled-tint-24: #e3e3e3;
+  --disabled-tint-78: #b5b5b5;
+
   --main: #4b0082;
+  --main-rgb: 75, 0, 130;
+  --main-tint-13: #f0e3fa;
+  --main-tint-24: #e2cbf2;
+  --main-tint-78: #8c4dbf;
+
   --transition: 180ms ease;
 
   /* z-index 层级系统 */
@@ -89,29 +132,49 @@ select {
 
 .module-card:focus-visible,
 .module-card.is-keyboard-active {
-  outline: 3px solid color-mix(in srgb, var(--accent, var(--ink)) 50%, transparent);
+  outline: 3px solid rgba(var(--accent-rgb, var(--ink-rgb)), 0.5);
   outline-offset: 2px;
 }
 
 /* 每种模块只通过 accent 变量切换颜色，不复制整套样式。 */
 .module-card[data-accent="source"] {
   --accent: var(--source);
+  --accent-rgb: var(--source-rgb);
+  --accent-tint-13: var(--source-tint-13);
+  --accent-tint-24: var(--source-tint-24);
+  --accent-tint-78: var(--source-tint-78);
 }
 
 .module-card[data-accent="env"] {
   --accent: var(--env);
+  --accent-rgb: var(--env-rgb);
+  --accent-tint-13: var(--env-tint-13);
+  --accent-tint-24: var(--env-tint-24);
+  --accent-tint-78: var(--env-tint-78);
 }
 
 .module-card[data-accent="input"] {
   --accent: var(--input);
+  --accent-rgb: var(--input-rgb);
+  --accent-tint-13: var(--input-tint-13);
+  --accent-tint-24: var(--input-tint-24);
+  --accent-tint-78: var(--input-tint-78);
 }
 
 .module-card[data-accent="fx"] {
   --accent: var(--fx);
+  --accent-rgb: var(--fx-rgb);
+  --accent-tint-13: var(--fx-tint-13);
+  --accent-tint-24: var(--fx-tint-24);
+  --accent-tint-78: var(--fx-tint-78);
 }
 
 .module-card[data-accent="modulation"] {
   --accent: var(--modulation);
+  --accent-rgb: var(--modulation-rgb);
+  --accent-tint-13: var(--modulation-tint-13);
+  --accent-tint-24: var(--modulation-tint-24);
+  --accent-tint-78: var(--modulation-tint-78);
 }
 
 .module-card--modulation {
@@ -214,7 +277,7 @@ select {
 }
 
 .add-module-card:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--ink) 50%, transparent);
+  outline: 3px solid rgba(var(--ink-rgb), 0.5);
   outline-offset: 2px;
 }
 
@@ -424,6 +487,10 @@ select {
 
 .module-card.disabled {
   --accent: var(--disabled);
+  --accent-rgb: var(--disabled-rgb);
+  --accent-tint-13: var(--disabled-tint-13);
+  --accent-tint-24: var(--disabled-tint-24);
+  --accent-tint-78: var(--disabled-tint-78);
 }
 
 .module-card.disabled .module-index {
@@ -551,11 +618,11 @@ select {
 }
 
 .control.mod-target-hover {
-  background: color-mix(in srgb, var(--modulation) 20%, transparent);
+  background: rgba(var(--modulation-rgb), 0.2);
 }
 
 .control.macro-target-hover {
-  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  background: rgba(var(--ink-rgb), 0.12);
 }
 
 .control-file {
@@ -615,8 +682,8 @@ select {
   border-radius: 999px;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--accent, var(--ink)) 78%, white) 0%,
-    color-mix(in srgb, var(--accent, var(--ink)) 78%, white) calc(var(--percent, 0.5) * 100%),
+    var(--accent-tint-78, var(--ink-tint-78)) 0%,
+    var(--accent-tint-78, var(--ink-tint-78)) calc(var(--percent, 0.5) * 100%),
     #dfe2ec calc(var(--percent, 0.5) * 100%)
   );
   outline: none;
@@ -633,8 +700,8 @@ select {
     90deg,
     #dfe2ec 0%,
     #dfe2ec var(--range-start),
-    color-mix(in srgb, var(--modulation) 78%, white) var(--range-start),
-    color-mix(in srgb, var(--modulation) 78%, white) var(--range-end),
+    var(--modulation-tint-78) var(--range-start),
+    var(--modulation-tint-78) var(--range-end),
     #dfe2ec var(--range-end),
     #dfe2ec 100%
   );
@@ -725,7 +792,7 @@ select {
 .readout-input {
   width: 48px;
   padding: 2px 4px;
-  border: 1px solid color-mix(in srgb, var(--accent, var(--ink)) 40%, transparent);
+  border: 1px solid rgba(var(--accent-rgb, var(--ink-rgb)), 0.4);
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.9);
   color: var(--ink);
@@ -738,7 +805,7 @@ select {
 
 .readout-input:focus {
   border-color: var(--accent, var(--ink));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, var(--ink)) 20%, transparent);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb, var(--ink-rgb)), 0.2);
 }
 
 .readout-input::-webkit-inner-spin-button,
@@ -805,8 +872,8 @@ select {
 }
 
 .pill-button.is-on {
-  background: color-mix(in srgb, var(--accent, var(--ink)) 13%, white);
-  border-color: color-mix(in srgb, var(--accent, var(--ink)) 24%, white);
+  background: var(--accent-tint-13, var(--ink-tint-13));
+  border-color: var(--accent-tint-24, var(--ink-tint-24));
 }
 
 .compact-block {
@@ -1127,6 +1194,10 @@ select {
 /* Main Card 特殊样式 */
 .module-card[data-main-card="true"] {
   --accent: var(--main);
+  --accent-rgb: var(--main-rgb);
+  --accent-tint-13: var(--main-tint-13);
+  --accent-tint-24: var(--main-tint-24);
+  --accent-tint-78: var(--main-tint-78);
 }
 
 .preset-select-wrapper {
@@ -1195,7 +1266,7 @@ select {
 }
 
 .macro-point.is-selected {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 25%, white);
+  box-shadow: 0 0 0 1px var(--ink-tint-25);
 }
 
 .macro-axis-row {

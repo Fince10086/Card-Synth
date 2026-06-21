@@ -206,8 +206,8 @@ export class MacroManager {
 
   getPointColor(pointIndex: number, opacityScale = 1): string {
     const opacity = (POINT_OPACITY[pointIndex] ?? 0.7) * opacityScale;
-    const percent = Math.round(clamp(opacity, 0, 1) * 100);
-    return `color-mix(in srgb, var(--ink) ${percent}%, transparent)`;
+    const alpha = clamp(opacity, 0, 1).toFixed(2);
+    return `rgba(42, 36, 27, ${alpha})`;
   }
 
   getMainCardViewModel(): MainCardViewModel {
