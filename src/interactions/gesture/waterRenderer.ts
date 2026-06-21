@@ -115,11 +115,13 @@ void main(){
 
   float slope = length(grad);
 
-  // Background UV: cover-fit the snapshot texture to the screen
+  // Background UV: cover-fit the snapshot texture to the screen.
+  // html2canvas captures the DOM with Y pointing down, matching WebGL's texture
+  // storage, but v_uv has Y pointing up. Flip v vertically when sampling.
   float screenAspect = u_resolution.x / max(u_resolution.y, 1.0);
   float bgAspect = u_bgRes.x / max(u_bgRes.y, 1.0);
   vec2 scale = vec2(max(screenAspect / bgAspect, 1.0), max(bgAspect / screenAspect, 1.0));
-  vec2 bgUV = (v_uv - 0.5) * scale + 0.5;
+  vec2 bgUV = (vec2(v_uv.x, 1.0 - v_uv.y) - 0.5) * scale + 0.5;
 
   float actualDisp = dispersion * dispFactor;
   vec2 rUV = bgUV - grad * refraction;

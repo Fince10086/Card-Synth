@@ -203,8 +203,11 @@ export class GestureManager {
       await this.recognizer.initialize();
       await this.recognizer.startCamera();
       this.active = true;
-      this.createOverlay();
-      await this.captureBackground();
+
+      // Capture the main UI snapshot BEFORE creating the gesture overlay
+      const snapshot = await this.captureMainUIsnapshot();
+
+      this.createOverlay(snapshot);
       this.recognizer.onResults = (results) => this.handleResults(results);
       this.recognizer.startDetection();
       document.addEventListener("keydown", this.onEsc);
@@ -221,11 +224,8 @@ export class GestureManager {
     }
   }
 
-  private async captureBackground(): Promise<void> {
-    if (!this.waterRenderer) return;
+  private async captureMainUIsnapshot(): Promise<HTMLCanvasElement | null> {
     try {
-      // Wait one frame to ensure any overlay styles are applied
-      await new Promise((resolve) => requestAnimationFrame(resolve));
       const snapshot = await html2canvas(document.body, {
         backgroundColor: null,
         scale: 1,
@@ -233,9 +233,10 @@ export class GestureManager {
         logging: false,
         imageTimeout: 0,
       });
-      this.waterRenderer.setBackground(snapshot);
+      return snapshot;
     } catch (err) {
       console.error("Failed to capture background for water effect:", err);
+      return null;
     }
   }
 
@@ -263,7 +264,7 @@ export class GestureManager {
     this.app.renderAll();
   }
 
-  createOverlay(): void {
+  createOverlay(snapshot: HTMLCanvasElement | null): void {
     this.overlay = document.createElement("div");
     this.overlay.className = "gesture-overlay";
 
@@ -281,6 +282,9 @@ export class GestureManager {
 
     try {
       this.waterRenderer = new WaterRenderer(this.waterCanvas);
+      if (snapshot) {
+        this.waterRenderer.setBackground(snapshot);
+      }
     } catch (err) {
       console.error("Water renderer initialization failed:", err);
       this.app.setStatus?.(`Water effect failed: ${(err as Error).message}`, "error");
@@ -392,9 +396,10 @@ export class GestureManager {
   }
 
   cameraToWaterUV(cx: number, cy: number): { x: number; y: number } {
-    // Mirror horizontally like the original water demo for selfie view.
+    // Mirror horizontally like the original water demo for selfie view,
+    // and flip vertically because MediaPipe y is top-down while WebGL v_uv is bottom-up.
     const x = 1 - cx;
-    const y = cy;
+    const y = 1 - cy;
     return { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
   }
 
