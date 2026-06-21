@@ -1285,7 +1285,7 @@ select {
   position: fixed;
   inset: 0;
   z-index: var(--z-overlay);
-  background: rgba(255, 255, 255, 0.9);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1298,12 +1298,19 @@ select {
   height: 100%;
 }
 
-.gesture-canvas-static {
+.gesture-canvas-webgl {
   z-index: var(--z-base);
+  background: #000;
+}
+
+.gesture-canvas-static {
+  z-index: calc(var(--z-base) + 1);
+  pointer-events: none;
 }
 
 .gesture-canvas-dynamic {
-  z-index: calc(var(--z-base) + 1);
+  z-index: calc(var(--z-base) + 2);
+  pointer-events: none;
 }
 
 .gesture-close-btn {

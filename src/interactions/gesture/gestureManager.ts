@@ -9,7 +9,9 @@
  */
 
 import { HandGestureRecognizer, type GestureResults } from "./handGestureRecognizer";
+import { WaterRenderer } from "./waterRenderer";
 import { clamp } from "../../utils/helpers";
+import html2canvas from "html2canvas";
 import type { Preset, MacroPointState } from "../../types";
 
 const MARGIN_RATIO = 0.1;
@@ -93,6 +95,8 @@ export class GestureManager {
   activating: boolean;
 
   overlay: HTMLDivElement | null;
+  waterCanvas: HTMLCanvasElement | null;
+  waterRenderer: WaterRenderer | null;
   canvas: HTMLCanvasElement | null;
   ctx: CanvasRenderingContext2D | null;
   staticCanvas: HTMLCanvasElement | null;
@@ -130,6 +134,8 @@ export class GestureManager {
     this.activating = false;
 
     this.overlay = null;
+    this.waterCanvas = null;
+    this.waterRenderer = null;
     this.canvas = null;
     this.ctx = null;
     this.staticCanvas = null;
@@ -198,6 +204,7 @@ export class GestureManager {
       await this.recognizer.startCamera();
       this.active = true;
       this.createOverlay();
+      await this.captureBackground();
       this.recognizer.onResults = (results) => this.handleResults(results);
       this.recognizer.startDetection();
       document.addEventListener("keydown", this.onEsc);
@@ -211,6 +218,24 @@ export class GestureManager {
       this.app.setStatus?.(`Gesture failed: ${(err as Error).message}`, "error");
     } finally {
       this.activating = false;
+    }
+  }
+
+  private async captureBackground(): Promise<void> {
+    if (!this.waterRenderer) return;
+    try {
+      // Wait one frame to ensure any overlay styles are applied
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const snapshot = await html2canvas(document.body, {
+        backgroundColor: null,
+        scale: 1,
+        useCORS: true,
+        logging: false,
+        imageTimeout: 0,
+      });
+      this.waterRenderer.setBackground(snapshot);
+    } catch (err) {
+      console.error("Failed to capture background for water effect:", err);
     }
   }
 
@@ -242,6 +267,10 @@ export class GestureManager {
     this.overlay = document.createElement("div");
     this.overlay.className = "gesture-overlay";
 
+    this.waterCanvas = document.createElement("canvas");
+    this.waterCanvas.className = "gesture-canvas gesture-canvas-webgl";
+    this.overlay.appendChild(this.waterCanvas);
+
     this.staticCanvas = document.createElement("canvas");
     this.staticCanvas.className = "gesture-canvas gesture-canvas-static";
     this.overlay.appendChild(this.staticCanvas);
@@ -249,6 +278,13 @@ export class GestureManager {
     this.canvas = document.createElement("canvas");
     this.canvas.className = "gesture-canvas gesture-canvas-dynamic";
     this.overlay.appendChild(this.canvas);
+
+    try {
+      this.waterRenderer = new WaterRenderer(this.waterCanvas);
+    } catch (err) {
+      console.error("Water renderer initialization failed:", err);
+      this.app.setStatus?.(`Water effect failed: ${(err as Error).message}`, "error");
+    }
 
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
@@ -283,9 +319,14 @@ export class GestureManager {
       cancelAnimationFrame(this.renderFrame);
       this.renderFrame = 0;
     }
+    if (this.waterRenderer) {
+      this.waterRenderer.dispose();
+      this.waterRenderer = null;
+    }
     if (this.overlay) {
       this.overlay.remove();
       this.overlay = null;
+      this.waterCanvas = null;
       this.canvas = null;
       this.ctx = null;
       this.staticCanvas = null;
@@ -297,6 +338,14 @@ export class GestureManager {
     const dpr = window.devicePixelRatio || 1;
     const w = window.innerWidth;
     const h = window.innerHeight;
+
+    if (this.waterCanvas) {
+      this.waterCanvas.width = w;
+      this.waterCanvas.height = h;
+      this.waterCanvas.style.width = `${w}px`;
+      this.waterCanvas.style.height = `${h}px`;
+      this.waterRenderer?.resize(w, h);
+    }
 
     if (this.staticCanvas) {
       this.staticCanvas.width = w * dpr;
@@ -340,6 +389,13 @@ export class GestureManager {
     const x = (1 - cx) * w * scale - offsetX;
     const y = cy * h * scale - offsetY;
     return { x, y };
+  }
+
+  cameraToWaterUV(cx: number, cy: number): { x: number; y: number } {
+    // Mirror horizontally like the original water demo for selfie view.
+    const x = 1 - cx;
+    const y = cy;
+    return { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
   }
 
   canvasToMacro(x: number, y: number): { x: number; y: number } {
@@ -392,6 +448,26 @@ export class GestureManager {
     this.pushDetectionFrame(smoothedLandmarks);
     this.lastGestures = parsed;
 
+    // Feed pinch positions to the water ripple renderer
+    const waterTips = confirmedPinches
+      .filter((p) => p.pinching)
+      .map((p) => {
+        const uv = this.cameraToWaterUV(p.x, p.y);
+        return { id: `pinch_${p.handIndex}`, x: uv.x, y: uv.y };
+      });
+    this.waterRenderer?.setTips(waterTips);
+
+    // Inject a continuous subtle ripple at the currently selected control point
+    const selectedPointIndex = this.app.getSelectedMacroPointIndex();
+    const selectedPos = this.getPointVisualPosition(selectedPointIndex);
+    const area = this.getControlArea();
+    const selectedUv = {
+      x: (selectedPos.x - area.x) / area.width,
+      y: 1 - (selectedPos.y - area.y) / area.height,
+    };
+    this.waterRenderer?.injectRipple(selectedUv.x, selectedUv.y, 0.008);
+
+    // Move the selected point with active pinches
     const activePinches = confirmedPinches.filter((p) => p.pinching);
     if (activePinches.length > 0) {
       const avg = activePinches.reduce(
@@ -403,7 +479,6 @@ export class GestureManager {
       );
       const avgPos = { x: avg.x / avg.count, y: avg.y / avg.count };
       const macro = this.canvasToMacro(avgPos.x, avgPos.y);
-      const selectedPointIndex = this.app.getSelectedMacroPointIndex();
       this.app.updateMacroPointFromGesture(selectedPointIndex, macro.x, macro.y);
     }
   }
@@ -420,6 +495,7 @@ export class GestureManager {
         return;
       }
       this.tickFps("render");
+      this.waterRenderer?.render();
       this.drawStaticLayer();
       this.draw(this.getInterpolatedLandmarks(now), this.lastGestures);
       this.renderFrame = requestAnimationFrame(frame);
