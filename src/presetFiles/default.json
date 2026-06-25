@@ -13,11 +13,12 @@
           "category": "source",
           "enabled": true,
           "volume": 0,
-          "pan": -0.07,
+          "pan": 0,
           "index": 5,
+          "label": "1-Violin",
           "options": {
             "playbackRate": 1,
-            "loop": true,
+            "loop": false,
             "reverse": false,
             "loopStart": 0,
             "loopEnd": 0,
@@ -33,7 +34,7 @@
           "options": {
             "decay": 3.2,
             "preDelay": 0.02,
-            "wet": 0.49
+            "wet": 0.5
           }
         }
       ],
@@ -48,15 +49,28 @@
           "category": "source",
           "enabled": true,
           "volume": 0,
-          "pan": 0,
+          "pan": -0.03,
           "index": 2,
+          "label": "2-Effects",
           "options": {
             "playbackRate": 1,
-            "loop": true,
+            "loop": false,
             "reverse": false,
             "loopStart": 0,
             "loopEnd": 0,
             "url": "/audio/2.mp3"
+          }
+        },
+        {
+          "id": "fx-0006",
+          "type": "Distortion",
+          "category": "effect",
+          "enabled": true,
+          "index": 6,
+          "options": {
+            "distortion": 0.01,
+            "oversample": "4x",
+            "wet": 0.25
           }
         }
       ],
@@ -73,9 +87,10 @@
           "volume": 0,
           "pan": 0,
           "index": 3,
+          "label": "3-Sampler",
           "options": {
             "playbackRate": 1,
-            "loop": true,
+            "loop": false,
             "reverse": false,
             "loopStart": 0,
             "loopEnd": 0,
@@ -93,16 +108,29 @@
           "type": "TrackPlayer",
           "category": "source",
           "enabled": true,
-          "volume": 0,
+          "volume": -0.1,
           "pan": 0,
           "index": 4,
+          "label": "4-Water",
           "options": {
             "playbackRate": 1,
-            "loop": true,
+            "loop": false,
             "reverse": false,
             "loopStart": 0,
             "loopEnd": 0,
             "url": "/audio/4.mp3"
+          }
+        },
+        {
+          "id": "fx-0007",
+          "type": "PingPongDelay",
+          "category": "effect",
+          "enabled": true,
+          "index": 7,
+          "options": {
+            "delayTime": 0.32,
+            "feedback": 0.24,
+            "wet": 0
           }
         }
       ],
@@ -111,11 +139,11 @@
   ],
   "macro": {
     "pointCount": 4,
-    "selectedPointIndex": 0,
+    "selectedPointIndex": 3,
     "recentSelection": [
-      0,
-      1,
-      2
+      3,
+      2,
+      1
     ],
     "points": [
       {
@@ -149,11 +177,33 @@
         }
       },
       {
-        "x": 0.3,
-        "y": 0.3,
+        "x": 0.5,
+        "y": 0,
         "bindings": {
-          "x": [],
-          "y": []
+          "x": [
+            {
+              "targetChainIndex": 1,
+              "targetModuleId": "src-0002",
+              "targetParamPath": "pan",
+              "min": -1,
+              "max": 1,
+              "step": 0.01,
+              "rangeStart": 0,
+              "rangeEnd": 1
+            }
+          ],
+          "y": [
+            {
+              "targetChainIndex": 1,
+              "targetModuleId": "fx-0006",
+              "targetParamPath": "options.distortion",
+              "min": 0,
+              "max": 1,
+              "step": 0.01,
+              "rangeStart": 0,
+              "rangeEnd": 0.49813814252336447
+            }
+          ]
         }
       },
       {
@@ -165,51 +215,33 @@
         }
       },
       {
-        "x": 0.5,
-        "y": 0.5,
+        "x": 0,
+        "y": 1,
         "bindings": {
-          "x": [],
-          "y": []
-        }
-      },
-      {
-        "x": 0.5,
-        "y": 0.5,
-        "bindings": {
-          "x": [],
-          "y": []
-        }
-      },
-      {
-        "x": 0.5,
-        "y": 0.5,
-        "bindings": {
-          "x": [],
-          "y": []
-        }
-      },
-      {
-        "x": 0.5,
-        "y": 0.5,
-        "bindings": {
-          "x": [],
-          "y": []
-        }
-      },
-      {
-        "x": 0.5,
-        "y": 0.5,
-        "bindings": {
-          "x": [],
-          "y": []
-        }
-      },
-      {
-        "x": 0.5,
-        "y": 0.5,
-        "bindings": {
-          "x": [],
-          "y": []
+          "x": [
+            {
+              "targetChainIndex": 3,
+              "targetModuleId": "fx-0007",
+              "targetParamPath": "options.wet",
+              "min": 0,
+              "max": 1,
+              "step": 0.01,
+              "rangeStart": 0,
+              "rangeEnd": 0.8066223714953271
+            }
+          ],
+          "y": [
+            {
+              "targetChainIndex": 3,
+              "targetModuleId": "src-0004",
+              "targetParamPath": "volume",
+              "min": -48,
+              "max": 6,
+              "step": 0.1,
+              "rangeStart": 0.5114632009345794,
+              "rangeEnd": 0.8869012850467289
+            }
+          ]
         }
       }
     ]
