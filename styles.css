@@ -1445,52 +1445,69 @@ select {
 }
 
 .transport-play-btn {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border: 1.5px solid var(--ink-tint-24);
-  border-radius: 50%;
-  background: var(--ink-tint-13);
-  color: var(--ink);
-  font-size: 16px;
-  cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, border-color 0.15s;
-  padding: 0;
+  min-height: 28px;
+  padding: 0 9px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.72rem;
   line-height: 1;
+  appearance: none;
+  border: 1px solid #e0e2eb;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #181d6b;
+  transition:
+    transform var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition),
+    background var(--transition);
+  flex-shrink: 0;
 }
 
 .transport-play-btn:hover {
-  background: var(--ink-tint-24);
-  border-color: var(--ink-tint-78);
+  border-color: #cad0de;
+}
+
+.transport-play-btn.is-playing {
+  background: var(--source-tint-13);
+  border-color: var(--source-tint-24);
 }
 
 .transport-progress {
   flex: 1;
-  height: 24px;
-  background: var(--ink-tint-13);
-  border-radius: 4px;
-  cursor: pointer;
   position: relative;
-  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2px 0 3px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  touch-action: none;
+  cursor: pointer;
 }
 
-.transport-progress-fill {
-  height: 100%;
-  background: var(--source);
-  border-radius: 4px;
-  transition: width 0.1s linear;
-  min-width: 2px;
+.transport-progress-inner {
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--source-tint-78) 0%,
+    var(--source-tint-78) var(--progress-pct, 0%),
+    #dfe2ec var(--progress-pct, 0%)
+  );
+  outline: none;
 }
 
 .transport-time {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 10px;
+  top: -14px;
+  right: 0;
+  font-size: 9px;
   font-family: "IBM Plex Mono", monospace;
   color: var(--ink-tint-78);
   pointer-events: none;

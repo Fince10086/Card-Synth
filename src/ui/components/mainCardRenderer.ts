@@ -361,8 +361,11 @@ export function renderMainCard({
   const playBtn = document.createElement("button");
   playBtn.type = "button";
   playBtn.className = "transport-play-btn";
+  if (transport.isPlaying) {
+    playBtn.classList.add("is-playing");
+  }
   playBtn.setAttribute("tabindex", "-1");
-  playBtn.textContent = transport.isPlaying ? "⏸" : "▶";
+  playBtn.textContent = transport.isPlaying ? t("Pause") : t("Play");
   playBtn.addEventListener("click", () => {
     onPlayClick?.();
   });
@@ -372,11 +375,11 @@ export function renderMainCard({
   progressBar.className = "transport-progress";
   progressBar.setAttribute("data-transport-progress", "true");
 
-  const progressFill = document.createElement("div");
-  progressFill.className = "transport-progress-fill";
+  const progressInner = document.createElement("div");
+  progressInner.className = "transport-progress-inner";
   const pct = transport.duration > 0 ? (transport.progress / transport.duration) * 100 : 0;
-  progressFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
-  progressBar.append(progressFill);
+  progressInner.style.setProperty("--progress-pct", `${Math.min(100, Math.max(0, pct))}%`);
+  progressBar.append(progressInner);
 
   const formatTime = (s: number): string => {
     const m = Math.floor(s / 60);
@@ -597,13 +600,14 @@ export function updateMainCard(card: ModuleCardElement | null, {
   // Update transport controls
   const playBtn = card.querySelector(".transport-play-btn") as HTMLButtonElement | null;
   if (playBtn) {
-    playBtn.textContent = transport.isPlaying ? "⏸" : "▶";
+    playBtn.textContent = transport.isPlaying ? t("Pause") : t("Play");
+    playBtn.classList.toggle("is-playing", transport.isPlaying);
   }
 
-  const progressFill = card.querySelector(".transport-progress-fill") as HTMLElement | null;
-  if (progressFill) {
+  const progressInner = card.querySelector(".transport-progress-inner") as HTMLElement | null;
+  if (progressInner) {
     const pct = transport.duration > 0 ? (transport.progress / transport.duration) * 100 : 0;
-    progressFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+    progressInner.style.setProperty("--progress-pct", `${Math.min(100, Math.max(0, pct))}%`);
   }
 
   const formatTime = (s: number): string => {

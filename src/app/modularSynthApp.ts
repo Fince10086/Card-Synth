@@ -364,7 +364,29 @@ export class ModularSynthApp {
       this.transportProgress = this.engine.getProgress();
       this.transportDuration = this.engine.getDuration();
       this.isPlaying = this.engine.isTransportPlaying();
-      this.updateMainCardContent();
+
+      const formatTime = (s: number): string => {
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        return `${m}:${sec.toString().padStart(2, "0")}`;
+      };
+
+      const playBtn = document.querySelector(".transport-play-btn") as HTMLButtonElement | null;
+      if (playBtn) {
+        playBtn.textContent = this.isPlaying ? t("Pause") : t("Play");
+        playBtn.classList.toggle("is-playing", this.isPlaying);
+      }
+
+      const progressInner = document.querySelector(".transport-progress-inner") as HTMLElement | null;
+      if (progressInner) {
+        const pct = this.transportDuration > 0 ? (this.transportProgress / this.transportDuration) * 100 : 0;
+        progressInner.style.setProperty("--progress-pct", `${Math.min(100, Math.max(0, pct))}%`);
+      }
+
+      const timeReadout = document.querySelector(".transport-time") as HTMLElement | null;
+      if (timeReadout) {
+        timeReadout.textContent = `${formatTime(this.transportProgress)} / ${formatTime(this.transportDuration)}`;
+      }
     });
 
     this.modulationManager.bindEvents();
