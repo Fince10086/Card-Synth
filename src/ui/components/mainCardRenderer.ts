@@ -228,102 +228,16 @@ export function renderMainCard({
 
   controls.append(presetSelectWrapper);
 
-  // AI 音色生成区域
-  const aiWrapper = document.createElement("div");
-  aiWrapper.className = "control";
-
-  const aiLabel = document.createElement("div");
-  aiLabel.className = "control-label";
-  const aiLabelStrong = document.createElement("strong");
-  aiLabelStrong.textContent = t("AI Timbre");
-  aiLabel.append(aiLabelStrong);
-  aiWrapper.append(aiLabel);
-
-  const aiInputRow = document.createElement("div");
-  aiInputRow.className = "file-control-row";
-
-  const aiInput = document.createElement("input");
-  aiInput.type = "text";
-  aiInput.className = "file-chip";
-  aiInput.placeholder = t("Describe the timbre you want...");
-  const isGenerating = aiPhase !== 'idle' && aiPhase !== undefined;
-  aiInput.disabled = isGenerating;
-  aiInput.style.flex = "1";
-  aiInput.style.minWidth = "0";
-  aiInputRow.append(aiInput);
-
-  const aiGenerateBtn = document.createElement("button");
-  aiGenerateBtn.type = "button";
-  aiGenerateBtn.className = "pill-button file-action";
-  aiGenerateBtn.style.setProperty("--accent", "var(--main)");
-
-  if (aiPhase === 'reasoning') {
-    aiGenerateBtn.textContent = t("Thinking...");
-  } else if (aiPhase === 'generating') {
-    aiGenerateBtn.textContent = t("Generating...");
-  } else {
-    aiGenerateBtn.textContent = t("Generate");
-  }
-
-  aiGenerateBtn.disabled = isGenerating;
-  aiGenerateBtn.addEventListener("click", () => {
-    const desc = aiInput.value.trim();
-    if (desc && onAiGenerate) {
-      onAiGenerate(desc);
-    }
-  });
-  aiInputRow.append(aiGenerateBtn);
-  aiWrapper.append(aiInputRow);
-
-  const reasoningBox = document.createElement("div");
-  reasoningBox.className = "ai-reasoning-box";
-
-  const reasoningLines = document.createElement("div");
-  reasoningLines.className = "ai-reasoning-lines";
-
-  if (aiReasoning) {
-    const lines = aiReasoning
-      .split("\n")
-      .filter((line) => line.trim())
-      .slice(-3);
-
-    lines.forEach((line) => {
-      const lineEl = document.createElement("div");
-      lineEl.className = "ai-reasoning-line";
-      lineEl.textContent = line;
-      reasoningLines.append(lineEl);
-    });
-  }
-
-  reasoningBox.append(reasoningLines);
-  aiWrapper.append(reasoningBox);
-
-  if (aiPhase === "reasoning") {
-    if (!aiReasoning) {
-      requestAnimationFrame(() => {
-        reasoningBox.classList.add("is-visible");
-      });
-    } else {
-      reasoningBox.classList.add("is-visible");
-    }
-  } else {
-    reasoningBox.classList.remove("is-visible");
-  }
-
-  controls.append(aiWrapper);
-
   const buttonGroups = document.createElement("div");
   buttonGroups.className = "preset-buttons";
 
   const rows = [
     [{ key: "Import Timbre", handler: () => onImportClick?.() }],
     [
-      { key: "Export Current", handler: () => onExportCurrentClick?.() },
-      { key: "Export All", handler: () => onExportAllClick?.() },
+      { key: "Export", handler: () => onExportAllClick?.() },
     ],
     [
       { key: "Reset Preset", handler: () => onResetClick?.() },
-      { key: "Random Params", handler: () => onRandomClick?.() },
     ],
   ];
 
@@ -347,13 +261,6 @@ export function renderMainCard({
   // Transport controls
   const transportWrapper = document.createElement("div");
   transportWrapper.className = "transport-container";
-
-  const transportLabel = document.createElement("div");
-  transportLabel.className = "control-label";
-  const transportLabelStrong = document.createElement("strong");
-  transportLabelStrong.textContent = t("Playback");
-  transportLabel.append(transportLabelStrong);
-  transportWrapper.append(transportLabel);
 
   const transportRow = document.createElement("div");
   transportRow.className = "transport-row";

@@ -127,7 +127,7 @@ export const zhTranslations: Record<string, string> = {
   'Delete preset "{{name}}"?': '删除预设 "{{name}}"？',
   "Import Timbre": "导入音色",
   "Export Current": "导出当前",
-  "Export All": "导出全部",
+  "Export": "导出",
   "Reset Preset": "重置预设",
   "Random Params": "随机参数",
   "Master": "主音量",
