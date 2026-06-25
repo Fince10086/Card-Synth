@@ -1378,7 +1378,6 @@ select {
 
 .gesture-canvas-dynamic {
   z-index: calc(var(--z-base) + 2);
-  pointer-events: none;
 }
 
 .gesture-transport-bar {

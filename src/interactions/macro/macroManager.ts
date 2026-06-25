@@ -210,9 +210,9 @@ export class MacroManager {
   }
 
   getMainCardViewModel(): MainCardViewModel {
-    const pointCount = clamp(this.app.state.macro.pointCount, 1, this.app.state.macro.points.length);
+    const pointCount = 4;
     const selectedPointIndex = clamp(this.app.state.macro.selectedPointIndex, 0, pointCount - 1);
-    const recentSelection = this.app.state.macro.recentSelection.slice(0, 3);
+    const recentSelection = this.app.state.macro.recentSelection.slice(0, 4);
     const recentRankMap = new Map(recentSelection.map((index, rank) => [index, rank]));
 
     return {
@@ -222,11 +222,10 @@ export class MacroManager {
       points: Array.from({ length: pointCount }, (_, pointIndex) => {
         const point = this.getMacroPoint(pointIndex);
         const rank = recentRankMap.get(pointIndex);
-        const recentRank = rank === undefined ? -1 : rank;
-        const visible = recentRank >= 0;
+        const recentRank = rank === undefined ? 3 : rank;
         return {
           pointIndex,
-          visible,
+          visible: true,
           selected: pointIndex === selectedPointIndex,
           recentRank,
           x: point.x,
@@ -415,7 +414,7 @@ export class MacroManager {
   }): void {
     const { event, pointIndex, padElement } = options;
 
-    if (pointIndex < 0 || pointIndex >= this.app.state.macro.pointCount) {
+    if (pointIndex < 0 || pointIndex >= 4) {
       return;
     }
 

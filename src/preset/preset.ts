@@ -15,8 +15,8 @@ import {
 import type { ModuleConfig, Preset, ChainState, MacroPointState, MacroState, GlobalState, ModulationConnection } from "../types";
 
 const CHAIN_COUNT = 4;
-const MACRO_POINT_COUNT = 9;
-const DEFAULT_MACRO_POINT_COUNT = 3;
+const MACRO_POINT_COUNT = 4;
+const DEFAULT_MACRO_POINT_COUNT = 4;
 const DEFAULT_GLOBAL: GlobalState = { volume: -8 };
 const MACRO_POINT_DEFAULT = Object.freeze({ x: 0.5, y: 0.5 });
 const MACRO_EPSILON = 1e-6;
@@ -143,7 +143,7 @@ export function createDefaultMacroState(): MacroState {
   return {
     pointCount: DEFAULT_MACRO_POINT_COUNT,
     selectedPointIndex: 0,
-    recentSelection: [0, 1, 2],
+    recentSelection: [0, 1, 2, 3],
     points: Array.from({ length: MACRO_POINT_COUNT }, () => createDefaultMacroPointState()),
   };
 }

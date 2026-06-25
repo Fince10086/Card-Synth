@@ -55,7 +55,6 @@ interface RenderMainCardOptions {
   onMasterVolumeChange?: (value: number) => void;
   onMacroPointPointerDown?: (event: PointerEvent, pointIndex: number, padElement: HTMLElement) => void;
   onMacroAxisPointerDown?: (event: PointerEvent, axis: string, pointIndex: number) => void;
-  onMacroPointCountChange?: (value: number) => void;
   onGestureClick?: () => void;
   onDeleteUserPreset?: (id: string) => void;
   onLanguageChange?: (lang: Language) => void;
@@ -76,7 +75,6 @@ interface UpdateMainCardOptions {
   macro: MacroViewModel;
   onMacroPointPointerDown?: (event: PointerEvent, pointIndex: number, padElement: HTMLElement) => void;
   onMacroAxisPointerDown?: (event: PointerEvent, axis: string, pointIndex: number) => void;
-  onMacroPointCountChange?: (value: number) => void;
 }
 
 interface RenderMainCardContentOptions {
@@ -112,7 +110,6 @@ export function renderMainCard({
   onMasterVolumeChange,
   onMacroPointPointerDown,
   onMacroAxisPointerDown,
-  onMacroPointCountChange,
   onGestureClick,
   onDeleteUserPreset,
   onLanguageChange,
@@ -349,49 +346,10 @@ export function renderMainCard({
   macroHeader.append(macroHeaderStrong);
   macroContainer.append(macroHeader);
 
-  const pointCountRow = document.createElement("label");
-  pointCountRow.className = "control control-slider macro-point-count-row";
-
-  const pointCountLabel = document.createElement("div");
-  pointCountLabel.className = "control-label";
-  const pointCountStrong = document.createElement("strong");
-  pointCountStrong.textContent = t("Points");
-  const pointCountReadout = document.createElement("span");
-  pointCountReadout.className = "control-readout";
-  pointCountReadout.textContent = String(macro.pointCount);
-  const pointCountValueGroup = document.createElement("span");
-  pointCountValueGroup.className = "value-group";
-  pointCountValueGroup.append(pointCountReadout);
-  pointCountLabel.append(pointCountStrong, pointCountValueGroup);
-
-  const pointCountShell = document.createElement("div");
-  pointCountShell.className = "slider-shell";
-  pointCountShell.style.setProperty("--percent", String((macro.pointCount - 1) / 8));
-
-  const pointCountSlider = document.createElement("input");
-  pointCountSlider.type = "range";
-  pointCountSlider.className = "slider-input";
-  pointCountSlider.min = "1";
-  pointCountSlider.max = "9";
-  pointCountSlider.step = "1";
-  pointCountSlider.value = String(macro.pointCount);
-  pointCountSlider.setAttribute("tabindex", "-1");
-  pointCountSlider.addEventListener("input", (e) => {
-    const value = Number((e.target as HTMLInputElement).value);
-    pointCountReadout.textContent = String(value);
-    pointCountShell.style.setProperty("--percent", String((value - 1) / 8));
-    onMacroPointCountChange?.(value);
-  });
-
-  pointCountShell.append(pointCountSlider);
-  pointCountRow.append(pointCountLabel, pointCountShell);
-  macroContainer.append(pointCountRow);
-
   const macroPad = document.createElement("div");
   macroPad.className = "macro-pad";
 
-  const visiblePoints = (macro?.points || []).filter((point) => point?.visible);
-  visiblePoints.forEach((point) => {
+  (macro?.points || []).forEach((point) => {
     const macroPoint = document.createElement("button");
     macroPoint.type = "button";
     macroPoint.className = "macro-point";
@@ -480,7 +438,6 @@ export function updateMainCard(card: ModuleCardElement | null, {
   macro,
   onMacroPointPointerDown,
   onMacroAxisPointerDown,
-  onMacroPointCountChange,
 }: UpdateMainCardOptions): void {
   if (!card) return;
 
@@ -584,22 +541,6 @@ export function updateMainCard(card: ModuleCardElement | null, {
     old.replaceWith(button);
   });
 
-  // Update point count slider
-  const pointCountRow = card.querySelector(".macro-point-count-row");
-  if (pointCountRow) {
-    const pointCountSlider = pointCountRow.querySelector(".slider-input") as HTMLInputElement | null;
-    const pointCountReadout = pointCountRow.querySelector(".control-readout");
-    const pointCountShell = pointCountRow.querySelector(".slider-shell");
-    if (pointCountSlider) {
-      pointCountSlider.value = String(macro?.pointCount ?? 3);
-    }
-    if (pointCountReadout) {
-      pointCountReadout.textContent = String(macro?.pointCount ?? 3);
-    }
-    if (pointCountShell) {
-      (pointCountShell as HTMLElement).style.setProperty("--percent", String(((macro?.pointCount ?? 3) - 1) / 8));
-    }
-  }
 }
 
 export function renderMainCardContent({

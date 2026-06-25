@@ -228,7 +228,7 @@ export class ModularSynthApp {
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
         return;
       }
-      if (e.key >= "1" && e.key <= "9") {
+      if (e.key >= "1" && e.key <= "4") {
         const index = Number(e.key) - 1;
         if (index < this.state.macro.pointCount) {
           this.selectMacroPoint(index);
@@ -238,7 +238,7 @@ export class ModularSynthApp {
   }
 
   selectMacroPoint(index: number): void {
-    const pointCount = clamp(this.state.macro.pointCount, 1, 9);
+    const pointCount = 4;
     const safeIndex = clamp(index, 0, pointCount - 1);
     this.state.macro.selectedPointIndex = safeIndex;
     const recent = [safeIndex, ...this.state.macro.recentSelection.filter((i) => i !== safeIndex)];
@@ -247,12 +247,20 @@ export class ModularSynthApp {
     this.renderAll();
   }
 
+  setSelectedMacroPointIndex(index: number): void {
+    const pointCount = 4;
+    const safeIndex = clamp(index, 0, pointCount - 1);
+    this.state.macro.selectedPointIndex = safeIndex;
+    const recent = [safeIndex, ...this.state.macro.recentSelection.filter((i) => i !== safeIndex)];
+    this.state.macro.recentSelection = recent.slice(0, 4);
+  }
+
   getMacroPoint(pointIndex: number): MacroPointState {
     return this.macroManager.getMacroPoint(pointIndex) as unknown as MacroPointState;
   }
 
   getMacroPointCount(): number {
-    return clamp(this.state.macro.pointCount, 1, 9);
+    return 4;
   }
 
   getSelectedMacroPointIndex(): number {
@@ -726,19 +734,6 @@ export class ModularSynthApp {
           axis: axis as "x" | "y",
           pointIndex,
         });
-      },
-      onMacroPointCountChange: (value: number) => {
-        const count = clamp(Number(value), 1, 9);
-        this.state.macro.pointCount = count;
-        this.state.macro.selectedPointIndex = clamp(this.state.macro.selectedPointIndex, 0, count - 1);
-        this.state.macro.recentSelection = this.state.macro.recentSelection
-          .filter((i) => i < count)
-          .slice(0, 3);
-        if (this.state.macro.recentSelection.length === 0) {
-          this.state.macro.recentSelection = Array.from({ length: Math.min(3, count) }, (_, i) => i);
-        }
-        this.markUnsaved();
-        this.renderAll();
       },
       onGestureClick: () => {
         this.gestureManager.activate(

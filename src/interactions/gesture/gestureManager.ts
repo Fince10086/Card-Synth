@@ -108,6 +108,8 @@ export class GestureManager {
   playBtn: HTMLButtonElement | null;
   getDuration: (() => number) | null;
 
+  pointerDrag: { active: boolean; pointIndex: number; pointerId: number } | null;
+
   smoothedLandmarks: HandLandmarks[];
   smoothAlpha: number;
   lastLandmarks: HandLandmarks[];
@@ -149,6 +151,7 @@ export class GestureManager {
     this.transportBarFill = null;
     this.playBtn = null;
     this.getDuration = null;
+    this.pointerDrag = null;
 
     this.smoothedLandmarks = [];
     this.smoothAlpha = 0.4;
@@ -184,7 +187,7 @@ export class GestureManager {
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
         return;
       }
-      if (e.key >= "1" && e.key <= "9") {
+      if (e.key >= "1" && e.key <= "4") {
         const index = Number(e.key) - 1;
         if (index < this.app.getMacroPointCount()) {
           this.app.setSelectedMacroPointIndex(index);
@@ -319,6 +322,13 @@ export class GestureManager {
     });
     this.overlay.appendChild(this.playBtn);
 
+    // Bind pointer events for macro point interaction
+    if (this.canvas) {
+      this.canvas.addEventListener("pointerdown", this.onCanvasPointerDown);
+      this.canvas.addEventListener("pointermove", this.onCanvasPointerMove);
+      this.canvas.addEventListener("pointerup", this.onCanvasPointerUp);
+    }
+
     document.body.appendChild(this.overlay);
 
     this.onResize = () => this.resizeCanvas();
@@ -344,6 +354,11 @@ export class GestureManager {
     if (this.waterRenderer) {
       this.waterRenderer.dispose();
       this.waterRenderer = null;
+    }
+    if (this.canvas) {
+      this.canvas.removeEventListener("pointerdown", this.onCanvasPointerDown);
+      this.canvas.removeEventListener("pointermove", this.onCanvasPointerMove);
+      this.canvas.removeEventListener("pointerup", this.onCanvasPointerUp);
     }
     if (this.overlay) {
       this.overlay.remove();
@@ -642,18 +657,18 @@ export class GestureManager {
 
   updateControlPointVisuals(): void {
     const viewModel = this.app.macroManager.getMainCardViewModel();
-    const recentRankMap = new Map(viewModel.recentSelection.map((index, rank) => [index, rank]));
-    const pointCount = viewModel.pointCount;
+    const pointCount = 4;
 
     const newVisuals: ControlPointVisual[] = [];
     for (let pointIndex = 0; pointIndex < pointCount; pointIndex++) {
-      const rank = recentRankMap.get(pointIndex);
-      if (rank === undefined) continue;
+      const vmPoint = viewModel.points[pointIndex];
+      if (!vmPoint || !vmPoint.visible) continue;
 
       const targetPos = this.getPointVisualPosition(pointIndex);
       const isSelected = pointIndex === viewModel.selectedPointIndex;
+      const rank = vmPoint.recentRank;
       const baseScale = rank === 0 ? 1.2 : rank === 1 ? 0.95 : 0.75;
-      const opacity = rank === 0 ? 1 : rank === 1 ? 0.6 : 0.3;
+      const opacity = rank <= 1 ? 1 : rank === 2 ? 0.6 : 0.3;
       const targetRadius = BASE_RADIUS * baseScale * (isSelected ? 1.25 : 1);
       const rangeRadius = BASE_RADIUS * CONTROL_RANGE_MULTIPLIER * baseScale;
 
@@ -774,6 +789,55 @@ export class GestureManager {
       ctx.fill();
     });
   }
+
+  findHitControlPoint(canvasX: number, canvasY: number): number {
+    for (const visual of this.controlPointVisuals) {
+      const dx = canvasX - visual.x;
+      const dy = canvasY - visual.y;
+      if (dx * dx + dy * dy < visual.rangeRadius * visual.rangeRadius) {
+        return visual.pointIndex;
+      }
+    }
+    return -1;
+  }
+
+  onCanvasPointerDown = (event: PointerEvent): void => {
+    if (!this.canvas) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const hitIndex = this.findHitControlPoint(x, y);
+    if (hitIndex >= 0) {
+      event.preventDefault();
+      this.canvas.setPointerCapture(event.pointerId);
+      this.app.setSelectedMacroPointIndex(hitIndex);
+      this.app.renderAll();
+      this.pointerDrag = { active: true, pointIndex: hitIndex, pointerId: event.pointerId };
+    }
+  };
+
+  onCanvasPointerMove = (event: PointerEvent): void => {
+    if (!this.pointerDrag?.active || event.pointerId !== this.pointerDrag.pointerId) return;
+    if (!this.canvas) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const macro = this.canvasToMacro(x, y);
+    const point = this.app.getMacroPoint(this.pointerDrag.pointIndex);
+    if (Math.abs(point.x - macro.x) <= 1e-4 && Math.abs(point.y - macro.y) <= 1e-4) return;
+    point.x = macro.x;
+    point.y = macro.y;
+    this.app.macroManager.applyMappingsForPoint(this.pointerDrag.pointIndex, false);
+  };
+
+  onCanvasPointerUp = (event: PointerEvent): void => {
+    if (!this.pointerDrag?.active) return;
+    if (event.pointerId !== this.pointerDrag.pointerId) return;
+    this.canvas?.releasePointerCapture?.(event.pointerId);
+    this.app.markUnsaved();
+    this.app.renderAll();
+    this.pointerDrag = null;
+  };
 
   updateTransportUI(): void {
     const playing = Tone.Transport.state === "started";
