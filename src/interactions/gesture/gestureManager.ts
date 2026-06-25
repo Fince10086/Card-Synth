@@ -107,6 +107,8 @@ export class GestureManager {
   transportBarFill: HTMLElement | null;
   playBtn: HTMLButtonElement | null;
   getDuration: (() => number) | null;
+  getChain3Level: (() => number) | null;
+  private _rippleFrameCounter: number = 0;
 
   pointerDrag: { active: boolean; pointIndex: number; pointerId: number } | null;
 
@@ -151,6 +153,7 @@ export class GestureManager {
     this.transportBarFill = null;
     this.playBtn = null;
     this.getDuration = null;
+    this.getChain3Level = null;
     this.pointerDrag = null;
 
     this.smoothedLandmarks = [];
@@ -207,10 +210,11 @@ export class GestureManager {
     this.onResize = null;
   }
 
-  async activate(analyser?: { getValue(): Float32Array }, getDuration?: () => number): Promise<void> {
+  async activate(analyser?: { getValue(): Float32Array }, getDuration?: () => number, getChain3Level?: () => number): Promise<void> {
     if (this.active || this.activating) return;
     this.activating = true;
     this.getDuration = getDuration ?? null;
+    this.getChain3Level = getChain3Level ?? null;
     try {
       await this.recognizer.initialize();
       await this.recognizer.startCamera();
@@ -534,6 +538,23 @@ export class GestureManager {
       }
 
       this.waterRenderer?.render();
+
+      // Inject random ripples based on Chain 3 (Water) audio level (every 5 frames)
+      if (this._rippleFrameCounter % 10 === 0) {
+        const level = this.getChain3Level?.() ?? 0;
+        if (level > -48) {
+          const strength = clamp((level + 48) / 48, 0, 1) * 0.12;
+          const count = Math.floor(strength * 5) + 1;
+          for (let i = 0; i < count; i++) {
+            this.waterRenderer?.injectRipple(
+              Math.random(),
+              Math.random(),
+              strength * (0.7 + Math.random() * 0.6)
+            );
+          }
+        }
+      }
+      this._rippleFrameCounter += 1;
 
       // Update transport bar and play button
       this.updateTransportUI();

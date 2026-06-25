@@ -126,6 +126,18 @@ export class AudioEngine {
     return map ? map.get(moduleId) || null : null;
   }
 
+  getChainSourceLevel(chainIndex: number): number {
+    const map = this.getChainRuntimeMap(chainIndex);
+    if (!map) return 0;
+    for (const [, runtime] of map) {
+      const rt = runtime as Record<string, unknown>;
+      if (rt.category === "source" && typeof rt.getLevel === "function") {
+        return (rt.getLevel as () => number)();
+      }
+    }
+    return 0;
+  }
+
   disposeRuntimeMap(runtimeMap: Map<string, Record<string, unknown>> | null): void {
     if (!runtimeMap) {
       return;

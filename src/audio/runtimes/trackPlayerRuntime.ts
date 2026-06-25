@@ -7,6 +7,7 @@ export interface TrackPlayerRuntime {
   player: Tone.Player | null;
   gainNode: Tone.Gain;
   panNode: Tone.Panner;
+  meter: Tone.Meter;
   type: string;
   category: string;
   moduleState: ModuleConfig;
@@ -17,6 +18,7 @@ export interface TrackPlayerRuntime {
   apply(nextModule: ModuleConfig): void;
   dispose(): void;
   getModulationOutput(voiceIndex: number): ToneAudioNode | null;
+  getLevel(): number;
 }
 
 export function createTrackPlayerRuntime(
@@ -31,9 +33,11 @@ export function createTrackPlayerRuntime(
       ? Tone.dbToGain((moduleState.volume as number) ?? -8)
       : 0
   );
+  const meter = new Tone.Meter();
   const panNode = new Tone.Panner((moduleState.pan as number) ?? 0);
 
-  gainNode.connect(panNode);
+  gainNode.connect(meter);
+  meter.connect(panNode);
 
   let player: Tone.Player | null = null;
 
@@ -56,13 +60,12 @@ export function createTrackPlayerRuntime(
 
     player.connect(gainNode);
 
-    // If already loaded (e.g. from cache), sync and schedule immediately
     if (player.loaded) {
       player.sync().start(0);
       resolveLoaded();
     }
   } catch {
-    resolveLoaded(); // Resolve even on error to avoid blocking
+    resolveLoaded();
   }
 
   (moduleState.options as Record<string, unknown>).url = url;
@@ -71,6 +74,7 @@ export function createTrackPlayerRuntime(
     player,
     gainNode,
     panNode,
+    meter,
     type: module.type as string,
     category: "source",
     node: panNode,
@@ -111,11 +115,16 @@ export function createTrackPlayerRuntime(
       return gainNode;
     },
 
+    getLevel(): number {
+      return meter.getValue() as number;
+    },
+
     dispose(): void {
       if (player) {
         player.dispose();
         player = null;
       }
+      meter.dispose();
       gainNode.dispose();
       panNode.dispose();
     },

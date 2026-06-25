@@ -58,7 +58,7 @@ export interface DragManager {
 
 // Gesture manager interface
 export interface GestureManager {
-  activate(analyser?: { getValue(): Float32Array }, getDuration?: () => number): void;
+  activate(analyser?: { getValue(): Float32Array }, getDuration?: () => number, getChain3Level?: () => number): void;
 }
 
 // Source output monitor
