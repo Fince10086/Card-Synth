@@ -34,6 +34,15 @@ export class SpectrogramRenderer {
     this.canvas.width = this.width;
     this.canvas.height = this.height;
     this.imageData = this.ctx.createImageData(this.width, this.height);
+    // Pre-fill with dark blue background
+    const data = this.imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 8;
+      data[i + 1] = 16;
+      data[i + 2] = 40;
+      data[i + 3] = 255;
+    }
+    this.ctx.putImageData(this.imageData, 0, 0);
   }
 
   render(): void {
@@ -41,6 +50,13 @@ export class SpectrogramRenderer {
 
     if (this.width !== this.imageData.width || this.height !== this.imageData.height) {
       this.imageData = this.ctx.createImageData(this.width, this.height);
+      const data = this.imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = 8;
+        data[i + 1] = 16;
+        data[i + 2] = 40;
+        data[i + 3] = 255;
+      }
     }
 
     const freqData = this.analyser.getValue();
@@ -86,7 +102,7 @@ export class SpectrogramRenderer {
   }
 
   private amplitudeToColor(amp: number): [number, number, number] {
-    if (amp <= 0.01) return [2, 2, 12];
+    if (amp <= 0.01) return [8, 16, 40];
     if (amp <= 0.15) {
       const t = (amp - 0.01) / 0.14;
       return [0, Math.round(20 + 40 * t), Math.round(60 + 195 * t)];

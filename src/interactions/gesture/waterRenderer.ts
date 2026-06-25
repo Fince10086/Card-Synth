@@ -106,9 +106,9 @@ void main(){
   float refraction = 0.035;
   float dispersion = 0.003;
   vec3 overlay = vec3(0.0, 0.14, 0.22);
-  vec3 tint = vec3(1.0, 0.995, 0.985);
-  vec3 peakTint = vec3(1.0, 1.0, 1.0);
-  float specInt = 0.42;
+  vec3 tint = vec3(0.88, 0.94, 1.0);
+  vec3 peakTint = vec3(0.25, 0.6, 1.0);
+  float specInt = 0.12;
   float shininess = 36.0;
   float vignette = 0.35;
   float dispFactor = smoothstep(0.0, 0.35, length(grad));
