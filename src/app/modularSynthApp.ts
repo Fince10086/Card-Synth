@@ -741,7 +741,7 @@ export class ModularSynthApp {
         this.renderAll();
       },
       onGestureClick: () => {
-        this.gestureManager.activate();
+        this.gestureManager.activate(this.engine.getSpectrumAnalyser() as unknown as { getValue(): Float32Array });
       },
       onDeleteUserPreset: (id: string) => {
         removeUserPreset(id);

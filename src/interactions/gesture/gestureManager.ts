@@ -10,8 +10,8 @@
 
 import { HandGestureRecognizer, type GestureResults } from "./handGestureRecognizer";
 import { WaterRenderer } from "./waterRenderer";
+import { SpectrogramRenderer } from "./spectrogramRenderer";
 import { clamp } from "../../utils/helpers";
-import html2canvas from "html2canvas";
 import type { Preset, MacroPointState } from "../../types";
 
 const MARGIN_RATIO = 0.1;
@@ -97,11 +97,10 @@ export class GestureManager {
   overlay: HTMLDivElement | null;
   waterCanvas: HTMLCanvasElement | null;
   waterRenderer: WaterRenderer | null;
+  spectrogramCanvas: HTMLCanvasElement | null;
+  spectrogramRenderer: SpectrogramRenderer | null;
   canvas: HTMLCanvasElement | null;
   ctx: CanvasRenderingContext2D | null;
-  staticCanvas: HTMLCanvasElement | null;
-  staticCtx: CanvasRenderingContext2D | null;
-  staticLayerDirty: boolean;
 
   smoothedLandmarks: HandLandmarks[];
   smoothAlpha: number;
@@ -136,11 +135,10 @@ export class GestureManager {
     this.overlay = null;
     this.waterCanvas = null;
     this.waterRenderer = null;
+    this.spectrogramCanvas = null;
+    this.spectrogramRenderer = null;
     this.canvas = null;
     this.ctx = null;
-    this.staticCanvas = null;
-    this.staticCtx = null;
-    this.staticLayerDirty = true;
 
     this.smoothedLandmarks = [];
     this.smoothAlpha = 0.4;
@@ -196,7 +194,7 @@ export class GestureManager {
     this.onResize = null;
   }
 
-  async activate(): Promise<void> {
+  async activate(analyser?: { getValue(): Float32Array }): Promise<void> {
     if (this.active || this.activating) return;
     this.activating = true;
     try {
@@ -204,10 +202,7 @@ export class GestureManager {
       await this.recognizer.startCamera();
       this.active = true;
 
-      // Capture the main UI snapshot BEFORE creating the gesture overlay
-      const snapshot = await this.captureMainUIsnapshot();
-
-      this.createOverlay(snapshot);
+      this.createOverlay(analyser ?? null);
       this.recognizer.onResults = (results) => this.handleResults(results);
       this.recognizer.startDetection();
       document.addEventListener("keydown", this.onEsc);
@@ -221,30 +216,6 @@ export class GestureManager {
       this.app.setStatus?.(`Gesture failed: ${(err as Error).message}`, "error");
     } finally {
       this.activating = false;
-    }
-  }
-
-  private async captureMainUIsnapshot(): Promise<HTMLCanvasElement | null> {
-    try {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      const snapshot = await html2canvas(document.documentElement, {
-        backgroundColor: null,
-        scale: 1,
-        width,
-        height,
-        x: 0,
-        y: 0,
-        windowWidth: width,
-        windowHeight: height,
-        useCORS: true,
-        logging: false,
-        imageTimeout: 0,
-      });
-      return snapshot;
-    } catch (err) {
-      console.error("Failed to capture background for water effect:", err);
-      return null;
     }
   }
 
@@ -272,30 +243,33 @@ export class GestureManager {
     this.app.renderAll();
   }
 
-  createOverlay(snapshot: HTMLCanvasElement | null): void {
+  createOverlay(analyser: { getValue(): Float32Array } | null): void {
     this.overlay = document.createElement("div");
     this.overlay.className = "gesture-overlay";
 
+    // Spectrogram layer (bottom)
+    this.spectrogramCanvas = document.createElement("canvas");
+    this.spectrogramCanvas.className = "gesture-canvas gesture-canvas-spectrogram";
+    this.overlay.appendChild(this.spectrogramCanvas);
+    this.spectrogramRenderer = new SpectrogramRenderer(this.spectrogramCanvas);
+    if (analyser) {
+      this.spectrogramRenderer.setAnalyser(analyser);
+    }
+
+    // Water ripple layer (middle)
     this.waterCanvas = document.createElement("canvas");
     this.waterCanvas.className = "gesture-canvas gesture-canvas-webgl";
     this.overlay.appendChild(this.waterCanvas);
 
-    this.staticCanvas = document.createElement("canvas");
-    this.staticCanvas.className = "gesture-canvas gesture-canvas-static";
-    this.overlay.appendChild(this.staticCanvas);
-
+    // Hand landmark layer (top)
     this.canvas = document.createElement("canvas");
     this.canvas.className = "gesture-canvas gesture-canvas-dynamic";
     this.overlay.appendChild(this.canvas);
 
     try {
       this.waterRenderer = new WaterRenderer(this.waterCanvas);
-      if (snapshot) {
-        this.waterRenderer.setBackground(snapshot);
-      }
     } catch (err) {
       console.error("Water renderer initialization failed:", err);
-      this.app.setStatus?.(`Water effect failed: ${(err as Error).message}`, "error");
     }
 
     const closeBtn = document.createElement("button");
@@ -318,7 +292,6 @@ export class GestureManager {
     window.addEventListener("resize", this.onResize);
 
     this.resizeCanvas();
-    this.drawStaticLayer();
     this.startRenderLoop();
   }
 
@@ -331,6 +304,10 @@ export class GestureManager {
       cancelAnimationFrame(this.renderFrame);
       this.renderFrame = 0;
     }
+    if (this.spectrogramRenderer) {
+      this.spectrogramRenderer.dispose();
+      this.spectrogramRenderer = null;
+    }
     if (this.waterRenderer) {
       this.waterRenderer.dispose();
       this.waterRenderer = null;
@@ -338,11 +315,10 @@ export class GestureManager {
     if (this.overlay) {
       this.overlay.remove();
       this.overlay = null;
+      this.spectrogramCanvas = null;
       this.waterCanvas = null;
       this.canvas = null;
       this.ctx = null;
-      this.staticCanvas = null;
-      this.staticCtx = null;
     }
   }
 
@@ -351,22 +327,18 @@ export class GestureManager {
     const w = window.innerWidth;
     const h = window.innerHeight;
 
+    if (this.spectrogramCanvas) {
+      this.spectrogramCanvas.style.width = `${w}px`;
+      this.spectrogramCanvas.style.height = `${h}px`;
+      this.spectrogramRenderer?.resize(w, h);
+    }
+
     if (this.waterCanvas) {
       this.waterCanvas.width = w;
       this.waterCanvas.height = h;
       this.waterCanvas.style.width = `${w}px`;
       this.waterCanvas.style.height = `${h}px`;
       this.waterRenderer?.resize(w, h);
-    }
-
-    if (this.staticCanvas) {
-      this.staticCanvas.width = w * dpr;
-      this.staticCanvas.height = h * dpr;
-      this.staticCanvas.style.width = `${w}px`;
-      this.staticCanvas.style.height = `${h}px`;
-      this.staticCtx = this.staticCanvas.getContext("2d");
-      this.staticCtx!.scale(dpr, dpr);
-      this.markStaticLayerDirty();
     }
 
     if (this.canvas) {
@@ -503,8 +475,14 @@ export class GestureManager {
         return;
       }
       this.tickFps("render");
+
+      // Render spectrogram and use it as water background
+      this.spectrogramRenderer?.render();
+      if (this.spectrogramCanvas && this.waterRenderer) {
+        this.waterRenderer.setBackground(this.spectrogramCanvas);
+      }
+
       this.waterRenderer?.render();
-      this.drawStaticLayer();
       this.draw(this.getInterpolatedLandmarks(now), this.lastGestures);
       this.renderFrame = requestAnimationFrame(frame);
     };
@@ -578,26 +556,6 @@ export class GestureManager {
     });
 
     this.drawFpsBadge();
-  }
-
-  drawStaticLayer(): void {
-    if (!this.staticCtx || !this.staticCanvas) return;
-    if (!this.staticLayerDirty) return;
-
-    const w = this.staticCanvas.width;
-    const h = this.staticCanvas.height;
-    this.staticCtx.clearRect(0, 0, w, h);
-
-    const area = this.getControlArea();
-    this.staticCtx.strokeStyle = "rgba(0,0,0,0.15)";
-    this.staticCtx.lineWidth = 1;
-    this.staticCtx.strokeRect(area.x, area.y, area.width, area.height);
-
-    this.staticLayerDirty = false;
-  }
-
-  markStaticLayerDirty(): void {
-    this.staticLayerDirty = true;
   }
 
   tickFps(kind: "render" | "detect"): void {

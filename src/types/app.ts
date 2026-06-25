@@ -58,7 +58,7 @@ export interface DragManager {
 
 // Gesture manager interface
 export interface GestureManager {
-  activate(): void;
+  activate(analyser?: { getValue(): Float32Array }): void;
 }
 
 // Source output monitor

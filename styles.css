@@ -1369,14 +1369,13 @@ select {
   height: 100%;
 }
 
-.gesture-canvas-webgl {
+.gesture-canvas-spectrogram {
   z-index: var(--z-base);
   background: #000;
 }
 
-.gesture-canvas-static {
+.gesture-canvas-webgl {
   z-index: calc(var(--z-base) + 1);
-  pointer-events: none;
 }
 
 .gesture-canvas-dynamic {
