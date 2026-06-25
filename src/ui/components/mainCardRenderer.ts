@@ -223,39 +223,19 @@ export function renderMainCard({
     presetSelectWrapper.appendChild(delBtn);
   }
 
-  controls.append(presetSelectWrapper);
+  // Row 1: Gesture
+  const gestureRow = document.createElement("div");
+  gestureRow.className = "preset-button-row";
+  const gestureBtn = document.createElement("button");
+  gestureBtn.type = "button";
+  gestureBtn.className = "pill-button";
+  gestureBtn.setAttribute("tabindex", "-1");
+  gestureBtn.textContent = t("Capture Gesture");
+  gestureBtn.addEventListener("click", () => onGestureClick?.());
+  gestureRow.append(gestureBtn);
+  controls.append(gestureRow);
 
-  const buttonGroups = document.createElement("div");
-  buttonGroups.className = "preset-buttons";
-
-  const rows = [
-    [{ key: "Import Timbre", handler: () => onImportClick?.() }],
-    [
-      { key: "Export", handler: () => onExportAllClick?.() },
-    ],
-    [
-      { key: "Reset Preset", handler: () => onResetClick?.() },
-    ],
-  ];
-
-  rows.forEach((rowButtons) => {
-    const row = document.createElement("div");
-    row.className = "preset-button-row";
-    rowButtons.forEach(({ key, handler }) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "pill-button";
-      btn.setAttribute("tabindex", "-1");
-      btn.textContent = t(key);
-      btn.addEventListener("click", handler);
-      row.append(btn);
-    });
-    buttonGroups.append(row);
-  });
-
-  controls.append(buttonGroups);
-
-  // Transport controls
+  // Row 2: Transport controls
   const transportWrapper = document.createElement("div");
   transportWrapper.className = "transport-container";
 
@@ -305,6 +285,39 @@ export function renderMainCard({
   transportRow.append(progressBar);
   transportWrapper.append(transportRow);
   controls.append(transportWrapper);
+
+  controls.append(presetSelectWrapper);
+
+  // Row 3: Import + Export
+  const buttonGroups = document.createElement("div");
+  buttonGroups.className = "preset-buttons";
+
+  const rows = [
+    [
+      { key: "Import", handler: () => onImportClick?.() },
+      { key: "Export", handler: () => onExportAllClick?.() },
+    ],
+    [
+      { key: "Reset Preset", handler: () => onResetClick?.() },
+    ],
+  ];
+
+  rows.forEach((rowButtons) => {
+    const row = document.createElement("div");
+    row.className = "preset-button-row";
+    rowButtons.forEach(({ key, handler }) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pill-button";
+      btn.setAttribute("tabindex", "-1");
+      btn.textContent = t(key);
+      btn.addEventListener("click", handler);
+      row.append(btn);
+    });
+    buttonGroups.append(row);
+  });
+
+  controls.append(buttonGroups);
 
   const langControl = createSwitchControl({
     label: t("Language"),
@@ -394,16 +407,6 @@ export function renderMainCard({
 
   axisRow.append(makeAxisButton("x", "←→"), makeAxisButton("y", "↑↓"));
   macroContainer.append(axisRow);
-
-  const gestureBtn = document.createElement("button");
-  gestureBtn.type = "button";
-  gestureBtn.className = "macro-gesture-btn";
-  gestureBtn.setAttribute("tabindex", "-1");
-  gestureBtn.textContent = t("Gesture");
-  gestureBtn.addEventListener("click", () => {
-    onGestureClick?.();
-  });
-  macroContainer.append(gestureBtn);
 
   controls.append(macroContainer);
 
