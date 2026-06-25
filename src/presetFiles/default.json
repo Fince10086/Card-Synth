@@ -2,7 +2,7 @@
   "global": {
     "volume": -8
   },
-  "selectedChainIndex": 0,
+  "selectedChainIndex": 3,
   "chains": [
     {
       "enabled": true,
@@ -110,7 +110,7 @@
             "type": "sine",
             "spread": 180,
             "feedback": 0.2,
-            "wet": 0
+            "wet": 0.25
           }
         },
         {
@@ -138,7 +138,7 @@
           "category": "source",
           "enabled": true,
           "volume": -0.1,
-          "pan": 0,
+          "pan": -0.01,
           "index": 4,
           "label": "4-Water",
           "options": {
@@ -159,7 +159,7 @@
           "options": {
             "delayTime": 0.32,
             "feedback": 0.24,
-            "wet": 0
+            "wet": 0.1
           }
         }
       ],
@@ -168,7 +168,7 @@
   ],
   "macro": {
     "pointCount": 4,
-    "selectedPointIndex": 1,
+    "selectedPointIndex": 3,
     "recentSelection": [
       3,
       2,
@@ -236,15 +236,15 @@
         }
       },
       {
-        "x": 0,
-        "y": 0,
+        "x": 0.5,
+        "y": 0.25,
         "bindings": {
           "x": [
             {
               "targetChainIndex": 2,
-              "targetModuleId": "fx-0011",
-              "targetParamPath": "options.wet",
-              "min": 0,
+              "targetModuleId": "src-0003",
+              "targetParamPath": "pan",
+              "min": -1,
               "max": 1,
               "step": 0.01,
               "rangeStart": 0,
@@ -254,7 +254,7 @@
           "y": [
             {
               "targetChainIndex": 2,
-              "targetModuleId": "fx-0013",
+              "targetModuleId": "fx-0011",
               "targetParamPath": "options.wet",
               "min": 0,
               "max": 1,
@@ -266,10 +266,22 @@
         }
       },
       {
-        "x": 0,
-        "y": 1,
+        "x": 0.5,
+        "y": 0.1,
         "bindings": {
           "x": [
+            {
+              "targetChainIndex": 3,
+              "targetModuleId": "src-0004",
+              "targetParamPath": "pan",
+              "min": -1,
+              "max": 1,
+              "step": 0.01,
+              "rangeStart": 0,
+              "rangeEnd": 1
+            }
+          ],
+          "y": [
             {
               "targetChainIndex": 3,
               "targetModuleId": "fx-0007",
@@ -278,19 +290,7 @@
               "max": 1,
               "step": 0.01,
               "rangeStart": 0,
-              "rangeEnd": 0.8066223714953271
-            }
-          ],
-          "y": [
-            {
-              "targetChainIndex": 3,
-              "targetModuleId": "src-0004",
-              "targetParamPath": "volume",
-              "min": -48,
-              "max": 6,
-              "step": 0.1,
-              "rangeStart": 0.5114632009345794,
-              "rangeEnd": 0.8869012850467289
+              "rangeEnd": 0.7977146612149533
             }
           ]
         }
