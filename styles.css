@@ -369,8 +369,6 @@ select {
 
 .module-head h3 {
   margin: 0;
-  font-size: 0.82rem;
-  line-height: 1.15;
   font-weight: 500;
   color: var(--accent, #1a1d6d);
   flex: 1;

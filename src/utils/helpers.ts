@@ -95,6 +95,13 @@ export function setByPath(object: Record<string, unknown>, path: string, value: 
 
 export { SOURCE_LIBRARY, EFFECT_LIBRARY, getTrackAudioUrl };
 
+const TRACK_NAMES: Record<number, string> = {
+  0: "1-Violin",
+  1: "2-Effects",
+  2: "3-Sampler",
+  3: "4-Water",
+};
+
 export function createSourceModule(chainIndex: number = 0): ModuleConfig {
   const type: ModuleType = "TrackPlayer";
   const definition = SOURCE_LIBRARY[type];
@@ -108,6 +115,7 @@ export function createSourceModule(chainIndex: number = 0): ModuleConfig {
     volume: -8,
     pan: 0,
     index: moduleCounter - 1,
+    label: TRACK_NAMES[chainIndex] ?? "TrackPlayer",
     options,
   };
 }

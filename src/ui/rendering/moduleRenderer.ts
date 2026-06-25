@@ -162,6 +162,13 @@ function getMacroSliderProps(
   };
 }
 
+const TRACK_NAMES: Record<number, string> = {
+  0: "1-Violin",
+  1: "2-Effects",
+  2: "3-Sampler",
+  3: "4-Water",
+};
+
 export function renderModuleCard(
   module: ModuleConfig,
   index: number,
@@ -178,11 +185,11 @@ export function renderModuleCard(
   const card = createModuleCard({
     accent,
     kicker,
-    title: module.type,
+    title: module.category === "source" ? TRACK_NAMES[chainIndex] ?? "TrackPlayer" : module.type,
     titleOptions: getTitleOptions(module.category),
     showOutputLevel: module.category === "source" && SOURCE_MONITOR_ENABLED,
     onTitleChange: (value: string) => {
-      const replacement = createModule(module.category, value as ModuleType);
+      const replacement = createModule(module.category, value as ModuleType, chainIndex);
       replacement.id = module.id;
       replacement.enabled = module.enabled;
       if (module.category === "source") {
@@ -233,7 +240,7 @@ export function renderModuleCard(
       }
       app.startModulationDrag({ event, sourceModuleId: module.id });
     },
-    removable: true,
+    removable: module.category !== "source",
     index: index + 1,
     initModuleDrag: (event: PointerEvent, card: HTMLElement, moduleIndex: number) =>
       app.initModuleDrag(event, card, moduleIndex),

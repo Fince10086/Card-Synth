@@ -141,7 +141,7 @@ export function createModuleCard({
     head.append(indexBadge);
   }
 
-  if (titleOptions && onTitleChange && !isMainCard) {
+  if (titleOptions && onTitleChange && !isMainCard && titleOptions.length > 1) {
     head.append(
       createTitleSelect({
         accent,
@@ -153,9 +153,9 @@ export function createModuleCard({
     );
   } else {
     const titleWrap = document.createElement("div");
-    titleWrap.className = isMainCard ? "module-title" : "";
+    titleWrap.className = "module-title";
     const titleNode = document.createElement(isMainCard ? "span" : "h3");
-    titleNode.className = isMainCard ? "module-title-input" : "";
+    titleNode.className = "module-title-input";
     titleNode.textContent = title;
     titleWrap.append(titleNode);
     head.append(titleWrap);

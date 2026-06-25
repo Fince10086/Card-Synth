@@ -564,7 +564,7 @@ export class ModularSynthApp {
     }
 
     const [category, type] = value.split(":");
-    const newModule = createModule(category as ModuleCategory, type as ModuleType);
+    const newModule = createModule(category as ModuleCategory, type as ModuleType, this.getSelectedChainIndex());
     this.getCurrentModules().push(newModule);
     this.markUnsaved();
     this.renderAll();
