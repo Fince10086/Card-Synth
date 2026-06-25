@@ -7,6 +7,8 @@ import { createModuleCard, type ModuleCardElement } from "./moduleCard";
 import { t, getLanguage, type Language } from "../../i18n";
 import type { ChainState, Preset } from "../../types";
 
+const POINT_LABELS = ["V", "E", "S", "W"];
+
 interface MacroPoint {
   pointIndex: number;
   visible: boolean;
@@ -376,9 +378,12 @@ export function renderMainCard({
     const opacityScale = point.recentRank === 0 ? 1 : point.recentRank === 1 ? 0.6 : 0.3;
     macroPoint.style.opacity = String(opacityScale);
     macroPoint.style.transform = `scale(${point.recentRank === 0 ? 1.2 : point.recentRank === 1 ? 0.95 : 0.75})`;
-    macroPoint.setAttribute("aria-label", t("Macro Point {{n}}", { n: point.pointIndex + 1 }));
-    macroPoint.textContent = String(point.pointIndex + 1);
+    macroPoint.setAttribute("aria-label", t("Macro Point {{n}}", { n: POINT_LABELS[point.pointIndex] || point.pointIndex + 1 }));
 
+    const label = document.createElement("span");
+    label.className = "macro-point-label";
+    label.textContent = POINT_LABELS[point.pointIndex] || String(point.pointIndex + 1);
+    macroPoint.append(label);
     macroPoint.addEventListener("pointerdown", (event) => {
       onMacroPointPointerDown?.(event, point.pointIndex, macroPad);
     });
@@ -519,8 +524,12 @@ export function updateMainCard(card: ModuleCardElement | null, {
       const opacityScale = point.recentRank === 0 ? 1 : point.recentRank === 1 ? 0.6 : 0.3;
       macroPoint.style.opacity = String(opacityScale);
       macroPoint.style.transform = `scale(${point.recentRank === 0 ? 1.2 : point.recentRank === 1 ? 0.95 : 0.75})`;
-      macroPoint.setAttribute("aria-label", t("Macro Point {{n}}", { n: point.pointIndex + 1 }));
-      macroPoint.textContent = String(point.pointIndex + 1);
+      macroPoint.setAttribute("aria-label", t("Macro Point {{n}}", { n: POINT_LABELS[point.pointIndex] || point.pointIndex + 1 }));
+
+      const label = document.createElement("span");
+      label.className = "macro-point-label";
+      label.textContent = POINT_LABELS[point.pointIndex] || String(point.pointIndex + 1);
+      macroPoint.append(label);
 
       macroPoint.addEventListener("pointerdown", (event) => {
         onMacroPointPointerDown?.(event, point.pointIndex, macroPad as HTMLElement);

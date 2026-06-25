@@ -730,11 +730,12 @@ export class GestureManager {
       ctx.stroke();
     }
 
+    const labels = ["V", "E", "S", "W"];
     ctx.fillStyle = "#ffffff";
     ctx.font = `bold ${Math.round(visual.radius)}px "IBM Plex Sans", sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(String(visual.pointIndex + 1), visual.x, visual.y + 1);
+    ctx.fillText(labels[visual.pointIndex] || String(visual.pointIndex + 1), visual.x, visual.y + 1);
   }
 
   smoothLandmarks(landmarks: HandLandmarks[]): HandLandmarks[] {
