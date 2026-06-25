@@ -216,8 +216,9 @@ export class AudioEngine {
   }
 
   // Transport control
-  play(): void {
+  async play(): Promise<void> {
     if (!this.ready) return;
+    await this._waitForPlayersLoaded();
     Tone.Transport.start();
     this.isPlaying = true;
     this._startProgressLoop();
@@ -237,11 +238,26 @@ export class AudioEngine {
     this._stopProgressLoop();
   }
 
-  togglePlay(): void {
+  async togglePlay(): Promise<void> {
     if (this.isPlaying) {
       this.pause();
     } else {
-      this.play();
+      await this.play();
+    }
+  }
+
+  async _waitForPlayersLoaded(): Promise<void> {
+    const promises: Promise<void>[] = [];
+    for (const [, runtimeMap] of this.chainRuntimes) {
+      for (const [, runtime] of runtimeMap) {
+        const rt = runtime as Record<string, unknown>;
+        if (rt.loaded instanceof Promise) {
+          promises.push(rt.loaded as Promise<void>);
+        }
+      }
+    }
+    if (promises.length > 0) {
+      await Promise.all(promises);
     }
   }
 

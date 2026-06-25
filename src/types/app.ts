@@ -12,10 +12,10 @@ export interface AudioEngine {
   getSpectrumAnalyser(): AnalyserNode | null;
   updateModule(moduleId: string, updates: Partial<ModuleConfig>, chainIndex?: number): void;
   getModuleRuntime(chainIndex: number, moduleId: string): Record<string, unknown> | null;
-  play(): void;
+  play(): Promise<void>;
   pause(): void;
   stop(): void;
-  togglePlay(): void;
+  togglePlay(): Promise<void>;
   seek(seconds: number): void;
   getProgress(): number;
   getDuration(): number;

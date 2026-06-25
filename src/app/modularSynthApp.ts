@@ -373,11 +373,12 @@ export class ModularSynthApp {
 
   handlePlay(): void {
     this.ensureAudioStarted().then(() => {
-      this.engine.togglePlay();
-      this.isPlaying = this.engine.isTransportPlaying();
-      this.transportProgress = this.engine.getProgress();
-      this.transportDuration = this.engine.getDuration();
-      this.renderAll();
+      this.engine.togglePlay().then(() => {
+        this.isPlaying = this.engine.isTransportPlaying();
+        this.transportProgress = this.engine.getProgress();
+        this.transportDuration = this.engine.getDuration();
+        this.renderAll();
+      });
     });
   }
 

@@ -46,8 +46,6 @@ export interface ModulationItem {
 function createStarterModules(chainIndex: number = 0): ModuleConfig[] {
   return [
     createSourceModule(chainIndex),
-    createEffectModule("Filter"),
-    createEffectModule("Chorus"),
   ];
 }
 

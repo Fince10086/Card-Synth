@@ -13,6 +13,7 @@ export interface TrackPlayerRuntime {
   node: ToneAudioNode;
   isMono: boolean;
   preserveVoiceSlotsForSourceTargets: boolean;
+  loaded: Promise<void>;
   apply(nextModule: ModuleConfig): void;
   dispose(): void;
   getModulationOutput(voiceIndex: number): ToneAudioNode | null;
@@ -36,17 +37,32 @@ export function createTrackPlayerRuntime(
 
   let player: Tone.Player | null = null;
 
+  let resolveLoaded: () => void = () => {};
+  const loadedPromise = new Promise<void>((resolve) => {
+    resolveLoaded = resolve;
+  });
+
   try {
     player = new Tone.Player({
       url,
       loop: options.loop !== false,
       playbackRate: (options.playbackRate as number) ?? 1,
       reverse: (options.reverse as boolean) ?? false,
-    }).sync().start(0);
+      onload: () => {
+        player?.sync();
+        resolveLoaded();
+      },
+    });
 
     player.connect(gainNode);
+
+    // If already loaded (e.g. from cache), sync immediately
+    if (player.loaded) {
+      player.sync();
+      resolveLoaded();
+    }
   } catch {
-    // Player creation failed
+    resolveLoaded(); // Resolve even on error to avoid blocking
   }
 
   (moduleState.options as Record<string, unknown>).url = url;
@@ -61,6 +77,7 @@ export function createTrackPlayerRuntime(
     moduleState,
     isMono: false,
     preserveVoiceSlotsForSourceTargets: false,
+    loaded: loadedPromise,
 
     apply(nextModule: ModuleConfig): void {
       moduleState = deepClone(nextModule);
@@ -90,8 +107,8 @@ export function createTrackPlayerRuntime(
       }
     },
 
-    getModulationOutput(voiceIndex: number): ToneAudioNode | null {
-      return player && player.loaded ? gainNode : null;
+    getModulationOutput(): ToneAudioNode | null {
+      return gainNode;
     },
 
     dispose(): void {
