@@ -49,7 +49,7 @@
           "category": "source",
           "enabled": true,
           "volume": 0,
-          "pan": -0.03,
+          "pan": 0,
           "index": 2,
           "label": "2-Effects",
           "options": {
@@ -68,7 +68,7 @@
           "enabled": true,
           "index": 6,
           "options": {
-            "distortion": 0.01,
+            "distortion": 0,
             "oversample": "4x",
             "wet": 0.25
           }
@@ -95,6 +95,35 @@
             "loopStart": 0,
             "loopEnd": 0,
             "url": "/audio/3.mp3"
+          }
+        },
+        {
+          "id": "fx-0011",
+          "type": "Chorus",
+          "category": "effect",
+          "enabled": true,
+          "index": 11,
+          "options": {
+            "frequency": 1.2,
+            "delayTime": 2.2,
+            "depth": 0.48,
+            "type": "sine",
+            "spread": 180,
+            "feedback": 0.2,
+            "wet": 0
+          }
+        },
+        {
+          "id": "fx-0013",
+          "type": "AutoPanner",
+          "category": "effect",
+          "enabled": true,
+          "index": 13,
+          "options": {
+            "frequency": 1.0312939168786048,
+            "depth": 0.8,
+            "type": "sine",
+            "wet": 0
           }
         }
       ],
@@ -139,7 +168,7 @@
   ],
   "macro": {
     "pointCount": 4,
-    "selectedPointIndex": 3,
+    "selectedPointIndex": 1,
     "recentSelection": [
       3,
       2,
@@ -207,11 +236,33 @@
         }
       },
       {
-        "x": 0.7,
-        "y": 0.7,
+        "x": 0,
+        "y": 0,
         "bindings": {
-          "x": [],
-          "y": []
+          "x": [
+            {
+              "targetChainIndex": 2,
+              "targetModuleId": "fx-0011",
+              "targetParamPath": "options.wet",
+              "min": 0,
+              "max": 1,
+              "step": 0.01,
+              "rangeStart": 0,
+              "rangeEnd": 1
+            }
+          ],
+          "y": [
+            {
+              "targetChainIndex": 2,
+              "targetModuleId": "fx-0013",
+              "targetParamPath": "options.wet",
+              "min": 0,
+              "max": 1,
+              "step": 0.01,
+              "rangeStart": 0,
+              "rangeEnd": 1
+            }
+          ]
         }
       },
       {
