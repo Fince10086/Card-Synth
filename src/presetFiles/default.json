@@ -12,7 +12,7 @@
           "type": "TrackPlayer",
           "category": "source",
           "enabled": true,
-          "volume": -8,
+          "volume": 0,
           "pan": -0.07,
           "index": 5,
           "options": {
@@ -47,7 +47,7 @@
           "type": "TrackPlayer",
           "category": "source",
           "enabled": true,
-          "volume": -8,
+          "volume": 0,
           "pan": 0,
           "index": 2,
           "options": {
@@ -70,7 +70,7 @@
           "type": "TrackPlayer",
           "category": "source",
           "enabled": true,
-          "volume": -8,
+          "volume": 0,
           "pan": 0,
           "index": 3,
           "options": {
@@ -93,7 +93,7 @@
           "type": "TrackPlayer",
           "category": "source",
           "enabled": true,
-          "volume": -8,
+          "volume": 0,
           "pan": 0,
           "index": 4,
           "options": {
