@@ -226,9 +226,17 @@ export class GestureManager {
 
   private async captureMainUIsnapshot(): Promise<HTMLCanvasElement | null> {
     try {
-      const snapshot = await html2canvas(document.body, {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const snapshot = await html2canvas(document.documentElement, {
         backgroundColor: null,
         scale: 1,
+        width,
+        height,
+        x: 0,
+        y: 0,
+        windowWidth: width,
+        windowHeight: height,
         useCORS: true,
         logging: false,
         imageTimeout: 0,
@@ -396,10 +404,14 @@ export class GestureManager {
   }
 
   cameraToWaterUV(cx: number, cy: number): { x: number; y: number } {
-    // Mirror horizontally like the original water demo for selfie view,
-    // and flip vertically because MediaPipe y is top-down while WebGL v_uv is bottom-up.
-    const x = 1 - cx;
-    const y = 1 - cy;
+    // Convert MediaPipe normalized camera coords into the control-area UV space.
+    // Mirror horizontally for selfie view, flip vertically (MediaPipe y is top-down),
+    // and respect the same 10% margin control area used for macro points.
+    const area = this.getControlArea();
+    const screenX = (1 - cx) * window.innerWidth;
+    const screenY = (1 - cy) * window.innerHeight;
+    const x = (screenX - area.x) / area.width;
+    const y = (screenY - area.y) / area.height;
     return { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
   }
 
@@ -462,19 +474,10 @@ export class GestureManager {
       });
     this.waterRenderer?.setTips(waterTips);
 
-    // Inject a continuous subtle ripple at the currently selected control point
-    const selectedPointIndex = this.app.getSelectedMacroPointIndex();
-    const selectedPos = this.getPointVisualPosition(selectedPointIndex);
-    const area = this.getControlArea();
-    const selectedUv = {
-      x: (selectedPos.x - area.x) / area.width,
-      y: 1 - (selectedPos.y - area.y) / area.height,
-    };
-    this.waterRenderer?.injectRipple(selectedUv.x, selectedUv.y, 0.008);
-
     // Move the selected point with active pinches
     const activePinches = confirmedPinches.filter((p) => p.pinching);
     if (activePinches.length > 0) {
+      const selectedPointIndex = this.app.getSelectedMacroPointIndex();
       const avg = activePinches.reduce(
         (acc, p) => {
           const pos = this.cameraToCanvas(p.x, p.y);
