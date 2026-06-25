@@ -49,16 +49,16 @@ export function createTrackPlayerRuntime(
       playbackRate: (options.playbackRate as number) ?? 1,
       reverse: (options.reverse as boolean) ?? false,
       onload: () => {
-        player?.sync();
+        player?.sync().start(0);
         resolveLoaded();
       },
     });
 
     player.connect(gainNode);
 
-    // If already loaded (e.g. from cache), sync immediately
+    // If already loaded (e.g. from cache), sync and schedule immediately
     if (player.loaded) {
-      player.sync();
+      player.sync().start(0);
       resolveLoaded();
     }
   } catch {
