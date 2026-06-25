@@ -2,7 +2,6 @@
  * Application type definitions
  */
 import type { Preset, GlobalState, ChainState, ModuleConfig, ModulationConnection } from './core';
-import type { Runtime } from './audio';
 
 // Audio engine interface (forward declaration)
 export interface AudioEngine {
@@ -12,27 +11,16 @@ export interface AudioEngine {
   getAnalyser(): AnalyserNode | null;
   getSpectrumAnalyser(): AnalyserNode | null;
   updateModule(moduleId: string, updates: Partial<ModuleConfig>, chainIndex?: number): void;
-  updateSource(module: ModuleConfig, chainIndex?: number): void;
-  updateComponent(module: ModuleConfig, chainIndex?: number): void;
-  updateEffect(module: ModuleConfig, chainIndex?: number): void;
-  attack(note: number, velocity: number): void;
-  release(note: number): void;
-  getModuleRuntime(chainIndex: number, moduleId: string): Runtime | null;
-}
-
-// Input manager options
-export interface InputManagerOptions {
-  onAttack: (note: number, velocity: number) => void;
-  onRelease: (note: number) => void;
-  onEnsureAudioStarted: () => void;
-  onOctaveChange: (octave: number) => void;
-  onVelocityChange: (velocity: number) => void;
-  onUpdateKeyboardKeyState: (key: string, active: boolean) => void;
-  onRenderMainCardContent: () => void;
-  getGlobalState: () => GlobalState;
-  getKeyboardElement: () => HTMLElement | null;
-  getTransportInfoElement: () => HTMLElement | null;
-  onSetCustomPreset: () => void;
+  getModuleRuntime(chainIndex: number, moduleId: string): Record<string, unknown> | null;
+  play(): void;
+  pause(): void;
+  stop(): void;
+  togglePlay(): void;
+  seek(seconds: number): void;
+  getProgress(): number;
+  getDuration(): number;
+  isTransportPlaying(): boolean;
+  onProgress(callback: () => void): void;
 }
 
 // Modulation manager interface
@@ -46,8 +34,6 @@ export interface ModulationManager {
   removeOutgoingModulations(sourceModuleId: string): void;
   removeModuleModulations(moduleId: string): void;
   connectAllModulations(): void;
-  disconnectVoiceModulations(chainIndex: number, moduleId: string, voiceIndex: number): void;
-  connectVoiceModulations(chainIndex: number, moduleId: string, voiceIndex: number): void;
   renderModulationOverlay(): void;
   bindEvents(): void;
 }
@@ -55,7 +41,9 @@ export interface ModulationManager {
 // Macro manager interface
 export interface MacroManager {
   getMainCardViewModel(): unknown;
+  getMacroPoint(pointIndex: number): Record<string, unknown>;
   applyAllMappings(): void;
+  applyMappingsForPoint(pointIndex: number, animate: boolean): void;
   ensureMacroState(): void;
   startPointDrag(options: unknown): void;
   startAxisBindingDrag(options: unknown): void;
@@ -71,13 +59,6 @@ export interface DragManager {
 // Gesture manager interface
 export interface GestureManager {
   activate(): void;
-}
-
-// Keyboard navigation interface
-export interface KeyboardNavigationManager {
-  saveFocusState(): void;
-  restoreFocusState(container: HTMLElement | null): void;
-  bind(): void;
 }
 
 // Source output monitor

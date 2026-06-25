@@ -149,8 +149,7 @@ export class MacroManager {
 
   ensureMacroState(): void {
     this.app.state.macro = normalizeMacroState(
-      this.app.state?.macro as unknown as Parameters<typeof normalizeMacroState>[0],
-      this.app.state?.chains as unknown as Parameters<typeof normalizeMacroState>[1]
+      this.app.state?.macro as unknown as Parameters<typeof normalizeMacroState>[0]
     ) as unknown as AppState["macro"];
   }
 

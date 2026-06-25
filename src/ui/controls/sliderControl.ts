@@ -470,19 +470,11 @@ export function createSliderControl({
       const centerPct = isLogarithmic ? toLogPercent(centerValue) : ((centerValue - min) / (max - min));
 
       const sourceModule = (modulationManager as Record<string, Function> | null)?.getModules?.()?.find((m: { id: string; type: string }) => m.id === (modulation as unknown as Record<string, unknown>).sourceModuleId);
-      const isEnvelopeSource = sourceModule?.type === "Envelope";
 
-      if (isEnvelopeSource) {
-        shell.style.setProperty("--range-start", `${Math.min(centerPct, maxPct) * 100}%`);
-        shell.style.setProperty("--range-end", `${Math.max(centerPct, maxPct) * 100}%`);
-        bracketMin.style.visibility = "hidden";
-        valueMin.style.visibility = "hidden";
-      } else {
-        shell.style.setProperty("--range-start", `${Math.min(minPct, maxPct) * 100}%`);
-        shell.style.setProperty("--range-end", `${Math.max(minPct, maxPct) * 100}%`);
-        bracketMin.style.visibility = "visible";
-        valueMin.style.visibility = "visible";
-      }
+      shell.style.setProperty("--range-start", `${Math.min(minPct, maxPct) * 100}%`);
+      shell.style.setProperty("--range-end", `${Math.max(minPct, maxPct) * 100}%`);
+      bracketMin.style.visibility = "visible";
+      valueMin.style.visibility = "visible";
 
       const trackWidth = shell.clientWidth || input.clientWidth;
       const edgeLeft = (percent: number, element: HTMLElement) => {
@@ -497,24 +489,18 @@ export function createSliderControl({
       bracketMax.style.left = edgeLeft(maxPct, bracketMax);
       valueMax.style.left = edgeLeft(maxPct, valueMax);
 
-      if (!isEnvelopeSource) {
-        const minRect = bracketMin.getBoundingClientRect();
-        const maxRect = bracketMax.getBoundingClientRect();
-        const distance = Math.abs(maxRect.left - minRect.right);
-        if (distance < 40) {
-          valueMin.textContent = "";
-          valueMax.textContent = "";
-        } else {
-          valueMin.textContent = effMinValue.toFixed(2);
-          valueMax.textContent = effMaxValue.toFixed(2);
-        }
+      const minRect = bracketMin.getBoundingClientRect();
+      const maxRect = bracketMax.getBoundingClientRect();
+      const distance = Math.abs(maxRect.left - minRect.right);
+      if (distance < 40) {
+        valueMin.textContent = "";
+        valueMax.textContent = "";
       } else {
+        valueMin.textContent = effMinValue.toFixed(2);
         valueMax.textContent = effMaxValue.toFixed(2);
       }
 
-      const radiusStr = isEnvelopeSource
-        ? `+${Math.abs(radius as number).toFixed(2)}`
-        : (radius as number) >= 0 ? `±${Math.abs(radius as number).toFixed(2)}` : `${(radius as number).toFixed(2)}`;
+      const radiusStr = (radius as number) >= 0 ? `±${Math.abs(radius as number).toFixed(2)}` : `${(radius as number).toFixed(2)}`;
       centerValueEl.textContent = radiusStr;
       const sliderPercent = isLogarithmic ? toLogPercent(centerValue) : ((centerValue - min) / (max - min));
       centerValueEl.style.left = edgeLeft(sliderPercent, centerValueEl);

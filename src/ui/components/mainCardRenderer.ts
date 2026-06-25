@@ -28,6 +28,12 @@ interface PresetEntry extends Preset {
   name?: string;
 }
 
+interface TransportState {
+  isPlaying: boolean;
+  progress: number;
+  duration: number;
+}
+
 interface RenderMainCardOptions {
   selectedPresetId: string | null;
   hasUnsavedChanges: boolean;
@@ -38,6 +44,7 @@ interface RenderMainCardOptions {
   chains: ChainState[];
   macro: MacroViewModel;
   audioBooted: boolean;
+  transport: TransportState;
   onPresetChange?: (value: string) => void;
   onChainIndexClick?: (chainIndex: number, isSelected: boolean) => void;
   onImportClick?: () => void;
@@ -45,18 +52,16 @@ interface RenderMainCardOptions {
   onExportAllClick?: () => void;
   onResetClick?: () => void;
   onRandomClick?: () => void;
-  midiEnabled?: boolean;
-  onMidiToggle?: (enabled: boolean) => void;
   onMasterVolumeChange?: (value: number) => void;
-  onVelocityEnabledChange?: (value: boolean) => void;
   onMacroPointPointerDown?: (event: PointerEvent, pointIndex: number, padElement: HTMLElement) => void;
   onMacroAxisPointerDown?: (event: PointerEvent, axis: string, pointIndex: number) => void;
   onMacroPointCountChange?: (value: number) => void;
   onGestureClick?: () => void;
   onDeleteUserPreset?: (id: string) => void;
-  onPolyVoiceChange?: (value: number) => void;
   onLanguageChange?: (lang: Language) => void;
   onAiGenerate?: (description: string) => void;
+  onPlayClick?: () => void;
+  onSeek?: (percent: number) => void;
   aiPhase?: 'idle' | 'reasoning' | 'generating';
   aiReasoning?: string | null;
 }
@@ -64,7 +69,10 @@ interface RenderMainCardOptions {
 interface UpdateMainCardOptions {
   selectedChainIndex: number;
   chains: ChainState[];
+  transport: TransportState;
   onChainIndexClick?: (chainIndex: number, isSelected: boolean) => void;
+  onPlayClick?: () => void;
+  onSeek?: (percent: number) => void;
   macro: MacroViewModel;
   onMacroPointPointerDown?: (event: PointerEvent, pointIndex: number, padElement: HTMLElement) => void;
   onMacroAxisPointerDown?: (event: PointerEvent, axis: string, pointIndex: number) => void;
@@ -74,7 +82,6 @@ interface UpdateMainCardOptions {
 interface RenderMainCardContentOptions {
   updatePresetSelect?: () => void;
   updateMasterReadout?: (value: number) => void;
-  updateMidiStatus?: () => void;
   volume: number;
 }
 
@@ -94,6 +101,7 @@ export function renderMainCard({
   chains,
   macro,
   audioBooted,
+  transport,
   onPresetChange,
   onChainIndexClick,
   onImportClick,
@@ -102,17 +110,15 @@ export function renderMainCard({
   onResetClick,
   onRandomClick,
   onMasterVolumeChange,
-  onVelocityEnabledChange,
   onMacroPointPointerDown,
   onMacroAxisPointerDown,
   onMacroPointCountChange,
   onGestureClick,
   onDeleteUserPreset,
-  onPolyVoiceChange,
   onLanguageChange,
-  midiEnabled,
-  onMidiToggle,
   onAiGenerate,
+  onPlayClick,
+  onSeek,
   aiPhase,
   aiReasoning,
 }: RenderMainCardOptions): ModuleCardElement {
@@ -269,7 +275,6 @@ export function renderMainCard({
   aiInputRow.append(aiGenerateBtn);
   aiWrapper.append(aiInputRow);
 
-  // AI 思考过程 — 实时三行显示
   const reasoningBox = document.createElement("div");
   reasoningBox.className = "ai-reasoning-box";
 
@@ -293,9 +298,6 @@ export function renderMainCard({
   reasoningBox.append(reasoningLines);
   aiWrapper.append(reasoningBox);
 
-  // 控制展开/收起动画
-  // 只在首次出现（aiReasoning 为空）时使用 RAF + transition 产生展开动画
-  // 后续内容更新时直接设置最终状态，避免 renderAll() 频繁重建 DOM 导致的闪烁
   if (aiPhase === "reasoning") {
     if (!aiReasoning) {
       requestAnimationFrame(() => {
@@ -342,19 +344,60 @@ export function renderMainCard({
 
   controls.append(buttonGroups);
 
-  const midiSwitch = createSwitchControl({
-    label: t("MIDI Device"),
-    options: [
-      { label: t("Off"), value: false },
-      { label: t("On"), value: true },
-    ],
-    value: midiEnabled ?? false,
-    onChange: (value) => {
-      onMidiToggle?.(Boolean(value));
-    },
-    accent: "main",
+  // Transport controls
+  const transportWrapper = document.createElement("div");
+  transportWrapper.className = "transport-container";
+
+  const transportLabel = document.createElement("div");
+  transportLabel.className = "control-label";
+  const transportLabelStrong = document.createElement("strong");
+  transportLabelStrong.textContent = t("Playback");
+  transportLabel.append(transportLabelStrong);
+  transportWrapper.append(transportLabel);
+
+  const transportRow = document.createElement("div");
+  transportRow.className = "transport-row";
+
+  const playBtn = document.createElement("button");
+  playBtn.type = "button";
+  playBtn.className = "transport-play-btn";
+  playBtn.setAttribute("tabindex", "-1");
+  playBtn.textContent = transport.isPlaying ? "⏸" : "▶";
+  playBtn.addEventListener("click", () => {
+    onPlayClick?.();
   });
-  controls.append(midiSwitch);
+  transportRow.append(playBtn);
+
+  const progressBar = document.createElement("div");
+  progressBar.className = "transport-progress";
+  progressBar.setAttribute("data-transport-progress", "true");
+
+  const progressFill = document.createElement("div");
+  progressFill.className = "transport-progress-fill";
+  const pct = transport.duration > 0 ? (transport.progress / transport.duration) * 100 : 0;
+  progressFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+  progressBar.append(progressFill);
+
+  const formatTime = (s: number): string => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  const timeReadout = document.createElement("span");
+  timeReadout.className = "transport-time";
+  timeReadout.textContent = `${formatTime(transport.progress)} / ${formatTime(transport.duration)}`;
+  progressBar.append(timeReadout);
+
+  progressBar.addEventListener("click", (e) => {
+    const rect = progressBar.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    onSeek?.(Math.max(0, Math.min(1, pct)));
+  });
+
+  transportRow.append(progressBar);
+  transportWrapper.append(transportRow);
+  controls.append(transportWrapper);
 
   const langControl = createSwitchControl({
     label: t("Language"),
@@ -370,11 +413,6 @@ export function renderMainCard({
   });
   controls.append(langControl);
 
-  const midiContainer = document.createElement("div");
-  midiContainer.id = "midiSelecter";
-  midiContainer.className = "midi-selecter";
-  controls.append(midiContainer);
-
   controls.append(
     createSliderControl({
       label: t("Master"),
@@ -386,35 +424,6 @@ export function renderMainCard({
       onInput: (value) => {
         if (onMasterVolumeChange) {
           onMasterVolumeChange(value);
-        }
-      },
-    })
-  );
-
-  controls.append(
-    createSliderControl({
-      label: t("Poly Voices"),
-      min: 2,
-      max: 8,
-      step: 1,
-      value: state.global.polyVoice,
-      formatter: (value) => t("{{value}} voices", { value }),
-      onInput: (value) => {
-        if (onPolyVoiceChange) {
-          onPolyVoiceChange(value);
-        }
-      },
-    })
-  );
-
-  controls.append(
-    createToggleControl({
-      label: t("Velocity"),
-      value: state.global.velocityEnabled,
-      accent: getComputedStyle(document.documentElement).getPropertyValue("--main").trim() || "#4b0082",
-      onToggle: (value) => {
-        if (onVelocityEnabledChange) {
-          onVelocityEnabledChange(value);
         }
       },
     })
@@ -554,7 +563,10 @@ export function renderMainCard({
 export function updateMainCard(card: ModuleCardElement | null, {
   selectedChainIndex,
   chains,
+  transport,
   onChainIndexClick,
+  onPlayClick,
+  onSeek,
   macro,
   onMacroPointPointerDown,
   onMacroAxisPointerDown,
@@ -562,7 +574,7 @@ export function updateMainCard(card: ModuleCardElement | null, {
 }: UpdateMainCardOptions): void {
   if (!card) return;
 
-  // 更新 chain badges
+  // Update chain badges
   const head = card.querySelector(".module-head");
   if (head) {
     const badges = head.querySelectorAll(".chain-index");
@@ -573,7 +585,6 @@ export function updateMainCard(card: ModuleCardElement | null, {
       badge.classList.toggle("is-selected", isSelected);
       badge.classList.toggle("is-disabled", !chain.enabled);
 
-      // 替换点击事件以更新闭包
       const newBadge = badge.cloneNode(true) as HTMLElement;
       newBadge.setAttribute("tabindex", "-1");
       newBadge.addEventListener("click", () => {
@@ -583,7 +594,42 @@ export function updateMainCard(card: ModuleCardElement | null, {
     });
   }
 
-  // 更新 macro pad
+  // Update transport controls
+  const playBtn = card.querySelector(".transport-play-btn") as HTMLButtonElement | null;
+  if (playBtn) {
+    playBtn.textContent = transport.isPlaying ? "⏸" : "▶";
+  }
+
+  const progressFill = card.querySelector(".transport-progress-fill") as HTMLElement | null;
+  if (progressFill) {
+    const pct = transport.duration > 0 ? (transport.progress / transport.duration) * 100 : 0;
+    progressFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+  }
+
+  const formatTime = (s: number): string => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  const timeReadout = card.querySelector(".transport-time") as HTMLElement | null;
+  if (timeReadout) {
+    timeReadout.textContent = `${formatTime(transport.progress)} / ${formatTime(transport.duration)}`;
+  }
+
+  // Re-bind progress bar click
+  const progressBar = card.querySelector(".transport-progress") as HTMLElement | null;
+  if (progressBar && onSeek) {
+    const newBar = progressBar.cloneNode(true) as HTMLElement;
+    newBar.addEventListener("click", (e) => {
+      const rect = newBar.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      onSeek(Math.max(0, Math.min(1, pct)));
+    });
+    progressBar.replaceWith(newBar);
+  }
+
+  // Update macro pad
   const macroPad = card.querySelector(".macro-pad");
   if (macroPad) {
     macroPad.innerHTML = "";
@@ -613,7 +659,7 @@ export function updateMainCard(card: ModuleCardElement | null, {
     });
   }
 
-  // 更新 axis buttons 选中点索引
+  // Update axis buttons
   const selectedPointIndex = macro?.selectedPointIndex ?? 0;
   const axisHandles = card.querySelectorAll(".macro-axis-handle");
   axisHandles.forEach((handle) => {
@@ -627,7 +673,7 @@ export function updateMainCard(card: ModuleCardElement | null, {
     old.replaceWith(button);
   });
 
-  // 更新 point count slider
+  // Update point count slider
   const pointCountRow = card.querySelector(".macro-point-count-row");
   if (pointCountRow) {
     const pointCountSlider = pointCountRow.querySelector(".slider-input") as HTMLInputElement | null;
@@ -648,12 +694,10 @@ export function updateMainCard(card: ModuleCardElement | null, {
 export function renderMainCardContent({
   updatePresetSelect,
   updateMasterReadout,
-  updateMidiStatus,
   volume,
 }: RenderMainCardContentOptions): void {
   updatePresetSelect?.();
   updateMasterReadout?.(volume);
-  updateMidiStatus?.();
 }
 
 export function cacheDynamicElements(): DynamicElements {

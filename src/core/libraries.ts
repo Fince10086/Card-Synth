@@ -15,8 +15,6 @@ import {
   formatMultiplier,
 } from "./formatters";
 
-import { NOTE_NAMES } from "./keyboard";
-import { DEFAULT_SAMPLE_LIBRARY } from "./samples";
 import { t } from "../i18n";
 import type { ModuleDefinition, ControlOption } from "../types";
 
@@ -27,72 +25,37 @@ export const SHARED_WAVE_OPTIONS: ControlOption[] = [
   { label: "Square", value: "square" },
 ];
 
-export const NOISE_TYPE_OPTIONS: ControlOption[] = [
-  { label: "White", value: "white" },
-  { label: "Pink", value: "pink" },
-  { label: "Brown", value: "brown" },
-];
+const TRACK_AUDIO_URLS: Record<number, string> = {
+  0: "/audio/1.mp3",
+  1: "/audio/2.mp3",
+  2: "/audio/3.mp3",
+  3: "/audio/4.mp3",
+};
 
-export const ROOT_NOTE_OPTIONS: ControlOption[] = Array.from({ length: 6 * 12 }, (_, index) => {
-  const octave = 1 + Math.floor(index / 12);
-  const note = `${NOTE_NAMES[index % 12]}${octave}`;
-  return { label: note, value: note };
-});
+export function getTrackAudioUrl(chainIndex: number): string {
+  return TRACK_AUDIO_URLS[chainIndex] || "/audio/1.mp3";
+}
 
 export const SOURCE_LIBRARY: Record<string, ModuleDefinition> = {
-  Noise: {
+  TrackPlayer: {
     accent: "source",
-    tag: "Osc",
-    runtime: "noise",
-    options: { type: "pink", playbackRate: 1 },
+    tag: "Player",
+    runtime: "trackPlayer",
+    options: {
+      playbackRate: 1,
+      loop: true,
+      reverse: false,
+      loopStart: 0,
+      loopEnd: 0,
+    },
     controls: [
       { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value: number) => `${value > 0 ? t("R") : value < 0 ? t("L") : t("C")} ${Math.round(Math.abs(value) * 100)}` },
       { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
-      { path: "options.type", kind: "select", label: "Color", options: NOISE_TYPE_OPTIONS },
-      { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.1, max: 1, step: 0.01, formatter: formatMultiplier },
-    ],
-  },
-  Oscillator: {
-    accent: "source",
-    tag: "Osc",
-    runtime: "pitchedSource",
-    options: { type: "sawtooth", detune: 0, frequencyOffset: 1 },
-    controls: [
-      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value: number) => `${value > 0 ? t("R") : value < 0 ? t("L") : t("C")} ${Math.round(Math.abs(value) * 100)}` },
-      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
-      { path: "options.type", kind: "select", label: "Wave", options: SHARED_WAVE_OPTIONS },
-      { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
-      { path: "options.frequencyOffset", kind: "range", label: "Frequency Offset", min: 0, max: 2, step: 0.01, formatter: formatMultiplier },
-    ],
-  },
-  Player: {
-    accent: "source",
-    tag: "Osc",
-    runtime: "player",
-    moduleDefaults: { rootNote: "C4", assetName: "Factory Pluck" },
-    options: { url: DEFAULT_SAMPLE_LIBRARY.pluck, playbackRate: 1, loop: false, reverse: false, loopStart: 0, loopEnd: 0 },
-    controls: [
-      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value: number) => `${value > 0 ? t("R") : value < 0 ? t("L") : t("C")} ${Math.round(Math.abs(value) * 100)}` },
-      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
-      { path: "rootNote", kind: "select", label: "Root", options: ROOT_NOTE_OPTIONS },
       { path: "options.playbackRate", kind: "range", label: "Rate", min: 0.1, max: 3, step: 0.01, formatter: formatMultiplier },
       { path: "options.loop", kind: "toggle", label: "Loop" },
       { path: "options.loopStart", kind: "range", label: "Loop In", min: 0, max: 12, step: 0.01, formatter: formatSeconds },
       { path: "options.loopEnd", kind: "range", label: "Loop Out", min: 0, max: 12, step: 0.01, formatter: formatSeconds },
       { path: "options.reverse", kind: "toggle", label: "Reverse" },
-    ],
-  },
-  PulseOscillator: {
-    accent: "source",
-    tag: "Osc",
-    runtime: "pitchedSource",
-    options: { width: 0.22, detune: 0, frequencyOffset: 1 },
-    controls: [
-      { path: "pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value: number) => `${value > 0 ? t("R") : value < 0 ? t("L") : t("C")} ${Math.round(Math.abs(value) * 100)}` },
-      { path: "volume", kind: "range", label: "Level", min: -48, max: 6, step: 0.1, formatter: formatDb },
-      { path: "options.width", kind: "range", label: "Width", min: 0.01, max: 0.99, step: 0.001, formatter: formatPercent },
-      { path: "options.detune", kind: "range", label: "Detune", min: -1200, max: 1200, step: 1, formatter: formatCents },
-      { path: "options.frequencyOffset", kind: "range", label: "Frequency Offset", min: 0, max: 2, step: 0.01, formatter: formatMultiplier },
     ],
   },
 };
@@ -362,57 +325,6 @@ export const EFFECT_LIBRARY: Record<string, ModuleDefinition> = {
     controls: [
       { path: "options.pan", kind: "range", label: "Pan", min: -1, max: 1, step: 0.01, formatter: (value: number) => `${value > 0 ? "R" : value < 0 ? "L" : "C"} ${Math.round(Math.abs(value) * 100)}` },
       { path: "options.volume", kind: "range", label: "Volume", min: -24, max: 12, step: 0.1, formatter: formatDb },
-    ],
-  },
-};
-
-export const COMPONENT_LIBRARY: Record<string, ModuleDefinition> = {
-  Envelope: {
-    accent: "env",
-    tag: "Envelope",
-    options: { attack: 0.02, decay: 0.18, sustain: 0.82, release: 0.65, gain: 1 },
-    controls: [
-      { path: "options.attack", kind: "range", label: "Attack", min: 0.01, max: 4, step: 0.01, formatter: formatSeconds },
-      { path: "options.decay", kind: "range", label: "Decay", min: 0.01, max: 4, step: 0.01, formatter: formatSeconds },
-      { path: "options.sustain", kind: "range", label: "Sustain", min: 0, max: 1, step: 0.01, formatter: formatPercent },
-      { path: "options.release", kind: "range", label: "Release", min: 0.01, max: 4, step: 0.01, formatter: formatSeconds },
-      { path: "options.gain", kind: "range", label: "Depth", min: 0, max: 100, step: 0.01, formatter: formatMultiplier, conditional: (module) => module.modulationMode === true },
-    ],
-  },
-};
-
-export const INPUT_LIBRARY: Record<string, ModuleDefinition> = {
-  Pitch: {
-    accent: "input",
-    tag: "Pitch",
-    options: { mode: "midi", transpose: 0, octave: 0, frequency: 440 },
-    controls: [
-      { path: "options.mode", kind: "switch", label: "Source", options: [
-        { label: "MIDI", value: "midi" },
-        { label: "Freq", value: "frequency" },
-      ]},
-      { path: "options.transpose", kind: "range", label: "Transpose", min: -12, max: 12, step: 1, conditional: (m) => (m.options as unknown as Record<string, unknown>)?.mode === "midi", formatter: (value: number) => `${value > 0 ? "+" : ""}${value}${t(" st")}` },
-      { path: "options.octave", kind: "range", label: "Octave", min: -4, max: 4, step: 1, conditional: (m) => (m.options as unknown as Record<string, unknown>)?.mode === "midi", formatter: (value: number) => `${t("Oct")} ${value > 0 ? "+" : ""}${value}` },
-      { path: "options.frequency", kind: "range", label: "Frequency", min: 0.1, max: 20000, step: 0.01, conditional: (m) => (m.options as unknown as Record<string, unknown>)?.mode === "frequency", formatter: formatHertz },
-    ],
-  },
-  Voices: {
-    accent: "input",
-    tag: "Voices",
-    options: { mono: false },
-    controls: [
-      { path: "options.mono", kind: "switch", label: "Voices", options: [
-        { label: "Poly", value: false },
-        { label: "Mono", value: true },
-      ]},
-    ],
-  },
-  Pedal: {
-    accent: "input",
-    tag: "Pedal",
-    options: { pedal: false },
-    controls: [
-      { path: "options.pedal", kind: "toggle", label: "Pedal" },
     ],
   },
 };

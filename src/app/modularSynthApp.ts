@@ -19,10 +19,8 @@ import {
   generateUserPresetId,
   getLastSelectedId,
   saveLastSelectedId,
-  isBuiltinPreset,
 } from "../preset/presetLoader";
 import { AudioEngine } from "../audio/audio";
-import { InputManager } from "../input/inputManager";
 import { ModulationManager } from "../interactions/modulation/modulationManager";
 import { MacroManager } from "../interactions/macro/macroManager";
 import { GestureManager, type GestureManagerApp } from "../interactions/gesture/gestureManager";
@@ -30,10 +28,7 @@ import { ModuleDragManager } from "../interactions/drag/moduleDragManager";
 import { ENABLED as SOURCE_MONITOR_ENABLED, SourceOutputMonitor } from "../debug/sourceOutputMonitor";
 import { generateToneFromDescription } from "../ai/toneGenerator";
 import type { ToneGenerationResult } from "../ai/toneGenerator";
-import { KeyboardNavigationManager } from "../input/keyboardNavigation";
 import {
-  renderKeyboard,
-  animateOctaveChange,
   resizeScopeCanvas,
   startScopeRendering,
   stopScopeRendering,
@@ -43,7 +38,6 @@ import {
 } from "../ui/components";
 import { renderModuleCard } from "../ui/rendering/moduleRenderer";
 import { layoutModuleMasonry } from "../ui/layout/masonryLayout";
-import { createSelectControl } from "../ui/controls";
 import {
   deepClone,
   getByPath,
@@ -75,22 +69,14 @@ interface ModularSynthAppElements {
   signalFlowShell: HTMLElement | null;
   addModuleCard: HTMLElement | null;
   addModuleDropdown: HTMLElement | null;
-  keyboard: HTMLElement | null;
   oscilloscope: HTMLCanvasElement | null;
   presetFileInput: HTMLInputElement | null;
-  transportInfo: HTMLElement | null;
   presetSelect: HTMLSelectElement | null;
   importBtn: HTMLElement | null;
   exportBtn: HTMLElement | null;
   resetBtn: HTMLElement | null;
   randomBtn: HTMLElement | null;
-  midiBtn: HTMLElement | null;
   masterReadout: HTMLElement | null;
-  midiSelecter: HTMLElement | null;
-  octaveDownBtn: HTMLElement | null;
-  octaveUpBtn: HTMLElement | null;
-  keyboardContainer: HTMLElement | null;
-  keyboardHandle: HTMLElement | null;
 }
 
 interface PresetWithName extends Preset {
@@ -103,10 +89,6 @@ export class ModularSynthApp {
   hasUnsavedChanges: boolean;
   audioBooted: boolean;
 
-  heldPointerNotes: Set<string>;
-  keyboardResizeObserver: ResizeObserver | null;
-  _keyboardLastWidth: number;
-
   controlBindings: Map<string, ControlBinding>;
 
   scopeMode: "scope" | "spectrum";
@@ -115,10 +97,7 @@ export class ModularSynthApp {
   gestureManager: GestureManager;
   modulationManager: ModulationManager;
   dragManager: ModuleDragManager;
-  keyboardNavigation: KeyboardNavigationManager;
   engine: AudioEngine;
-
-  inputManager: InputManager;
 
   elements: ModularSynthAppElements;
   scopeContext: CanvasRenderingContext2D | null;
@@ -129,7 +108,10 @@ export class ModularSynthApp {
   aiPhase: 'idle' | 'reasoning' | 'generating';
   aiReasoning: string | null;
   originalStateSnapshot: Preset | null;
-  keyboardCollapsed: boolean;
+
+  isPlaying: boolean;
+  transportProgress: number;
+  transportDuration: number;
 
   constructor() {
     this.state = createBasePreset();
@@ -137,10 +119,6 @@ export class ModularSynthApp {
     this.selectedPresetId = null;
     this.hasUnsavedChanges = false;
     this.audioBooted = false;
-
-    this.heldPointerNotes = new Set();
-    this.keyboardResizeObserver = null;
-    this._keyboardLastWidth = 0;
 
     this.controlBindings = new Map();
 
@@ -150,34 +128,15 @@ export class ModularSynthApp {
     this.gestureManager = new GestureManager(this as unknown as GestureManagerApp);
     this.modulationManager = new ModulationManager(this);
     this.dragManager = new ModuleDragManager(this as unknown as unknown as Record<string, unknown>);
-    this.keyboardNavigation = new KeyboardNavigationManager();
     this.engine = new AudioEngine(this as unknown as unknown as Record<string, unknown>);
 
     this.aiPhase = 'idle';
     this.aiReasoning = null;
     this.originalStateSnapshot = null;
-    this.keyboardCollapsed = localStorage.getItem("keyboardCollapsed") === "true";
 
-    this.inputManager = new InputManager({
-      onAttack: (note, velocity) => this.engine.attack(note as unknown as number, velocity),
-      onRelease: (note) => this.engine.release(note as unknown as number),
-      onEnsureAudioStarted: () => this.ensureAudioStarted(),
-      onOctaveChange: (octave) => {
-        this.state.global.octave = octave;
-        this.renderKeyboard();
-      },
-      onVelocityChange: (velocity) => {
-        this.state.global.velocity = velocity;
-      },
-      onUpdateKeyboardKeyState: (key, active, note) => this.updateKeyboardKeyState(key, active, note),
-      onRenderMainCardContent: () => this.updateMainCardContent(),
-      getGlobalState: () => this.state.global,
-      getKeyboardElement: () => this.elements.keyboard,
-      getTransportInfoElement: () => this.elements.transportInfo,
-      onSetCustomPreset: () => {
-        this.markUnsaved();
-      },
-    });
+    this.isPlaying = false;
+    this.transportProgress = 0;
+    this.transportDuration = 0;
 
     this.bindMacroKeyboardSelection();
 
@@ -224,7 +183,7 @@ export class ModularSynthApp {
       this.state.chains = [];
     }
     if (!this.state.chains[index]) {
-      this.state.chains[index] = { enabled: false, modules: [], modulations: [] };
+      this.state.chains[index] = { enabled: true, modules: [], modulations: [] };
     }
     const chain = this.state.chains[index];
     if (!Array.isArray(chain.modules)) {
@@ -289,7 +248,7 @@ export class ModularSynthApp {
   }
 
   getMacroPoint(pointIndex: number): MacroPointState {
-    return this.macroManager.getMacroPoint(pointIndex);
+    return this.macroManager.getMacroPoint(pointIndex) as unknown as MacroPointState;
   }
 
   getMacroPointCount(): number {
@@ -322,22 +281,14 @@ export class ModularSynthApp {
       signalFlowShell: document.querySelector(".signal-flow-shell"),
       addModuleCard: document.getElementById("addModuleCard"),
       addModuleDropdown: document.getElementById("addModuleDropdown"),
-      keyboard: document.getElementById("keyboardContent"),
       oscilloscope: document.getElementById("oscilloscope") as HTMLCanvasElement | null,
       presetFileInput: document.getElementById("presetFileInput") as HTMLInputElement | null,
-      transportInfo: document.getElementById("transportInfo"),
       presetSelect: document.getElementById("presetSelect") as HTMLSelectElement | null,
       importBtn: document.getElementById("importBtn"),
       exportBtn: document.getElementById("exportBtn"),
       resetBtn: document.getElementById("resetBtn"),
       randomBtn: document.getElementById("randomBtn"),
-      midiBtn: document.getElementById("midiBtn"),
       masterReadout: document.getElementById("masterReadout"),
-      midiSelecter: document.getElementById("midiSelecter"),
-      octaveDownBtn: document.getElementById("octaveDownBtn"),
-      octaveUpBtn: document.getElementById("octaveUpBtn"),
-      keyboardContainer: document.getElementById("keyboardContainer"),
-      keyboardHandle: document.getElementById("keyboardHandle"),
     };
     this.scopeContext = this.elements.oscilloscope?.getContext("2d") || null;
     if (this.elements.addModuleCard) {
@@ -353,9 +304,6 @@ export class ModularSynthApp {
 
     document.addEventListener("pointerdown", wakeAudio, { passive: true });
     document.addEventListener("keydown", wakeAudio);
-
-    this.inputManager.bindEvents();
-    this.keyboardNavigation.bind();
 
     this.populateAddModuleDropdown();
     this.elements.addModuleCard?.addEventListener("click", (e) => {
@@ -387,10 +335,6 @@ export class ModularSynthApp {
           const chain = this.getCurrentChain();
           chain.modules = imported.chain.modules as unknown as ModuleConfig[];
           chain.modulations = imported.chain.modulations as unknown as ModulationConnection[];
-
-          this.macroManager.ensureMacroState();
-          const macroPoint = imported.chain.macro?.points?.[this.getSelectedChainIndex()];
-          this.state.macro.points[this.getSelectedChainIndex()] = macroPoint || createDefaultMacroPointState();
         }
 
         const baseName = file.name.replace(/\.json$/i, "");
@@ -415,41 +359,33 @@ export class ModularSynthApp {
       }
     });
 
-    // 绑定浮动八度切换按钮
-    this.elements.octaveDownBtn?.addEventListener("click", () => {
-      this.handleOctaveChange(-1);
-    });
-    this.elements.octaveUpBtn?.addEventListener("click", () => {
-      this.handleOctaveChange(1);
-    });
-
-    // 绑定键盘收起展开横条
-    this.elements.keyboardHandle?.addEventListener("click", () => {
-      this.toggleKeyboardCollapse();
-    });
-    this.elements.keyboardHandle?.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        this.toggleKeyboardCollapse();
-      }
+    // Set up progress callback
+    this.engine.onProgress(() => {
+      this.transportProgress = this.engine.getProgress();
+      this.transportDuration = this.engine.getDuration();
+      this.isPlaying = this.engine.isTransportPlaying();
+      this.updateMainCardContent();
     });
 
     this.modulationManager.bindEvents();
     this.macroManager.bindEvents();
   }
 
-  toggleKeyboardCollapse(): void {
-    this.keyboardCollapsed = !this.keyboardCollapsed;
-    localStorage.setItem("keyboardCollapsed", String(this.keyboardCollapsed));
-    this.elements.keyboardContainer?.classList.toggle("is-collapsed", this.keyboardCollapsed);
+  handlePlay(): void {
+    this.ensureAudioStarted().then(() => {
+      this.engine.togglePlay();
+      this.isPlaying = this.engine.isTransportPlaying();
+      this.transportProgress = this.engine.getProgress();
+      this.transportDuration = this.engine.getDuration();
+      this.renderAll();
+    });
+  }
 
-    // 收起时如果正在触摸琴键，释放它们
-    if (this.keyboardCollapsed) {
-      this.heldPointerNotes.forEach((note) => {
-        this.inputManager.releaseNote(note as unknown as string);
-      });
-      this.heldPointerNotes.clear();
-    }
+  handleSeek(percent: number): void {
+    const duration = this.engine.getDuration();
+    this.engine.seek(percent * duration);
+    this.transportProgress = this.engine.getProgress();
+    this.renderAll();
   }
 
   setStatus(message: string, tone = "neutral"): void {
@@ -474,6 +410,7 @@ export class ModularSynthApp {
     try {
       await this.engine.start(this.state);
       this.audioBooted = true;
+      this.transportDuration = this.engine.getDuration();
       this.setStatus(t("Audio ready."), "live");
     } catch (error: unknown) {
       this.setStatus(t("Audio failed: {{error}}", { error: error instanceof Error ? error.message : String(error) }), "error");
@@ -491,9 +428,6 @@ export class ModularSynthApp {
     const options = getAddableModuleOptions();
 
     const groups: Record<string, { title: string; items: ReturnType<typeof getAddableModuleOptions> }> = {
-      input: { title: t("Input"), items: [] },
-      source: { title: t("Source"), items: [] },
-      envelope: { title: t("Envelope"), items: [] },
       effect: { title: t("Effect"), items: [] },
     };
 
@@ -615,7 +549,6 @@ export class ModularSynthApp {
   }
 
   renderAll(previousState: Preset | null = null): void {
-    this.keyboardNavigation.saveFocusState();
     this.populateAddModuleDropdown();
     this.controlBindings = new Map();
     this.macroManager.applyAllMappings();
@@ -623,8 +556,6 @@ export class ModularSynthApp {
     const sections: [string, () => void][] = [
       ["main-card content", () => this.updateMainCardContent()],
       ["modules", () => this.renderModulesRack()],
-      ["keyboard", () => this.renderKeyboard()],
-      ["transport", () => this.inputManager.updateTransportInfo()],
     ];
 
     for (const [label, task] of sections) {
@@ -656,8 +587,6 @@ export class ModularSynthApp {
     if (previousState) {
       this.animateControlTransition(previousState, this.state);
     }
-
-    this.keyboardNavigation.restoreFocusState(this.elements.signalFlow);
   }
 
   layoutModuleMasonry(): void {
@@ -676,7 +605,6 @@ export class ModularSynthApp {
     renderMainCardContent({
       updatePresetSelect: () => this.updatePresetSelect(),
       updateMasterReadout: (value) => this.updateMasterReadout(value),
-      updateMidiStatus: () => this.updateMidiStatus(),
       volume: this.state.global.volume,
     });
   }
@@ -691,44 +619,6 @@ export class ModularSynthApp {
     if (this.elements.masterReadout) {
       this.elements.masterReadout.textContent = formatDb(value);
     }
-  }
-
-  updateMidiStatus(): void {
-    const container = this.elements.midiSelecter;
-    if (!container) return;
-
-    const supported = this.inputManager.getMidiSupported();
-    const inputs = this.inputManager.getMidiInputs();
-    const selectedId = this.inputManager.getMidiSelectedInputId();
-
-    if (this.elements.midiBtn) {
-      this.elements.midiBtn.textContent = inputs.length > 0 ? t("MIDI Off") : t("MIDI On");
-    }
-
-    const options = inputs.map((input) => ({
-      value: input.id,
-      label: input.name || input.id,
-    }));
-
-    const selectControl = createSelectControl({
-      label: t("MIDI"),
-      options: options.length > 0 ? options : [{ value: "", label: supported ? t("No devices") : t("Unsupported") }],
-      value: selectedId || "",
-      onChange: (value) => {
-        if (value) {
-          this.inputManager.selectMidiInput(value);
-        }
-      },
-    });
-
-    selectControl.classList.add("midi-selecter-control");
-    const selectEl = selectControl.querySelector(".select-input");
-    if (!supported || inputs.length === 0) {
-      (selectEl as HTMLSelectElement).disabled = true;
-    }
-
-    container.innerHTML = "";
-    container.appendChild(selectControl);
   }
 
   renderModulesRack(): void {
@@ -757,6 +647,11 @@ export class ModularSynthApp {
       chains: this.state.chains,
       macro: this.macroManager.getMainCardViewModel(),
       audioBooted: this.audioBooted,
+      transport: {
+        isPlaying: this.isPlaying,
+        progress: this.transportProgress,
+        duration: this.transportDuration,
+      },
       onPresetChange: (value: string) => this.applyPresetById(value),
       onChainIndexClick: (chainIndex: number, isSelected: boolean) => {
         if (!isSelected) {
@@ -794,27 +689,8 @@ export class ModularSynthApp {
         }
       },
       onRandomClick: () => this.randomizeCurrentPatch(),
-      midiEnabled: this.inputManager.getMidiInputs().length > 0,
-      onMidiToggle: (enabled: boolean) => {
-        const isOn = this.inputManager.getMidiInputs().length > 0;
-        if (enabled && !isOn) {
-          this.inputManager.requestMidiAccess();
-        } else if (!enabled && isOn) {
-          this.inputManager.closeMidi();
-        }
-      },
       onMasterVolumeChange: (value: number) => {
         this.state.global.volume = value;
-        this.markUnsaved();
-        this.engine.updateGlobal(this.state.global);
-      },
-      onVelocityEnabledChange: (value: boolean) => {
-        this.state.global.velocityEnabled = value;
-        this.markUnsaved();
-        this.engine.updateGlobal(this.state.global);
-      },
-      onPolyVoiceChange: (value: number) => {
-        this.state.global.polyVoice = clamp(Number(value), 2, 8);
         this.markUnsaved();
         this.engine.updateGlobal(this.state.global);
       },
@@ -858,6 +734,8 @@ export class ModularSynthApp {
         setLanguage(lang);
       },
       onAiGenerate: (description: string) => this.generateTone(description),
+      onPlayClick: () => this.handlePlay(),
+      onSeek: (percent: number) => this.handleSeek(percent),
       aiPhase: this.aiPhase,
       aiReasoning: this.aiReasoning,
     };
@@ -882,90 +760,6 @@ export class ModularSynthApp {
         }
       }
     });
-  }
-
-  renderKeyboard(): void {
-    const keyboard = document.getElementById("keyboardContent");
-    if (!keyboard) {
-      return;
-    }
-
-    renderKeyboard(
-      keyboard,
-      this.state,
-      this.inputManager,
-      () => this.ensureAudioStarted(),
-      this.heldPointerNotes
-    );
-
-    this.updateOctaveButtonVisibility();
-
-    if (!this.keyboardResizeObserver) {
-      this.keyboardResizeObserver = new ResizeObserver((entries) => {
-        const newWidth = entries[0]?.contentRect?.width;
-        if (newWidth && newWidth !== this._keyboardLastWidth) {
-          this._keyboardLastWidth = newWidth;
-          const kb = document.getElementById("keyboardContent");
-          if (kb) {
-            renderKeyboard(
-              kb,
-              this.state,
-              this.inputManager,
-              () => this.ensureAudioStarted(),
-              this.heldPointerNotes
-            );
-          }
-        }
-      });
-    }
-
-    this._keyboardLastWidth = keyboard.clientWidth;
-    this.keyboardResizeObserver.disconnect();
-    this.keyboardResizeObserver.observe(keyboard);
-  }
-
-  updateOctaveButtonVisibility(): void {
-    const downBtn = this.elements.octaveDownBtn;
-    const upBtn = this.elements.octaveUpBtn;
-    const currentOctave = this.state.global.octave;
-
-    if (downBtn) {
-      downBtn.classList.toggle("is-hidden", currentOctave <= 1);
-    }
-    if (upBtn) {
-      upBtn.classList.toggle("is-hidden", currentOctave >= 7);
-    }
-  }
-
-  handleOctaveChange(delta: number): void {
-    const currentOctave = this.state.global.octave;
-    const newOctave = Math.max(1, Math.min(7, currentOctave + delta));
-    if (newOctave === currentOctave) return;
-
-    const keyboard = document.getElementById("keyboardContent");
-    if (!keyboard) {
-      this.state.global.octave = newOctave;
-      this.renderKeyboard();
-      this.inputManager.updateTransportInfo();
-      this.markUnsaved();
-      return;
-    }
-
-    animateOctaveChange(
-      keyboard,
-      this.state,
-      this.inputManager,
-      currentOctave,
-      newOctave,
-      () => this.ensureAudioStarted(),
-      this.heldPointerNotes,
-      () => {
-        this.state.global.octave = newOctave;
-        this.renderKeyboard();
-        this.inputManager.updateTransportInfo();
-        this.markUnsaved();
-      }
-    );
   }
 
   resizeScopeCanvas(): void {
@@ -1045,11 +839,6 @@ export class ModularSynthApp {
 
     this.renderAll();
 
-    // 应用初始键盘收起状态
-    if (this.keyboardCollapsed) {
-      this.elements.keyboardContainer?.classList.add("is-collapsed");
-    }
-
     const scopeEl = document.getElementById("oscilloscope");
     if (scopeEl) {
       this.elements.oscilloscope = scopeEl as HTMLCanvasElement;
@@ -1057,6 +846,7 @@ export class ModularSynthApp {
     }
     this.resizeScopeCanvas();
     this.drawOscilloscope();
+    this.transportDuration = this.engine.getDuration();
   }
 
   applyPresetById(presetId: string, shouldRender = true): void {
@@ -1077,9 +867,6 @@ export class ModularSynthApp {
       chain.modules = chainPreset.modules as unknown as ModuleConfig[];
       chain.modulations = chainPreset.modulations as unknown as ModulationConnection[];
       chain.enabled = true;
-      this.macroManager.ensureMacroState();
-      const macroPoint = chainPreset.macro?.points?.[this.getSelectedChainIndex()];
-      this.state.macro.points[this.getSelectedChainIndex()] = macroPoint || createDefaultMacroPointState();
     }
 
     this.selectedPresetId = presetId;
@@ -1164,7 +951,6 @@ export class ModularSynthApp {
 
     const previousState = deepClone(this.state);
     this.state.global.volume = randomRange(-16, -4, 0.1);
-    this.state.global.velocity = randomRange(0.55, 1, 0.01);
 
     const modules = this.getCurrentModules();
     modules.forEach((module) => {
@@ -1183,7 +969,6 @@ export class ModularSynthApp {
         if (control.kind === "select") {
           setByPath(module, control.path, randomChoice(control.options!).value);
         } else if (control.kind === "toggle") {
-          if (module.category === "input") return;
           setByPath(module, control.path, Math.random() < 0.5);
         } else {
           setByPath(module, control.path, randomRange(control.min!, control.max!, control.step!));
@@ -1217,24 +1002,19 @@ export class ModularSynthApp {
         }
       );
 
-      // 保存为新的用户预设
       const presetName = result.name;
       const presetId = generateUserPresetId(presetName);
 
-      // addUserPreset 只接受 current 格式（有 modules 字段），需要转换
       const presetData = {
         name: presetName,
         presetType: "current" as const,
         global: result.preset.global,
         modules: result.preset.chains[0]?.modules || [],
         modulations: result.preset.chains[0]?.modulations || [],
-        macro: result.preset.macro?.points?.[0],
       };
       addUserPreset(presetId, presetData);
 
-      // 应用新预设
       this.applyPresetById(presetId);
-      // 保存快照，使重置可以回到这个新生成的预设的原始状态
       this.originalStateSnapshot = deepClone(this.state);
 
       this.setStatus(
@@ -1252,14 +1032,5 @@ export class ModularSynthApp {
       this.aiPhase = 'idle';
       this.renderAll();
     }
-  }
-
-  updateKeyboardKeyState(boundKey: string, active: boolean, note?: string | null): void {
-    const selector = note ? `[data-note="${note}"]` : `[data-key="${boundKey}"]`;
-    const visualKey = this.elements.keyboard?.querySelector(selector);
-    if (!visualKey) {
-      return;
-    }
-    (visualKey as HTMLElement).classList.toggle("active", active);
   }
 }

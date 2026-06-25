@@ -71,7 +71,7 @@ export function createEffectRuntime(module: ModuleConfig): EffectRuntime {
 
       // 3. Use safeSet for remaining parameters
       if (Object.keys(changedOptions).length > 0) {
-        safeSet(node, changedOptions);
+        safeSet(node as unknown as Record<string, unknown>, changedOptions);
       }
 
       prevOptions = { ...nextOptions };

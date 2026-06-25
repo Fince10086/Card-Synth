@@ -2,8 +2,7 @@
  * Helper utilities for module management and state manipulation
  */
 
-import { NOTE_NAMES, KEYBOARD_LAYOUT, noteFromOffset } from "../core/keyboard";
-import { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY, INPUT_LIBRARY } from "../core/libraries";
+import { SOURCE_LIBRARY, EFFECT_LIBRARY, getTrackAudioUrl } from "../core/libraries";
 import { t } from "../i18n";
 import type { ModuleConfig, ModuleCategory, ModuleType, AddableModuleOption, ModuleDefinition } from "../types";
 
@@ -49,34 +48,30 @@ export function deepMerge(base: unknown, override: unknown): unknown {
   if (override === undefined) {
     return deepClone(base);
   }
-  if (base === undefined) {
-    return deepClone(override);
+  if (!isObject(base) || !isObject(override)) {
+    return override === undefined ? deepClone(base) : deepClone(override);
   }
-  if (Array.isArray(base) || Array.isArray(override)) {
-    return deepClone(override);
-  }
-  if (isObject(base) && isObject(override)) {
-    const result: Record<string, unknown> = {};
-    const keys = new Set([...Object.keys(base), ...Object.keys(override)]);
-    keys.forEach((key) => {
-      if (override[key] === undefined) {
-        result[key] = deepClone(base[key]);
-      } else if (base[key] === undefined) {
-        result[key] = deepClone(override[key]);
-      } else {
-        result[key] = deepMerge(base[key], override[key]);
-      }
-    });
-    return result;
-  }
-  return deepClone(override);
+  const result = {} as unknown as Record<string, unknown>;
+  const allKeys = new Set([...Object.keys(base), ...Object.keys(override)]);
+  allKeys.forEach((key) => {
+    if (key in override) {
+      result[key] = deepMerge(
+        (base as Record<string, unknown>)[key],
+        (override as Record<string, unknown>)[key]
+      );
+    } else {
+      result[key] = deepClone((base as Record<string, unknown>)[key]);
+    }
+  });
+  return result;
 }
 
 export function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+  return Math.max(min, Math.min(max, Number.isFinite(value) ? value : min));
 }
 
-export function getByPath<T = unknown>(object: Record<string, unknown>, path: string): T | undefined {
+export function getByPath<T>(object: unknown, path: string): T | undefined {
+  if (!isObject(object)) return undefined;
   return path.split(".").reduce<unknown>((acc, key) => {
     if (acc == null) return undefined;
     return (acc as unknown as Record<string, unknown>)[key];
@@ -98,16 +93,13 @@ export function setByPath(object: Record<string, unknown>, path: string, value: 
   });
 }
 
-export { noteFromOffset };
+export { SOURCE_LIBRARY, EFFECT_LIBRARY, getTrackAudioUrl };
 
-export { NOTE_NAMES, KEYBOARD_LAYOUT };
-export { SOURCE_LIBRARY, EFFECT_LIBRARY, COMPONENT_LIBRARY, INPUT_LIBRARY };
-
-export function createSourceModule(type: ModuleType = "Oscillator"): ModuleConfig {
-  const definition = SOURCE_LIBRARY[type] || SOURCE_LIBRARY.Oscillator;
+export function createSourceModule(chainIndex: number = 0): ModuleConfig {
+  const type: ModuleType = "TrackPlayer";
+  const definition = SOURCE_LIBRARY[type];
   const options = deepClone(definition.options) as unknown as Record<string, unknown>;
-  const initialFrequencyOffset = Number(options?.frequencyOffset);
-  options.frequencyOffset = Number.isFinite(initialFrequencyOffset) ? initialFrequencyOffset : 1;
+  options.url = getTrackAudioUrl(chainIndex);
   return {
     id: createId("src"),
     type,
@@ -115,10 +107,7 @@ export function createSourceModule(type: ModuleType = "Oscillator"): ModuleConfi
     enabled: true,
     volume: -8,
     pan: 0,
-    modulationMode: false,
-    midiOn: true,
     index: moduleCounter - 1,
-    ...(definition.moduleDefaults ? deepClone(definition.moduleDefaults) : {}),
     options,
   };
 }
@@ -135,71 +124,25 @@ export function createEffectModule(type: ModuleType = "Chorus"): ModuleConfig {
   };
 }
 
-export function createEnvelopeModule(type: ModuleType = "Envelope"): ModuleConfig {
-  const definition = COMPONENT_LIBRARY[type] || COMPONENT_LIBRARY.Envelope;
-  return {
-    id: createId("cmp"),
-    type,
-    category: "envelope",
-    enabled: true,
-    modulationMode: false,
-    index: moduleCounter - 1,
-    options: deepClone(definition.options),
-  };
-}
-
-/** @deprecated Use createEnvelopeModule */
-export const createComponentModule = createEnvelopeModule;
-
-export function createInputModule(type: ModuleType = "Pitch"): ModuleConfig {
-  const definition = INPUT_LIBRARY[type] || INPUT_LIBRARY.Pitch;
-  return {
-    id: createId("inp"),
-    type,
-    category: "input",
-    enabled: true,
-    index: moduleCounter - 1,
-    options: deepClone(definition.options),
-  };
-}
-
-export function createModule(category: ModuleCategory, type: ModuleType): ModuleConfig {
+export function createModule(category: ModuleCategory, type: ModuleType, chainIndex: number = 0): ModuleConfig {
   if (category === "source") {
-    return createSourceModule(type);
+    return createSourceModule(chainIndex);
   }
   if (category === "effect") {
-    return createEffectModule(type);
+    // Handle legacy types that no longer exist
+    const validEffects = Object.keys(EFFECT_LIBRARY);
+    const effectType = validEffects.includes(type as string) ? type : "Chorus";
+    return createEffectModule(effectType);
   }
-  if (category === "input") {
-    return createInputModule(type);
-  }
-  return createEnvelopeModule(type);
+  return createEffectModule("Chorus" as ModuleType);
 }
 
 export function getAddableModuleOptions(): AddableModuleOption[] {
   return [
-    ...Object.keys(INPUT_LIBRARY).map((type) => ({
-      value: `input:${type}`,
-      label: t(type),
-      category: "input" as ModuleCategory,
-      type: type as ModuleType,
-    })),
-    ...Object.keys(SOURCE_LIBRARY).map((type) => ({
-      value: `source:${type}`,
-      label: t(type),
-      category: "source" as ModuleCategory,
-      type: type as ModuleType,
-    })),
     ...Object.keys(EFFECT_LIBRARY).map((type) => ({
       value: `effect:${type}`,
       label: t(type),
       category: "effect" as ModuleCategory,
-      type: type as ModuleType,
-    })),
-    ...Object.keys(COMPONENT_LIBRARY).map((type) => ({
-      value: `envelope:${type}`,
-      label: t(type),
-      category: "envelope" as ModuleCategory,
       type: type as ModuleType,
     })),
   ];
@@ -214,32 +157,21 @@ export function normalizeModule(module: ModuleConfig | null | undefined, default
   return merged;
 }
 
-export function normalizeSourceModule(module: ModuleConfig | null | undefined): ModuleConfig {
-  const normalized = normalizeModule(module, "source", (type) => createSourceModule((type || "Oscillator") as ModuleType));
+export function normalizeSourceModule(module: ModuleConfig | null | undefined, chainIndex: number = 0): ModuleConfig {
+  // Map legacy source types to TrackPlayer
+  const type = module?.type as string || "TrackPlayer";
+  const validSourceTypes = Object.keys(SOURCE_LIBRARY);
+  if (!validSourceTypes.includes(type)) {
+    // Old source type — normalize to TrackPlayer
+    const normalized = normalizeModule(module, "source", () => createSourceModule(chainIndex));
+    normalized.type = "TrackPlayer";
+    return normalized;
+  }
+
+  const normalized = normalizeModule(module, "source", () => createSourceModule(chainIndex));
 
   if (!isObject(normalized.options)) {
     normalized.options = {};
-  }
-
-  const frequencyOffset = Number((normalized.options as unknown as Record<string, unknown>)?.frequencyOffset);
-  (normalized.options as unknown as Record<string, unknown>).frequencyOffset = Number.isFinite(frequencyOffset) ? frequencyOffset : 1;
-
-  if (normalized.type === "Oscillator" || normalized.type === "PulseOscillator") {
-    const nextOptions = isObject(normalized.options) ? normalized.options : {};
-    const hasConfiguredFrequency = Number.isFinite(Number(nextOptions.frequency)) && Number(nextOptions.frequency) > 0;
-
-    if (!hasConfiguredFrequency) {
-      const legacyFrequency = Number((normalized as unknown as Record<string, unknown>).modulationFrequency);
-      if (Number.isFinite(legacyFrequency) && legacyFrequency > 0) {
-        nextOptions.frequency = legacyFrequency;
-      }
-    }
-
-    normalized.options = nextOptions;
-  }
-
-  if ("modulationFrequency" in normalized) {
-    delete (normalized as unknown as Record<string, unknown>).modulationFrequency;
   }
 
   return normalized;
@@ -249,106 +181,42 @@ export function normalizeEffectModule(module: ModuleConfig | null | undefined): 
   return normalizeModule(module, "effect", (type) => createEffectModule((type || "Chorus") as ModuleType));
 }
 
-export function normalizeEnvelopeModule(module: ModuleConfig | null | undefined): ModuleConfig {
-  return normalizeModule(module, "envelope", (type) => createEnvelopeModule((type || "Envelope") as ModuleType));
-}
+export function normalizeAnyModule(module: ModuleConfig | null | undefined, chainIndex: number = 0): ModuleConfig {
+  const category = (module?.category as string | undefined) || "effect";
 
-/** @deprecated Use normalizeEnvelopeModule */
-export const normalizeComponentModule = normalizeEnvelopeModule;
-
-export function normalizeInputModule(module: ModuleConfig | null | undefined): ModuleConfig {
-  const baseModule = { ...module } as ModuleConfig;
-
-  // Migrate old type names to unified "Pitch"
-  if (baseModule.type === "MIDI") {
-    baseModule.type = "Pitch";
-    baseModule.options = baseModule.options || {};
-    (baseModule.options as unknown as Record<string, unknown>).mode = "midi";
-  } else if (baseModule.type === "Frequency") {
-    baseModule.type = "Pitch";
-    baseModule.options = baseModule.options || {};
-    (baseModule.options as unknown as Record<string, unknown>).mode = "frequency";
+  // Map legacy categories to supported ones
+  if (category === "input" || category === "envelope" || category === "component") {
+    return normalizeEffectModule(module);
   }
-
-  const result = normalizeModule(baseModule, "input", () => createInputModule("Pitch"));
-
-  // Ensure mode exists
-  if (!(result.options as unknown as Record<string, unknown>)?.mode) {
-    (result.options as unknown as Record<string, unknown>).mode = "midi";
-  }
-
-  // Migrate old `polyVoice` field to `mono` toggle
-  if ((result.options as unknown as Record<string, unknown>)?.polyVoice !== undefined) {
-    (result.options as unknown as Record<string, unknown>).mono = Number((result.options as unknown as Record<string, unknown>).polyVoice) === 1;
-    delete (result.options as unknown as Record<string, unknown>).polyVoice;
-  }
-
-  // Clean up legacy `mono` and `pedal` from Pitch options (now in Voices/Pedal modules)
-  if (result.type === "Pitch") {
-    delete (result.options as unknown as Record<string, unknown>).mono;
-    delete (result.options as unknown as Record<string, unknown>).pedal;
-  }
-
-  return result;
-}
-
-export function normalizeAnyModule(module: ModuleConfig | null | undefined): ModuleConfig {
-  let category = (module?.category as string | undefined) || "envelope";
-
-  // Backward compatibility: "component" is the old name for "envelope"
-  if (category === "component") {
-    category = "envelope";
-  }
-
-  // Backward compatibility: modules that used to be in COMPONENT_LIBRARY
-  // but are now in EFFECT_LIBRARY should be treated as effect
-  if (category === "envelope" && EFFECT_LIBRARY[module?.type || ""]) {
-    category = "effect";
-  }
-
   if (category === "source") {
-    return normalizeSourceModule(module);
+    return normalizeSourceModule(module, chainIndex);
   }
   if (category === "effect") {
     return normalizeEffectModule(module);
   }
-  if (category === "input") {
-    return normalizeInputModule(module);
-  }
-  return normalizeEnvelopeModule(module);
+  return normalizeEffectModule(module);
 }
 
-export function safeSet(target: { set?(options: unknown): void } | null | undefined, options: unknown): void {
-  if (!target || !options) {
-    return;
-  }
-  if (typeof target.set === "function") {
-    target.set(options);
-  }
+export function normalizeModules(modules: ModuleConfig[] | null | undefined, chainIndex: number = 0): ModuleConfig[] {
+  if (!Array.isArray(modules)) return [];
+  return modules.map((m) => normalizeAnyModule(m, chainIndex));
 }
 
-export function applyPlayerLikeOptions(player: Record<string, unknown>, options: Record<string, unknown> = {}): void {
-  if (!player || !options) {
-    return;
-  }
+export function safeSet(target: Record<string, unknown>, options: Record<string, unknown>): void {
+  if (!target || !options) return;
+  Object.entries(options).forEach(([key, value]) => {
+    if (key in target) {
+      target[key] = value;
+    }
+  });
+}
 
-  [
-    "playbackRate",
-    "fadeIn",
-    "fadeOut",
-    "loopStart",
-    "loopEnd",
-    "grainSize",
-    "overlap",
-    "detune",
-  ].forEach((key) => {
+export function applyPlayerLikeOptions(player: Record<string, unknown>, options: Record<string, unknown>): void {
+  if (!player || !options) return;
+
+  ["playbackRate", "fadeIn", "fadeOut"].forEach((key) => {
     if (options[key] !== undefined && key in player) {
-      const playerKey = player[key];
-      if (playerKey && typeof playerKey === "object" && "value" in (playerKey as unknown as Record<string, unknown>)) {
-        (playerKey as unknown as Record<string, unknown>).value = options[key];
-      } else {
-        player[key] = options[key];
-      }
+      player[key] = options[key];
     }
   });
 
@@ -374,40 +242,30 @@ export function rampParam(param: RampParam | null | undefined, value: number, ti
     return;
   }
 
-  // 获取参数的有效范围
   const minValue = param.minValue ?? -Infinity;
   const maxValue = param.maxValue ?? Infinity;
 
-  // 检查范围是否有效（min === max 是无效范围）
   if (minValue === maxValue) {
-    // 范围无效，直接设置值而不使用 rampTo
     if ("value" in param) {
       param.value = Math.max(minValue, Math.min(maxValue, value));
     }
     return;
   }
 
-  // 将值钳制到有效范围内
   const clampedValue = Math.max(minValue, Math.min(maxValue, value));
 
   if (typeof param.rampTo === "function") {
-    // 检查值是否接近0，如果是则使用线性渐变而不是指数渐变
-    // 因为 exponentialRampToValueAtTime 不能 ramp 到 0
     const isNearZero = Math.abs(clampedValue) < 1e-10;
-    
+
     if (isNearZero && typeof param.linearRampTo === "function") {
-      // 使用线性渐变到接近0的值
       param.linearRampTo(0, time);
     } else if (isNearZero && typeof param.linearRampToValueAtTime === "function") {
-      // 直接使用 AudioParam 的线性渐变
       const now = param.context?.currentTime ?? 0;
       param.linearRampToValueAtTime(0, now + time);
     } else {
-      // 正常使用 rampTo（通常是指数渐变）
       try {
         param.rampTo(clampedValue, time);
       } catch {
-        // 如果 rampTo 失败（比如范围错误），直接设置值
         if ("value" in param) {
           param.value = clampedValue;
         }
@@ -420,20 +278,14 @@ export function rampParam(param: RampParam | null | undefined, value: number, ti
 
 export function getModuleDefinition(module: ModuleConfig): ModuleDefinition {
   if (module.category === "source" || SOURCE_LIBRARY[module.type]) {
-    return SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.Oscillator;
+    return SOURCE_LIBRARY[module.type] || SOURCE_LIBRARY.TrackPlayer;
   }
-  if (module.category === "effect" || EFFECT_LIBRARY[module.type]) {
-    return EFFECT_LIBRARY[module.type] || EFFECT_LIBRARY.Chorus;
-  }
-  if (module.category === "input" || INPUT_LIBRARY[module.type]) {
-    return INPUT_LIBRARY[module.type] || INPUT_LIBRARY.Pitch;
-  }
-  return COMPONENT_LIBRARY[module.type] || COMPONENT_LIBRARY.Envelope;
+  return EFFECT_LIBRARY[module.type] || EFFECT_LIBRARY.Chorus;
 }
 
 export function getModuleAccent(module: ModuleConfig): string {
   const definition = getModuleDefinition(module);
-  return definition.accent || "envelope";
+  return definition.accent || "effect";
 }
 
 export function getModuleTag(module: ModuleConfig): string {

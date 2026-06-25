@@ -4,25 +4,10 @@
  */
 
 // Module categories
-export type ModuleCategory = 'input' | 'source' | 'envelope' | 'effect';
+export type ModuleCategory = 'source' | 'effect';
 
 // Source module types
-export type SourceType = 
-  | 'Oscillator' 
-  | 'PulseOscillator' 
-  | 'Noise' 
-  | 'Player';
-
-// Input module types
-export type InputType = 
-  | 'Voices' 
-  | 'Pitch' 
-  | 'Pedal'
-  | 'MIDI'      // Legacy type, migrated to Pitch
-  | 'Frequency'; // Legacy type, migrated to Pitch
-
-// Envelope type
-export type EnvelopeType = 'Envelope';
+export type SourceType = 'TrackPlayer';
 
 // Effect module types
 export type EffectType = 
@@ -51,7 +36,7 @@ export type EffectType =
   | 'PanVol';
 
 // All module types
-export type ModuleType = SourceType | InputType | EnvelopeType | EffectType;
+export type ModuleType = SourceType | EffectType;
 
 // Control types for UI (matches the actual values used in libraries)
 export type ControlKind = 'range' | 'select' | 'toggle' | 'switch' | 'audioImport';
@@ -139,14 +124,6 @@ export interface MacroMappingItem {
   rangeEnd: number;
 }
 
-// Macro chain state (legacy, migrated to MacroPointState)
-export interface MacroChainState {
-  x: number;
-  y: number;
-  z: number;
-  bindings: Record<string, MacroAxisBinding[]>;
-}
-
 // Macro point state (cross-chain control point)
 export interface MacroPointState {
   x: number;
@@ -170,16 +147,11 @@ export interface ChainState {
   enabled: boolean;
   modules: ModuleConfig[];
   modulations: ModulationConnection[];
-  macro?: MacroChainState;
 }
 
 // Global state
 export interface GlobalState {
   volume: number;
-  velocityEnabled: boolean;
-  velocity: number;
-  polyVoice: number;
-  octave: number;
 }
 
 // Complete preset

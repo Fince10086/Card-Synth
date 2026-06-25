@@ -9,7 +9,7 @@ import type {
   ModuleDefinition,
 } from "../../types";
 import type { ModularSynthApp } from "../../app/modularSynthApp";
-import type { SourceVoice, SourceRuntime } from "../../audio/runtimes/sourceRuntime";
+import type { TrackPlayerRuntime } from "../../audio/runtimes/trackPlayerRuntime";
 
 interface ChainModulation extends ModulationConnection {
   sourceVoiceIndex: number | string;
@@ -47,11 +47,6 @@ interface InitRangePayload {
   currentSliderValue: number;
   paramMin: number;
   paramMax: number;
-}
-
-interface SourceTargetProfile {
-  hasSourceTargets: boolean;
-  hasNonSourceTargets: boolean;
 }
 
 interface CommitModulationTargetParams {
@@ -141,9 +136,6 @@ export class ModulationManager {
   isModulationSource(module: ModuleConfig | undefined | null): boolean {
     if (!module) {
       return false;
-    }
-    if (module.type === "Envelope" && module.modulationMode) {
-      return true;
     }
     return module.category === "source" && Boolean(module.modulationMode);
   }
@@ -528,21 +520,13 @@ export class ModulationManager {
     const sourceModule = modulation
       ? this.getModules(chainIndex).find((m) => m.id === modulation.sourceModuleId)
       : null;
-    const isEnvelopeSource = sourceModule?.type === "Envelope";
 
     items.forEach(({ scale, targetParamPath }) => {
       let minVal: number;
       let maxVal: number;
 
-      if (isEnvelopeSource) {
-        minVal = centerValue;
-        maxVal = centerValue + Math.abs(radius);
-        minVal = Math.max(paramMin, Math.min(paramMax, minVal));
-        maxVal = Math.max(paramMin, Math.min(paramMax, maxVal));
-      } else {
-        minVal = Math.max(paramMin, Math.min(paramMax, centerValue - radius));
-        maxVal = Math.max(paramMin, Math.min(paramMax, centerValue + radius));
-      }
+      minVal = Math.max(paramMin, Math.min(paramMax, centerValue - radius));
+      maxVal = Math.max(paramMin, Math.min(paramMax, centerValue + radius));
 
       const finalMin = Math.min(minVal, maxVal);
       const finalMax = Math.max(minVal, maxVal);
@@ -575,7 +559,6 @@ export class ModulationManager {
     this.isConnectingModulations = true;
 
     this.clearModulationRuntimes();
-    this.resetSourceVoiceAlignmentHints();
 
     const chainCount = this.app.getChainCount();
     for (let chainIndex = 0; chainIndex < chainCount; chainIndex += 1) {
@@ -583,22 +566,6 @@ export class ModulationManager {
     }
 
     this.isConnectingModulations = false;
-  }
-
-  resetSourceVoiceAlignmentHints(): void {
-    const chainCount = this.app.getChainCount();
-    for (let chainIndex = 0; chainIndex < chainCount; chainIndex += 1) {
-      const runtimeMap = this.app.engine.getChainRuntimeMap(chainIndex);
-      if (!runtimeMap) {
-        continue;
-      }
-      runtimeMap.forEach((runtime) => {
-        const r = runtime as unknown as Record<string, unknown>;
-        if (r?.category === "source") {
-          r.preserveVoiceSlotsForSourceTargets = false;
-        }
-      });
-    }
   }
 
   connectChainModulations(chainIndex: number): void {
@@ -612,50 +579,21 @@ export class ModulationManager {
       return;
     }
 
-    const sourceTargetProfile = new Map<string, SourceTargetProfile>();
-
     modulations.forEach((mod) => {
       const targets = this.getModulationTargetParams(mod, chainIndex);
       if (!targets.length) {
         return;
       }
 
-      const hasSourceVoiceTargets = targets.some(({ voiceIndex }) => Number.isFinite(voiceIndex));
-      const profile: SourceTargetProfile = sourceTargetProfile.get(mod.sourceModuleId) || {
-        hasSourceTargets: false,
-        hasNonSourceTargets: false,
-      };
-      if (hasSourceVoiceTargets) {
-        profile.hasSourceTargets = true;
-      } else {
-        profile.hasNonSourceTargets = true;
-      }
-      sourceTargetProfile.set(mod.sourceModuleId, profile);
-
       targets.forEach(({ param, voiceIndex }, targetIndex) => {
-        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId) as unknown as SourceRuntime | null;
-        const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
-        const sourceVoiceIndex = isSourceMono
-          ? 0
-          : Number.isFinite(voiceIndex as number)
-            ? (voiceIndex as number)
-            : Number(mod.sourceVoiceIndex ?? 0);
+        const sourceVoiceIndex = Number.isFinite(voiceIndex as number)
+          ? (voiceIndex as number)
+          : Number(mod.sourceVoiceIndex ?? 0);
 
         this._createModulationConnection(mod, chainIndex, sourceVoiceIndex, param, targetIndex, voiceIndex);
       });
 
       this._applyModulationRange(mod, chainIndex);
-    });
-
-    sourceTargetProfile.forEach((profile, sourceModuleId) => {
-      const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, sourceModuleId) as unknown as SourceRuntime | null;
-      if (!sourceRuntime || sourceRuntime.category !== "source") {
-        return;
-      }
-      const moduleState = (sourceRuntime.moduleState || {}) as unknown as Record<string, unknown>;
-      sourceRuntime.preserveVoiceSlotsForSourceTargets = Boolean(
-        profile.hasSourceTargets && !profile.hasNonSourceTargets && moduleState.modulationMode && moduleState.midiOn,
-      );
     });
   }
 
@@ -687,16 +625,13 @@ export class ModulationManager {
     }
 
     const sourceModule = this.getModules(chainIndex).find((m) => m.id === mod.sourceModuleId);
-    const isEnvelopeSource = sourceModule?.type === "Envelope";
 
     const isFrequencyParam = mod.targetParamPath === "options.frequency";
     const audioHalf = isFrequencyParam ? null : new Tone.Multiply(0.5);
     const audioOffset = new Tone.Add(0.5);
     const scale = new Tone.Scale();
 
-    if (isEnvelopeSource) {
-      (sourceOutput as any).connect(scale);
-    } else if (isFrequencyParam) {
+    if (isFrequencyParam) {
       (sourceOutput as any).connect(audioOffset);
       audioOffset.connect(scale);
     } else {
@@ -739,69 +674,30 @@ export class ModulationManager {
       return;
     }
 
-    let connectedCount = 0;
-
     modulations.forEach((mod) => {
-      if (mod.sourceModuleId === moduleId) {
-        const targets = this.getModulationTargetParams(mod, chainIndex);
-        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId) as unknown as SourceRuntime | null;
-        const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
-
-        targets.forEach(({ param, voiceIndex: targetVoiceIndex }, targetIndex) => {
-          const expectedSourceVoiceIndex = Number.isFinite(targetVoiceIndex as number)
-            ? targetVoiceIndex
-            : Number(mod.sourceVoiceIndex ?? 0);
-
-          if (!isSourceMono && expectedSourceVoiceIndex !== voiceIndex) {
-            return;
-          }
-
-          const sourceVoiceIndex = isSourceMono ? 0 : expectedSourceVoiceIndex;
-          const created = this._createModulationConnection(
-            mod,
-            chainIndex,
-            sourceVoiceIndex,
-            param,
-            targetIndex,
-            targetVoiceIndex,
-          );
-          if (created) {
-            connectedCount++;
-            this._applyModulationRange(mod, chainIndex);
-          }
-        });
+      if (mod.sourceModuleId !== moduleId && mod.targetModuleId !== moduleId) {
+        return;
       }
 
-      if (mod.targetModuleId === moduleId) {
-        const targets = this.getModulationTargetParams(mod, chainIndex);
-        const target = targets.find((t) => t.voiceIndex === voiceIndex);
-        if (!target) {
-          return;
-        }
+      const targets = this.getModulationTargetParams(mod, chainIndex);
+      if (!targets.length) {
+        return;
+      }
 
-        const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId) as unknown as SourceRuntime | null;
-        const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
-
-        const sourceVoiceIndex = isSourceMono
-          ? 0
-          : Number.isFinite(target.voiceIndex as number)
-            ? target.voiceIndex
-            : Number(mod.sourceVoiceIndex ?? 0);
-        const targetIndex = targets.findIndex((t) => t.voiceIndex === voiceIndex);
-
+      targets.forEach(({ param, voiceIndex: targetVoiceIndex }, targetIndex) => {
+        const sourceVoiceIndex = 0;
         const created = this._createModulationConnection(
           mod,
           chainIndex,
           sourceVoiceIndex,
-          target.param,
+          param,
           targetIndex,
-          voiceIndex,
+          targetVoiceIndex,
         );
         if (created) {
-          connectedCount++;
           this._applyModulationRange(mod, chainIndex);
         }
-      }
+      });
     });
   }
 
@@ -820,14 +716,8 @@ export class ModulationManager {
       const mod = this.getModulations(chainIndex).find((m) => m.id === runtime.modulationId);
       if (!mod) return;
 
-      const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, mod.sourceModuleId) as unknown as SourceRuntime | null;
-      const isSourceMono = sourceRuntime?.category === "source" && sourceRuntime.isMono;
-
-      const isSourceMatch =
-        (runtime.sourceVoiceIndex === voiceIndex || (isSourceMono && voiceIndex === 0)) &&
-        mod.sourceModuleId === moduleId;
-
-      const isTargetMatch = runtime.targetVoiceIndex === voiceIndex && runtime.targetModuleId === moduleId;
+      const isSourceMatch = mod.sourceModuleId === moduleId;
+      const isTargetMatch = runtime.targetModuleId === moduleId;
 
       if (!isSourceMatch && !isTargetMatch) {
         return;
@@ -918,7 +808,7 @@ export class ModulationManager {
     sourceVoiceIndex: number = 0,
     chainIndex: number = this.app.getSelectedChainIndex(),
   ): ToneAudioNode | null {
-    const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, modulation.sourceModuleId) as unknown as SourceRuntime | null;
+    const sourceRuntime = this.app.engine.getModuleRuntime(chainIndex, modulation.sourceModuleId) as unknown as TrackPlayerRuntime | null;
     if (!sourceRuntime) {
       return null;
     }
@@ -951,22 +841,12 @@ export class ModulationManager {
       return [];
     }
 
-    if (runtime.category === "source" && Array.isArray(runtime.voices)) {
-      const targets = (runtime.voices as SourceVoice[])
-        .map((voice, voiceIndex) => {
-          const param = this.getSourceVoiceTargetParam(voice, modulation.targetParamPath);
-          if (!param || typeof param === "number") {
-            return null;
-          }
-          return { param, voiceIndex };
-        })
-        .filter(Boolean) as ModulationTargetParam[];
-
-      if (!targets.length) {
-        return [];
+    if (runtime.category === "source") {
+      const param = this.getTrackPlayerTargetParam(runtime as unknown as TrackPlayerRuntime, modulation.targetParamPath);
+      if (param && typeof param !== "number") {
+        return [{ param, voiceIndex: 0 }];
       }
-
-      return targets;
+      return [];
     }
 
     const node = runtime.node as unknown as Record<string, unknown> | undefined;
@@ -986,38 +866,26 @@ export class ModulationManager {
   }
 
   /**
-   * 获取 Source 模块单个 voice 的目标参数
-   * @param voice - Source voice 运行时
+   * 获取 TrackPlayer 运行时上目标参数路径对应的参数
+   * @param runtime - TrackPlayerRuntime 实例
    * @param targetParamPath - 目标参数路径
-   * @returns 可连接参数
+   * @returns 可连接参数或 null
    */
-  getSourceVoiceTargetParam(voice: SourceVoice, targetParamPath: string): unknown {
-    if (!voice || !targetParamPath) {
+  getTrackPlayerTargetParam(runtime: TrackPlayerRuntime, targetParamPath: string): unknown {
+    if (!runtime || !targetParamPath) {
       return null;
     }
 
-    if (targetParamPath === "volume") {
-      return voice.volumeNode?.gain || null;
+    if (targetParamPath === "volume" || targetParamPath === "options.gain") {
+      return runtime.gainNode?.gain || null;
     }
 
     if (targetParamPath === "pan") {
-      return voice.panNode?.pan || null;
-    }
-
-    if (targetParamPath === "options.gain") {
-      return voice.volumeNode?.gain || null;
-    }
-
-    if (targetParamPath === "options.frequencyOffset") {
-      return voice.frequencyOffsetParam || null;
-    }
-
-    if (targetParamPath === "options.frequency") {
-      return voice.frequencyBaseSignal || null;
+      return runtime.panNode?.pan || null;
     }
 
     const paramPath = targetParamPath.replace(/^options\./, "");
-    const param = getByPath(voice.node as unknown as unknown as Record<string, unknown>, paramPath);
+    const param = getByPath(runtime as unknown as Record<string, unknown>, paramPath);
     if (!param || typeof param === "number") {
       return null;
     }

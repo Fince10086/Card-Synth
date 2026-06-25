@@ -1,8 +1,6 @@
 import {
   SOURCE_LIBRARY,
   EFFECT_LIBRARY,
-  COMPONENT_LIBRARY,
-  INPUT_LIBRARY,
 } from "../../core/libraries";
 import {
   getModuleDefinition,
@@ -60,10 +58,6 @@ interface MacroManagerLike {
   removeBindingsForModule(moduleId: string): void;
 }
 
-interface KeyboardNavigationLike {
-  setNextFocusTarget(ref: string): void;
-}
-
 interface ModuleRendererApp {
   getSelectedChainIndex(): number;
   isModulationSource(module: ModuleConfig): boolean;
@@ -88,7 +82,6 @@ interface ModuleRendererApp {
   ): ModulationConnection | undefined;
   controlBindings: Map<string, ControlBinding>;
   modulationManager: Record<string, unknown>;
-  keyboardNavigation: KeyboardNavigationLike;
   elements: {
     signalFlow: HTMLElement | null;
   };
@@ -118,11 +111,6 @@ function getRenderableControls(
   module: ModuleConfig,
   controls: ControlDefinition[]
 ): ControlDefinition[] {
-  if (module.category === "input") {
-    return controls.filter(
-      (control) => !control.conditional || control.conditional(module)
-    );
-  }
   if (module.category !== "source") {
     return controls.filter(
       (control) => !control.conditional || control.conditional(module)
@@ -184,8 +172,7 @@ export function renderModuleCard(
   const modulationSource = app.isModulationSource(module);
   const accent = modulationSource ? "modulation" : getModuleAccent(module);
   const kicker = getModuleTag(module);
-  const canToggleModulation =
-    module.category === "source" || module.type === "Envelope";
+  const canToggleModulation = module.category === "source";
   const canCreateCable = modulationSource;
 
   const card = createModuleCard({
@@ -198,19 +185,10 @@ export function renderModuleCard(
       const replacement = createModule(module.category, value as ModuleType);
       replacement.id = module.id;
       replacement.enabled = module.enabled;
-      if (module.category === "source" || module.type === "Envelope") {
-        replacement.modulationMode = module.modulationMode;
-      }
       if (module.category === "source") {
+        replacement.modulationMode = module.modulationMode;
         replacement.volume = module.volume;
         replacement.pan = module.pan;
-        const sourceFrequencyOffset = Number(
-          (module.options as unknown as Record<string, unknown> | undefined)?.frequencyOffset
-        );
-        if (Number.isFinite(sourceFrequencyOffset)) {
-          (replacement.options as unknown as Record<string, unknown>).frequencyOffset =
-            sourceFrequencyOffset;
-        }
       }
       if (!app.isModulationSource(replacement)) {
         app.removeOutgoingModulations(module.id);
@@ -230,26 +208,6 @@ export function renderModuleCard(
       app.renderAll();
     },
     onRemove: () => {
-      const container = app.elements.signalFlow;
-      const currentCard = container?.querySelector(
-        `.module-card[data-module-ref="${module.id}"]`
-      );
-      if (currentCard) {
-        const prevCard = currentCard.previousElementSibling;
-        if (
-          prevCard &&
-          (prevCard.classList.contains("module-card") ||
-            prevCard.classList.contains("add-module-card"))
-        ) {
-          const ref =
-            (prevCard as HTMLElement).dataset.moduleRef ||
-            (prevCard as HTMLElement).dataset.mainCard ||
-            (prevCard as HTMLElement).id ||
-            "";
-          app.keyboardNavigation.setNextFocusTarget(ref);
-        }
-      }
-
       app.removeModuleModulations(module.id);
       app.macroManager.removeBindingsForModule(module.id);
       app.getCurrentModules().splice(index, 1);
@@ -285,29 +243,13 @@ export function renderModuleCard(
   controls.className = "module-grid";
 
   if (
-    ((module.category === "source" && module.modulationMode) ||
-      (module.type === "Envelope" && module.modulationMode)) &&
+    module.category === "source" &&
+    module.modulationMode &&
     !Number.isFinite(
       Number((module.options as unknown as Record<string, unknown> | undefined)?.gain)
     )
   ) {
     setByPath(module as unknown as Record<string, unknown>, "options.gain", 1);
-  }
-
-  if (module.category === "source") {
-    getSourceSampleSlots(module).forEach((slot) => {
-      controls.append(
-        createAudioImportControl({
-          label: slot.label,
-          value:
-            getByPath(module as unknown as Record<string, unknown>, slot.namePath) ||
-            slot.fallbackName,
-          onSelect: async (file: File) => {
-            await importSourceSample(module, index, slot, file, app);
-          },
-        })
-      );
-    });
   }
 
   getRenderableControls(module, definition.controls).forEach((control) => {
@@ -364,7 +306,7 @@ export function renderModuleControl(
     };
     const isInverted = controlExt.inverted === true;
     const displayValue = isInverted ? !Boolean(value) : Boolean(value);
-    const toggleEl = createToggleControl({
+    return createToggleControl({
       label: t(control.label),
       accent,
       value: displayValue,
@@ -377,14 +319,10 @@ export function renderModuleControl(
         onCommit();
       },
     });
-    if (module.category === "input") {
-      toggleEl.querySelector(".control-label")?.remove();
-    }
-    return toggleEl;
   }
 
   if (control.kind === "switch") {
-    const switchEl = createSwitchControl({
+    return createSwitchControl({
       label: t(control.label),
       accent,
       options:
@@ -400,10 +338,6 @@ export function renderModuleControl(
         app.renderAll();
       },
     });
-    if (module.category === "input") {
-      switchEl.querySelector(".control-label")?.remove();
-    }
-    return switchEl;
   }
 
   return createSliderControl({
@@ -433,77 +367,6 @@ export function renderModuleControl(
   });
 }
 
-export function getSourceSampleSlots(module: ModuleConfig): SourceSampleSlot[] {
-  const moduleType = module.type as string;
-
-  if (moduleType === "Player") {
-    return [
-      {
-        label: t("Sample"),
-        path: "options.url",
-        namePath: "assetName",
-        fallbackName: "Factory Pluck",
-      },
-    ];
-  }
-
-  if (moduleType === "GrainPlayer") {
-    return [
-      {
-        label: t("Sample"),
-        path: "options.url",
-        namePath: "assetName",
-        fallbackName: "Factory Texture",
-      },
-    ];
-  }
-
-  if (moduleType === "Players") {
-    return [
-      {
-        label: t("Low Sample"),
-        path: "options.urls.low",
-        namePath: "sampleNames.low",
-        fallbackName: "Factory Pluck",
-      },
-      {
-        label: t("Mid Sample"),
-        path: "options.urls.mid",
-        namePath: "sampleNames.mid",
-        fallbackName: "Factory Bell",
-      },
-      {
-        label: t("High Sample"),
-        path: "options.urls.high",
-        namePath: "sampleNames.high",
-        fallbackName: "Factory Texture",
-      },
-    ];
-  }
-
-  return [];
-}
-
-export async function importSourceSample(
-  module: ModuleConfig,
-  index: number,
-  slot: SourceSampleSlot,
-  file: File,
-  app: ModuleRendererApp
-): Promise<void> {
-  const dataUrl = await readFileAsDataUrl(file);
-  setByPath(module as unknown as Record<string, unknown>, slot.path, dataUrl);
-  setByPath(module as unknown as Record<string, unknown>, slot.namePath, file.name);
-  app.getCurrentModules()[index] = normalizeSourceModule(module);
-  app.markUnsaved();
-  app.renderAll();
-  app.engine.fullSync(app.state);
-  app.setStatus(
-    t("Loaded {{file}} into {{module}}.", { file: file.name, module: t(module.type) }),
-    app.audioBooted ? "live" : "neutral"
-  );
-}
-
 export function getTitleOptions(
   category: string
 ): Array<{ label: string; value: string }> {
@@ -519,23 +382,19 @@ export function getTitleOptions(
       value: type,
     }));
   }
-  if (category === "input") {
-    return Object.keys(INPUT_LIBRARY).map((type) => ({
-      label: t(type),
-      value: type,
-    }));
-  }
-  return Object.keys(COMPONENT_LIBRARY).map((type) => ({
-    label: t(type),
-    value: type,
-  }));
+  return [];
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+export function getSourceSampleSlots(_module: ModuleConfig): SourceSampleSlot[] {
+  return [];
+}
+
+export async function importSourceSample(
+  _module: ModuleConfig,
+  _index: number,
+  _slot: SourceSampleSlot,
+  _file: File,
+  _app: ModuleRendererApp
+): Promise<void> {
+  // No-op: audio files are assigned automatically by chain index
 }

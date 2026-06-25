@@ -1,7 +1,7 @@
 /**
  * UI type definitions
  */
-import type { ModuleConfig, Preset, ChainState, MacroChainState } from './core';
+import type { ModuleConfig, Preset, ChainState } from './core';
 
 // Main card options
 export interface MainCardOptions {

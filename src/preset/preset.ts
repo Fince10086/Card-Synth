@@ -10,16 +10,14 @@ import {
   clamp,
   normalizeAnyModule,
   createSourceModule,
-  createComponentModule,
   createEffectModule,
-  createInputModule,
 } from "../utils/helpers";
-import type { ModuleConfig, Preset, ChainState, MacroChainState, MacroPointState, MacroState, GlobalState, ModulationConnection } from "../types";
+import type { ModuleConfig, Preset, ChainState, MacroPointState, MacroState, GlobalState, ModulationConnection } from "../types";
 
 const CHAIN_COUNT = 4;
 const MACRO_POINT_COUNT = 9;
 const DEFAULT_MACRO_POINT_COUNT = 3;
-const DEFAULT_GLOBAL: GlobalState = { volume: -8, octave: 4, velocity: 0.8, velocityEnabled: true, polyVoice: 8 };
+const DEFAULT_GLOBAL: GlobalState = { volume: -8 };
 const MACRO_POINT_DEFAULT = Object.freeze({ x: 0.5, y: 0.5 });
 const MACRO_EPSILON = 1e-6;
 
@@ -45,23 +43,17 @@ export interface ModulationItem {
   scaleMax?: number;
 }
 
-function createStarterModules(): ModuleConfig[] {
+function createStarterModules(chainIndex: number = 0): ModuleConfig[] {
   return [
-    createInputModule("Pitch"),
-    createSourceModule("Oscillator"),
+    createSourceModule(chainIndex),
     createEffectModule("Filter"),
-    createComponentModule("Envelope"),
     createEffectModule("Chorus"),
   ];
 }
 
 function normalizeGlobalState(global: Partial<GlobalState> = {}): GlobalState {
   const merged = deepMerge(DEFAULT_GLOBAL, global || {}) as GlobalState;
-  merged.octave = clamp(Number(merged.octave || 4), 1, 7);
-  merged.velocity = clamp(Number(merged.velocity || 0.8), 0.1, 1);
   merged.volume = clamp(Number(merged.volume || -8), -36, 6);
-  merged.velocityEnabled = merged.velocityEnabled !== false;
-  merged.polyVoice = clamp(Number(merged.polyVoice ?? 8), 2, 8);
   return merged;
 }
 
@@ -74,19 +66,6 @@ export function createDefaultMacroPointState(): MacroPointState {
     x: MACRO_POINT_DEFAULT.x,
     y: MACRO_POINT_DEFAULT.y,
     bindings: createDefaultMacroPointBindings(),
-  };
-}
-
-export function createDefaultMacroChainState(): MacroChainState {
-  return {
-    x: MACRO_POINT_DEFAULT.x,
-    y: MACRO_POINT_DEFAULT.y,
-    z: 0.5,
-    bindings: {
-      x: [],
-      y: [],
-      z: [],
-    },
   };
 }
 
@@ -162,56 +141,6 @@ export function normalizeMacroPoint(
   };
 }
 
-function migrateLegacyMacroChainToPoint(chainMacro: Partial<MacroChainState> & { point?: { x?: number; y?: number; z?: number }; mappings?: Record<string, unknown[]> } = {}, targetChainIndex: number): MacroPointState {
-  const normalized = (() => {
-    const fallback = createDefaultMacroChainState();
-    const x = typeof chainMacro.point?.x === "number" ? chainMacro.point.x : chainMacro.x;
-    const y = typeof chainMacro.point?.y === "number" ? chainMacro.point.y : chainMacro.y;
-    return {
-      x: clamp(Number(x ?? fallback.x), 0, 1),
-      y: clamp(Number(y ?? fallback.y), 0, 1),
-      bindings: {
-        x: chainMacro.mappings?.x ?? chainMacro.bindings?.x ?? [],
-        y: chainMacro.mappings?.y ?? chainMacro.bindings?.y ?? [],
-        z: chainMacro.mappings?.z ?? chainMacro.bindings?.z ?? [],
-      },
-    };
-  })();
-
-  const migrateAxis = (items: Partial<MacroMappingItem>[]): MacroMappingItem[] =>
-    normalizeMacroMappings(
-      items.map((item) => ({ ...item, targetChainIndex }))
-    );
-
-  return {
-    x: normalized.x,
-    y: normalized.y,
-    bindings: {
-      x: migrateAxis(normalized.bindings.x),
-      y: migrateAxis(normalized.bindings.y),
-    },
-  };
-}
-
-export function normalizeMacroChain(chainMacro: Partial<MacroChainState> & { point?: { x?: number; y?: number; z?: number }; mappings?: Record<string, unknown[]> } = {}): MacroChainState {
-  const fallback = createDefaultMacroChainState();
-
-  const x = typeof chainMacro.point?.x === "number" ? chainMacro.point.x : chainMacro.x;
-  const y = typeof chainMacro.point?.y === "number" ? chainMacro.point.y : chainMacro.y;
-  const z = typeof chainMacro.point?.z === "number" ? chainMacro.point.z : chainMacro.z;
-
-  return {
-    x: clamp(Number(x ?? fallback.x), 0, 1),
-    y: clamp(Number(y ?? fallback.y), 0, 1),
-    z: clamp(Number(z ?? fallback.z), 0, 1),
-    bindings: {
-      x: normalizeMacroMappings(chainMacro.mappings?.x ?? chainMacro.bindings?.x),
-      y: normalizeMacroMappings(chainMacro.mappings?.y ?? chainMacro.bindings?.y),
-      z: normalizeMacroMappings(chainMacro.mappings?.z ?? chainMacro.bindings?.z),
-    },
-  };
-}
-
 export function createDefaultMacroState(): MacroState {
   return {
     pointCount: DEFAULT_MACRO_POINT_COUNT,
@@ -221,9 +150,7 @@ export function createDefaultMacroState(): MacroState {
   };
 }
 
-export function normalizeMacroState(macro: Partial<MacroState> | null = null, chainFallback: ChainState[] = []): MacroState {
-  const fallbackList = Array.isArray(chainFallback) ? chainFallback : [];
-
+export function normalizeMacroState(macro: Partial<MacroState> | null = null): MacroState {
   if (macro && Array.isArray((macro as { points?: unknown }).points)) {
     const rawPointCount = Number((macro as { pointCount?: number }).pointCount);
     const pointCount = clamp(Number.isFinite(rawPointCount) ? rawPointCount : DEFAULT_MACRO_POINT_COUNT, 1, MACRO_POINT_COUNT);
@@ -252,38 +179,8 @@ export function normalizeMacroState(macro: Partial<MacroState> | null = null, ch
     };
   }
 
-  // Legacy migration from chain-based macro state
-  const sourceChains = Array.isArray(macro)
-    ? (macro as unknown as Array<Partial<MacroChainState> & { point?: { x?: number; y?: number; z?: number }; mappings?: Record<string, unknown[]> }>)
-    : Array.isArray((macro as { chains?: unknown }).chains)
-      ? ((macro as { chains: unknown }).chains as Array<Partial<MacroChainState> & { point?: { x?: number; y?: number; z?: number }; mappings?: Record<string, unknown[]> }>)
-      : [];
-
-  const points: MacroPointState[] = Array.from({ length: MACRO_POINT_COUNT }, (_, index) => {
-    const fromMacro = sourceChains[index];
-    const fromChain = fallbackList[index]?.macro;
-    if (fromMacro || fromChain) {
-      return migrateLegacyMacroChainToPoint(fromMacro ?? fromChain ?? {}, index);
-    }
-    return createDefaultMacroPointState();
-  });
-
-  let pointCount = DEFAULT_MACRO_POINT_COUNT;
-  for (let i = MACRO_POINT_COUNT - 1; i >= 0; i--) {
-    const p = points[i];
-    if (p.bindings.x.length > 0 || p.bindings.y.length > 0 || Math.abs(p.x - MACRO_POINT_DEFAULT.x) > MACRO_EPSILON || Math.abs(p.y - MACRO_POINT_DEFAULT.y) > MACRO_EPSILON) {
-      pointCount = Math.max(pointCount, i + 1);
-      break;
-    }
-  }
-  pointCount = clamp(pointCount, 1, MACRO_POINT_COUNT);
-
-  return {
-    pointCount,
-    selectedPointIndex: 0,
-    recentSelection: [0, 1, 2].slice(0, pointCount),
-    points,
-  };
+  // Default
+  return createDefaultMacroState();
 }
 
 export function hasMacroSettingsInPoint(point: Partial<MacroPointState> = {}): boolean {
@@ -327,11 +224,11 @@ function normalizeModulations(modulations: Array<Partial<ModulationItem> | Modul
     : [];
 }
 
-function normalizeChain(chain: Partial<ChainState> = {}, { defaultEnabled = false, defaultModules = [] }: { defaultEnabled?: boolean; defaultModules?: ModuleConfig[] } = {}): ChainState {
+function normalizeChain(chain: Partial<ChainState> = {}, { defaultEnabled = false, chainIndex = 0 }: { defaultEnabled?: boolean; chainIndex?: number } = {}): ChainState {
   const hasModulesField = Array.isArray(chain?.modules);
   const modules = hasModulesField
-    ? chain.modules!.map((module) => normalizeAnyModule(module))
-    : defaultModules.map((module) => normalizeAnyModule(module));
+    ? chain.modules!.map((module) => normalizeAnyModule(module, chainIndex))
+    : createStarterModules(chainIndex).map((module) => normalizeAnyModule(module, chainIndex));
 
   const rawModulations = Array.isArray(chain?.modulations) ? chain.modulations : [];
 
@@ -346,35 +243,15 @@ function emptyChain(): ChainState {
   return { enabled: false, modules: [], modulations: [] };
 }
 
-export function normalizeCurrentPresetData(preset: Partial<{ global: Partial<GlobalState>; modules: ModuleConfig[]; modulations: ModulationItem[]; macro: Partial<MacroChainState>; name?: string }> = {}): { global: GlobalState; modules: ModuleConfig[]; modulations: ModulationItem[]; macro: MacroState; name?: string } {
+export function normalizeCurrentPresetData(preset: Partial<{ global: Partial<GlobalState>; modules: ModuleConfig[]; modulations: ModulationItem[]; name?: string }> = {}): { global: GlobalState; modules: ModuleConfig[]; modulations: ModulationItem[]; name?: string } {
   const modules = Array.isArray(preset.modules)
     ? preset.modules.map((module) => normalizeAnyModule(module))
-    : createStarterModules();
-
-  const legacyChainMacro = preset?.macro
-    ? normalizeMacroChain(preset.macro as Parameters<typeof normalizeMacroChain>[0])
-    : null;
-
-  const migratedPoint = legacyChainMacro
-    ? migrateLegacyMacroChainToPoint(legacyChainMacro as Parameters<typeof migrateLegacyMacroChainToPoint>[0], 0)
-    : null;
-
-  const points = Array.from({ length: MACRO_POINT_COUNT }, (_, index) =>
-    index === 0 && migratedPoint ? migratedPoint : createDefaultMacroPointState()
-  );
-
-  const hasSettings = migratedPoint && hasMacroSettingsInPoint(migratedPoint);
+    : createStarterModules(0);
 
   return {
     global: normalizeGlobalState(preset.global || {}),
     modules,
     modulations: normalizeModulations(Array.isArray(preset.modulations) ? preset.modulations : []),
-    macro: {
-      pointCount: hasSettings ? Math.max(DEFAULT_MACRO_POINT_COUNT, 1) : DEFAULT_MACRO_POINT_COUNT,
-      selectedPointIndex: 0,
-      recentSelection: [0, 1, 2],
-      points,
-    },
   };
 }
 
@@ -382,12 +259,11 @@ export function createBasePreset(): Preset {
   return {
     global: normalizeGlobalState({}),
     selectedChainIndex: 0,
-    chains: [
-      { enabled: true, modules: createStarterModules(), modulations: [] },
-      emptyChain(),
-      emptyChain(),
-      emptyChain(),
-    ],
+    chains: Array.from({ length: CHAIN_COUNT }, (_, index) => ({
+      enabled: true,
+      modules: createStarterModules(index),
+      modulations: [],
+    })),
     macro: createDefaultMacroState(),
   };
 }
@@ -396,10 +272,10 @@ export function normalizePreset(preset: Partial<Preset> = {}): Preset {
   resetModuleCounter();
 
   if (Array.isArray(preset?.chains)) {
-    const macro = normalizeMacroState(preset?.macro, preset.chains);
+    const macro = normalizeMacroState(preset?.macro);
     const chains = Array.from({ length: CHAIN_COUNT }, (_, index) => {
       const incoming = preset.chains![index] || {};
-      return normalizeChain(incoming, { defaultEnabled: index === 0, defaultModules: [] });
+      return normalizeChain(incoming, { defaultEnabled: true, chainIndex: index });
     });
 
     return {
@@ -411,17 +287,15 @@ export function normalizePreset(preset: Partial<Preset> = {}): Preset {
   }
 
   const current = normalizeCurrentPresetData(preset as unknown as Parameters<typeof normalizeCurrentPresetData>[0]);
-  const macro = current.macro;
   return {
     global: current.global,
     selectedChainIndex: 0,
-    chains: [
-      { enabled: true, modules: current.modules, modulations: current.modulations },
-      emptyChain(),
-      emptyChain(),
-      emptyChain(),
-    ],
-    macro,
+    chains: Array.from({ length: CHAIN_COUNT }, (_, index) => ({
+      enabled: true,
+      modules: index === 0 ? current.modules : createStarterModules(index),
+      modulations: index === 0 ? current.modulations : [],
+    })),
+    macro: createDefaultMacroState(),
   };
 }
 

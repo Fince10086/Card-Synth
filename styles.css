@@ -1433,3 +1433,67 @@ select {
   display: none !important;
 }
 
+/* ==================== Transport 播放控制 ==================== */
+.transport-container {
+  margin-bottom: 10px;
+}
+
+.transport-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transport-play-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1.5px solid var(--ink-tint-24);
+  border-radius: 50%;
+  background: var(--ink-tint-13);
+  color: var(--ink);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+  padding: 0;
+  line-height: 1;
+}
+
+.transport-play-btn:hover {
+  background: var(--ink-tint-24);
+  border-color: var(--ink-tint-78);
+}
+
+.transport-progress {
+  flex: 1;
+  height: 24px;
+  background: var(--ink-tint-13);
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.transport-progress-fill {
+  height: 100%;
+  background: var(--source);
+  border-radius: 4px;
+  transition: width 0.1s linear;
+  min-width: 2px;
+}
+
+.transport-time {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--ink-tint-78);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
