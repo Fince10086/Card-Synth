@@ -11,6 +11,7 @@
 import { HandGestureRecognizer, type GestureResults } from "./handGestureRecognizer";
 import { WaterRenderer } from "./waterRenderer";
 import { SpectrogramRenderer } from "./spectrogramRenderer";
+import * as Tone from "tone";
 import { clamp } from "../../utils/helpers";
 import type { Preset, MacroPointState } from "../../types";
 
@@ -102,6 +103,11 @@ export class GestureManager {
   canvas: HTMLCanvasElement | null;
   ctx: CanvasRenderingContext2D | null;
 
+  transportBar: HTMLElement | null;
+  transportBarFill: HTMLElement | null;
+  playBtn: HTMLButtonElement | null;
+  getDuration: (() => number) | null;
+
   smoothedLandmarks: HandLandmarks[];
   smoothAlpha: number;
   lastLandmarks: HandLandmarks[];
@@ -139,6 +145,10 @@ export class GestureManager {
     this.spectrogramRenderer = null;
     this.canvas = null;
     this.ctx = null;
+    this.transportBar = null;
+    this.transportBarFill = null;
+    this.playBtn = null;
+    this.getDuration = null;
 
     this.smoothedLandmarks = [];
     this.smoothAlpha = 0.4;
@@ -194,9 +204,10 @@ export class GestureManager {
     this.onResize = null;
   }
 
-  async activate(analyser?: { getValue(): Float32Array }): Promise<void> {
+  async activate(analyser?: { getValue(): Float32Array }, getDuration?: () => number): Promise<void> {
     if (this.active || this.activating) return;
     this.activating = true;
+    this.getDuration = getDuration ?? null;
     try {
       await this.recognizer.initialize();
       await this.recognizer.startCamera();
@@ -286,6 +297,28 @@ export class GestureManager {
     closeBtn.addEventListener("click", () => this.deactivate());
     this.overlay.appendChild(closeBtn);
 
+    // Transport bar (bottom)
+    this.transportBar = document.createElement("div");
+    this.transportBar.className = "gesture-transport-bar";
+    this.transportBarFill = document.createElement("div");
+    this.transportBarFill.className = "gesture-transport-bar-fill";
+    this.transportBar.appendChild(this.transportBarFill);
+    this.overlay.appendChild(this.transportBar);
+
+    // Play / Pause button (bottom-left)
+    this.playBtn = document.createElement("button");
+    this.playBtn.type = "button";
+    this.playBtn.className = "gesture-play-btn";
+    this.playBtn.textContent = "▶";
+    this.playBtn.addEventListener("click", () => {
+      if (Tone.Transport.state === "started") {
+        Tone.Transport.pause();
+      } else {
+        Tone.Transport.start();
+      }
+    });
+    this.overlay.appendChild(this.playBtn);
+
     document.body.appendChild(this.overlay);
 
     this.onResize = () => this.resizeCanvas();
@@ -319,6 +352,9 @@ export class GestureManager {
       this.waterCanvas = null;
       this.canvas = null;
       this.ctx = null;
+      this.transportBar = null;
+      this.transportBarFill = null;
+      this.playBtn = null;
     }
   }
 
@@ -483,6 +519,10 @@ export class GestureManager {
       }
 
       this.waterRenderer?.render();
+
+      // Update transport bar and play button
+      this.updateTransportUI();
+
       this.draw(this.getInterpolatedLandmarks(now), this.lastGestures);
       this.renderFrame = requestAnimationFrame(frame);
     };
@@ -733,5 +773,21 @@ export class GestureManager {
       ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
       ctx.fill();
     });
+  }
+
+  updateTransportUI(): void {
+    const playing = Tone.Transport.state === "started";
+
+    // Play / Pause button
+    if (this.playBtn) {
+      this.playBtn.textContent = playing ? "⏸" : "▶";
+    }
+
+    // Progress bar
+    if (this.transportBarFill) {
+      const dur = this.getDuration?.() ?? 0;
+      const pct = dur > 0 ? (Tone.Transport.seconds / dur) * 100 : 0;
+      this.transportBarFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+    }
   }
 }
