@@ -62,6 +62,7 @@ interface MainCardViewModel {
 
 interface BindingResult extends MacroMappingItem {
   axis: Axis;
+  pointIndex: number;
   color: string;
 }
 
@@ -247,6 +248,7 @@ export class MacroManager {
           return {
             ...match,
             axis,
+            pointIndex,
             color: this.getPointColor(pointIndex),
           };
         }
