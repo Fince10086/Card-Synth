@@ -61,12 +61,16 @@ export class SpectrogramRenderer {
       }
     }
 
-    // Draw new frequency column on the right edge
+    // Draw new frequency column on the right edge (logarithmic frequency scale)
     const drawX = this.width - 1;
+    const logMin = Math.log10(20);
+    const logMax = Math.log10(22050);
+    const logRange = logMax - logMin;
     for (let i = 0; i < this.height; i++) {
-      const binIndex = Math.floor((i / this.height) * bins);
-      // Tone.js FFT returns dB values, typical range -100 to 0
-      const db = Math.max(-100, Math.min(0, freqData[bins - 1 - binIndex]));
+      const t = 1 - i / (this.height - 1 || 1);
+      const freq = 10 ** (logMin + t * logRange);
+      const binIndex = Math.min(bins - 1, Math.max(0, Math.floor((freq / 22050) * bins)));
+      const db = Math.max(-100, Math.min(0, freqData[binIndex]));
       const amp = (db + 100) / 100; // normalize to 0..1
 
       const [r, g, b] = this.amplitudeToColor(amp);
