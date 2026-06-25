@@ -4,6 +4,8 @@
 
 import {
   normalizeCurrentPresetData,
+  normalizePreset,
+  isAllTypePreset,
 } from "./preset";
 import {
   loadUserPresets,
@@ -36,11 +38,16 @@ function slugToName(slug: string): string {
 }
 
 function normalizeWithName(data: unknown, id: string): Preset {
-  const normalized = normalizeCurrentPresetData(data as Record<string, unknown>);
-  if (!normalized.name) {
-    (normalized as unknown as Record<string, unknown>).name = slugToName(toSlug(id));
+  let preset: Preset;
+  if (isAllTypePreset(data)) {
+    preset = normalizePreset(data as Record<string, unknown>);
+  } else {
+    preset = normalizeCurrentPresetData(data as Record<string, unknown>) as unknown as Preset;
   }
-  return normalized as unknown as Preset;
+  if (!(preset as unknown as Record<string, unknown>).name) {
+    (preset as unknown as Record<string, unknown>).name = slugToName(toSlug(id));
+  }
+  return preset;
 }
 
 export async function loadBuiltinPresets(): Promise<Record<string, Preset>> {
