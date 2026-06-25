@@ -2,7 +2,7 @@
   "global": {
     "volume": -8
   },
-  "selectedChainIndex": 3,
+  "selectedChainIndex": 0,
   "chains": [
     {
       "enabled": true,
